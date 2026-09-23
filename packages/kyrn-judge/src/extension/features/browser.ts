@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { type FieldContext, runBrowserTask } from "../../browser/agent.ts";
+import { Bounds, refusalReason } from "../../browser/bounds.ts";
 import { CdpConnection } from "../../browser/cdp.ts";
 import { type LaunchedChrome, launchChrome } from "../../browser/chrome.ts";
 import { EmbeddedBrowser, findEmbeddedEndpoint } from "../../browser/embedded.ts";
@@ -163,6 +164,15 @@ export function registerBrowser(runtime: KyrnRuntime): void {
 		try {
 			if (!params.goal?.trim()) {
 				const page = await session.observe();
+				// The address may have redirected where the browser does not go unasked; then nothing of it is read.
+				const refused = await new Bounds(session.start).refuse(page.url);
+				if (refused) {
+					status = "blocked";
+					code = "off_the_web";
+					codeParams = { where: refused.where };
+					reason = refusalReason(refused);
+					return { text: `status: blocked (${reason})`, status, url: refused.where };
+				}
 				const text = `${page.title}\n${page.url}\n\n${UNTRUSTED}\n\n${page.text.slice(0, textChars)}`;
 				status = "read";
 				code = "read";

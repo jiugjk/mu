@@ -43,15 +43,18 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
  * page still means what it meant when the decision was taken.
  */
 export class BrowserSession {
+	/** The address this tab was opened on: where the run was asked to go, before any page sent it elsewhere. */
+	readonly start: string;
 	private readonly cdp: CdpConnection;
 	private readonly targetId: string;
 	private readonly sessionId: string;
 	private afterInput: PageAction | undefined;
 
-	private constructor(cdp: CdpConnection, targetId: string, sessionId: string) {
+	private constructor(cdp: CdpConnection, targetId: string, sessionId: string, start: string) {
 		this.cdp = cdp;
 		this.targetId = targetId;
 		this.sessionId = sessionId;
+		this.start = start;
 	}
 
 	static async open(cdp: CdpConnection, url: string): Promise<BrowserSession> {
@@ -61,7 +64,7 @@ export class BrowserSession {
 			const { sessionId } = (await cdp.send("Target.attachToTarget", { targetId, flatten: true })) as {
 				sessionId: string;
 			};
-			session = new BrowserSession(cdp, targetId, sessionId);
+			session = new BrowserSession(cdp, targetId, sessionId, url);
 			await session.call("Emulation.setDeviceMetricsOverride", {
 				width: 1120,
 				height: 780,
