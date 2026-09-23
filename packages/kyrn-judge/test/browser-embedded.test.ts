@@ -15,6 +15,7 @@ import { createKyrnJudgeExtension } from "../src/extension/kyrn-judge.ts";
 import { Judge } from "../src/judge.ts";
 import { MemoryLedger } from "../src/ledger.ts";
 import { MockJudgeProvider } from "../src/providers/mock.ts";
+import type { Answer } from "../src/types.ts";
 
 type Reply = Record<string, unknown> | Error;
 
@@ -324,6 +325,81 @@ describe("the desktop app's browser", () => {
 			expect(result).toContain("a page sent the browser to http://127.0.0.1:8500 (this computer)");
 			expect(result).not.toContain("hunter2");
 			expect(result).not.toContain("recurse");
+		} finally {
+			harness.cleanup();
+			vi.unstubAllEnvs();
+		}
+	});
+
+	it("a writer that never answers ends the run, instead of holding the turn", async () => {
+		const search: PageAction = { id: "e1", kind: "fill", node: 1, role: "textbox", label: "Search", value: "" };
+		const snapshot = {
+			url: "https://93.184.216.34/",
+			title: "Search",
+			text: "Search the site",
+			actions: [search],
+			marker: 1,
+			page_key: 1,
+			guards: {},
+			omitted_actions: 0,
+		};
+		const app = bridge((method, params) => {
+			if (method === "Mu.hello") return { embedded: true, version: 1 };
+			if (method === "Mu.control") return { paused: false, stop: false };
+			if (method === "Target.createTarget") return { targetId: "tab-1" };
+			if (method === "Target.attachToTarget") return { sessionId: "session-1" };
+			if (method === "Runtime.evaluate") {
+				const expression = String(params.expression);
+				if (expression.includes("document.readyState")) return { result: { value: "complete" } };
+				return { result: { value: expression.includes("state?.marker") ? 1 : snapshot } };
+			}
+			return {};
+		});
+		open.push(app);
+		vi.stubEnv("MU_BROWSER_ENDPOINT", await app.listen());
+		const choose = (choice: string): Answer => ({ type: "choice", choice, probabilities: { [choice]: 0.97 } });
+		const harness = await createHarness({
+			extensionFactories: [
+				createKyrnJudgeExtension({
+					provider: new MockJudgeProvider(
+						(request): Record<string, Answer> =>
+							"operation" in request.questions
+								? { operation: choose("TYPE_TEXT"), type_text_target: choose("1") }
+								: {},
+					),
+					mode: "active",
+					config: parseConfig({ features: { memory: false, browser: { writeTimeoutMs: 200 } } }),
+					only: ["browser"],
+				}),
+			],
+		});
+		let stoppedWaiting = false;
+		try {
+			harness.setResponses([
+				fauxAssistantMessage(
+					[fauxToolCall("browse", { url: "https://93.184.216.34/", goal: "Search for shoes" })],
+					{
+						stopReason: "toolUse",
+					},
+				),
+				// The field's value is asked of the model, which never answers until the call is given up.
+				(_context, options) =>
+					new Promise((resolve) => {
+						options?.signal?.addEventListener(
+							"abort",
+							() => {
+								stoppedWaiting = true;
+								resolve(fauxAssistantMessage("too late"));
+							},
+							{ once: true },
+						);
+					}),
+				fauxAssistantMessage("Could not fill it in."),
+			]);
+			await harness.session.prompt("Find shoes on that site.");
+			const result = JSON.stringify(harness.session.messages.filter((message) => message.role === "toolResult"));
+			expect(stoppedWaiting).toBe(true);
+			expect(result).toContain('no value could be produced for \\"Search\\"');
 		} finally {
 			harness.cleanup();
 			vi.unstubAllEnvs();
