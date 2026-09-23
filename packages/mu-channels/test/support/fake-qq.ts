@@ -8,6 +8,8 @@ export interface RecordedCall {
 	path: string;
 	body: Record<string, unknown>;
 	headers: Record<string, string | string[] | undefined>;
+	/** What the fake answered (set once the response is sent). */
+	response?: unknown;
 }
 
 export interface FakeQQOptions {
@@ -116,7 +118,9 @@ export class FakeQQ {
 		}
 		const path = (req.url ?? "").split("?")[0] ?? "";
 		const method = req.method ?? "GET";
+		const call: RecordedCall = { method, path, body, headers: req.headers };
 		const send = (status: number, payload: unknown) => {
+			call.response = payload;
 			res.statusCode = status;
 			res.setHeader("Content-Type", "application/json");
 			res.end(JSON.stringify(payload));
@@ -131,7 +135,7 @@ export class FakeQQ {
 			return;
 		}
 
-		this.calls.push({ method, path, body, headers: req.headers });
+		this.calls.push(call);
 		const failure = this.options.failures?.find((f) => f.match.test(path));
 		if (failure) {
 			send(failure.status, failure.body);

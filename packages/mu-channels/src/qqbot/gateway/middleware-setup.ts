@@ -5,7 +5,7 @@
  * 中间件负责过滤和上下文富化；concurrencyGuard 负责串行+合并，
  * 合并后的消息继续走完剩余中间件链，最终统一由 bot.on("message") 处理转发。
  */
-import type { MiddlewareContext, QQBot, RateLimiterOptions } from "@tencent-connect/qqbot-nodejs";
+import type { Middleware, MiddlewareContext, QQBot, RateLimiterOptions } from "@tencent-connect/qqbot-nodejs";
 import {
 	concurrencyGuard,
 	contentSanitizer,
@@ -71,17 +71,33 @@ export function setupMiddlewares(bot: QQBot, account: ResolvedQQBotAccount, opts
 	bot.use(createPolicyInjector(account));
 
 	// 4. 群历史缓冲 — 放在门控之前，确保所有消息（含未 @bot）都计入上下文
-	//    limit 从 ctx.state.policy.group.historyLimit 读取，key 带 accountId 前缀隔离多账号
-	bot.use(
-		historyBuffer({
-			store: getHistoryStore(),
-			groupKey: (ctx) => {
-				const gid = ctx.message.groupOpenid;
-				if (ctx.message.kind !== "group" || !gid) return undefined;
-				return historyGroupKey(account.accountId, gid);
-			},
-		}),
-	);
+	//    key 带 accountId 前缀隔离多账号
+	//    mu 修正：SDK 的 historyBuffer 总是用静态 limit（默认 50），ctx.state.policy 里的 historyLimit 从不生效，
+	//    原版因此所有群都缓存 50 条。这里按每条消息所在群的 historyLimit 选用对应 limit 的 historyBuffer，
+	//    historyLimit 为 0 时不记录。
+	const historyBuffers = new Map<number, Middleware>();
+	bot.use(async (ctx, next) => {
+		const group = (ctx.state.policy as { group?: { historyLimit?: number } } | undefined)?.group;
+		const limit = Math.max(0, group?.historyLimit ?? 20);
+		if (ctx.message.kind !== "group" || limit === 0) {
+			await next();
+			return;
+		}
+		let buffer = historyBuffers.get(limit);
+		if (!buffer) {
+			buffer = historyBuffer({
+				store: getHistoryStore(),
+				limit,
+				groupKey: (c) => {
+					const gid = c.message.groupOpenid;
+					if (c.message.kind !== "group" || !gid) return undefined;
+					return historyGroupKey(account.accountId, gid);
+				},
+			});
+			historyBuffers.set(limit, buffer);
+		}
+		await buffer(ctx, next);
+	});
 
 	// 5. 动态访问控制 — 从 ctx.state.policy 动态读取，支持 pairing
 	bot.use(
