@@ -144,7 +144,8 @@ function registerKyrn(pi: ExtensionAPI, options: KyrnJudgeExtensionOptions): voi
 		options.config || options.provider
 			? { config: options.config ?? DEFAULT_CONFIG, disabled: false, problem: undefined }
 			: loadConfig({ dir: getAgentDir(), env: process.env });
-	// KYRN_JUDGE=off keeps the CLI (welcome screen, commands) and asks nothing: every decision is off.
+	// KYRN_JUDGE=off keeps the CLI (welcome screen, commands) and the permission modes, and asks no judge: every
+	// decision is off.
 	const config: KyrnConfig = loaded.disabled
 		? { ...loaded.config, tiers: ["mock"], modes: { default: "off" } }
 		: options.mode
@@ -165,6 +166,9 @@ function registerKyrn(pi: ExtensionAPI, options: KyrnJudgeExtensionOptions): voi
 	const roots: HarnessRoots | undefined =
 		options.roots ?? (options.config || options.provider ? undefined : { home: homedir(), agentDir: getAgentDir() });
 	if (loaded.disabled) {
+		// Asking the user needs no judge, so the permission mode the user chose holds with judging off too. In Jev
+		// approval, with no Jev to ask, what Jev would have decided goes to the user.
+		if (!options.only || options.only.includes("permissions")) registerPermissions(runtime, roots);
 		registerCommands(runtime, roots);
 		registerImport(pi);
 		return;

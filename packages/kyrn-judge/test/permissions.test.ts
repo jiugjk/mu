@@ -498,6 +498,39 @@ describe("permission modes in a session", () => {
 		});
 	});
 
+	it("with judging switched off (MU_JUDGE=off) the chosen mode still holds: minimal permissions ask before an edit", async () => {
+		const agentDir = mkdtempSync(join(tmpdir(), "mu-judge-off-"));
+		dirs.push(agentDir);
+		// Nothing of the user's own setup is read: the agent folder, under each name the launcher sets it by, is empty.
+		for (const app of ["MU", "KYRN", "PI"]) vi.stubEnv(`${app}_CODING_AGENT_DIR`, agentDir);
+		vi.stubEnv("MU_JUDGE", "off");
+		vi.stubEnv("MU_PERMISSIONS", "ask");
+		try {
+			const ran: string[] = [];
+			const edit: AgentTool = {
+				name: "edit",
+				label: "edit",
+				description: "edit",
+				parameters: Type.Object({}, { additionalProperties: true }),
+				execute: async (_id, params) => {
+					ran.push(`edit ${(params as { path?: string }).path}`);
+					return { content: [{ type: "text", text: "ok" }], details: {} };
+				},
+			};
+			const harness = await createHarness({
+				tools: [edit],
+				extensionFactories: [createKyrnJudgeExtension({ roots: { home: agentDir, agentDir } })],
+			});
+			harnesses.push(harness);
+			harness.setResponses([call("edit", { path: "src/a.ts" }), fauxAssistantMessage("Could not.")]);
+			await harness.session.prompt("Fix the typo in src/a.ts.");
+			// Nobody to ask in this session, so what minimal permissions would ask about is refused.
+			expect(ran).toEqual([]);
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
+
 	it("Jev approves: 'not destructive' alone never runs a flagged command, whatever the command says of itself", async () => {
 		const no: Answer = { type: "boolean", probability: 0.05 };
 		const unsure: Answer = { type: "boolean", probability: 0.5 };
