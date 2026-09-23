@@ -36,6 +36,8 @@ export interface ChannelTestOptions {
 	muConfig?: Record<string, unknown>;
 	fakeQQ?: FakeQQOptions;
 	env?: Record<string, string>;
+	/** Wait for the bot to connect to the fake gateway (WebSocket). False for the webhook transport. Default true. */
+	waitForReady?: boolean;
 }
 
 const touchedEnv = [
@@ -120,7 +122,7 @@ export async function startChannelTest(options: ChannelTestOptions = {}): Promis
 	for (const [key, value] of Object.entries(options.env ?? {})) process.env[key] = value;
 
 	const bot = await startQQBot({ console: process.env.MU_QQBOT_TEST_CONSOLE === "1" });
-	await qq.waitForReady();
+	if (options.waitForReady !== false) await qq.waitForReady();
 
 	return {
 		root,
