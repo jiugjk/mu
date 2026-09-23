@@ -227,12 +227,15 @@ export function applyEvent(state: BeeState, event: BeeEvent, now: number): boole
 				const type = event.message.customType;
 				const text = type === HIVE_MESSAGE || type === SWARM_MESSAGE ? textOf(event.message.content) : "";
 				const notes = text.split("\n").filter((line) => line.startsWith("- ")).length;
-				if (text.startsWith(NOTES_HEADER))
+				if (text.startsWith(NOTES_HEADER)) {
 					note(state, now, `← ${notes} note${notes === 1 ? "" : "s"} from the others`, {
 						code: "notes_received",
 						params: { count: notes },
 					});
-				else if (text.startsWith(LAST_CALL))
+					// A checkpoint due at the same step comes in the same message.
+					if (text.endsWith(CHECKPOINT))
+						note(state, now, "← asked what it has found so far", { code: "asked_findings" });
+				} else if (text.startsWith(LAST_CALL))
 					note(state, now, `← last call: ${notes} late note${notes === 1 ? "" : "s"}`, {
 						code: "late_notes",
 						params: { count: notes },

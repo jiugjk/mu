@@ -108,17 +108,23 @@ describe("bee state", () => {
 		applyEvent(bee, told(HIVE_MESSAGE, CHECKPOINT), 2);
 		applyEvent(bee, told(HIVE_MESSAGE, lastCall(["- web (finding): late"])), 3);
 		applyEvent(bee, told(SWARM_MESSAGE, wrapUp("time budget of 10 min reached")), 4);
+		// Notes and a checkpoint due at the same step come as one message.
+		applyEvent(bee, told(HIVE_MESSAGE, `${NOTES_HEADER}\n- web (finding): c\n\n${CHECKPOINT}`), 5);
 		expect(bee.recent.map((entry) => entry.text)).toEqual([
 			"← 2 notes from the others",
 			"← asked what it has found so far",
 			"← last call: 1 late note",
 			"← told to wrap up and report",
+			"← 1 note from the others",
+			"← asked what it has found so far",
 		]);
 		expect(bee.recent.map((entry) => [entry.code, entry.params])).toEqual([
 			["notes_received", { count: 2 }],
 			["asked_findings", undefined],
 			["late_notes", { count: 1 }],
 			["told_wrap_up", undefined],
+			["notes_received", { count: 1 }],
+			["asked_findings", undefined],
 		]);
 		expect(bee.said).toBeUndefined();
 	});

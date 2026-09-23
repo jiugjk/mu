@@ -324,6 +324,39 @@ describe("hive in a session", () => {
 		expect(harness.getPendingResponseCount()).toBe(0);
 	});
 
+	it("inside a bee: notes and a checkpoint due at the same step come as one message, so the report stays its last word", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kyrn-hive-test-"));
+		new Board(dir).post(note({ id: "from-repro" }));
+		const harness = await bee(dir);
+		const silent = () =>
+			fauxAssistantMessage(
+				[fauxToolCall("read", { path: "src/session.ts" }), fauxToolCall("read", { path: "src/refresh.ts" })],
+				{ stopReason: "toolUse" },
+			);
+		let reportContext = "";
+		harness.setResponses([
+			silent(),
+			// By the end of this step the note is in the inbox, and four tool calls have gone by without a word.
+			async () => {
+				await vi.waitFor(() => expect(readFileSync(join(dir, "gate.jsonl"), "utf8")).toContain('"gate":"deliver"'));
+				return silent();
+			},
+			(context) => {
+				reportContext = JSON.stringify(context.messages);
+				return fauxAssistantMessage("**Found** - refresh() drops the cookie; it only shows when TZ=UTC.");
+			},
+			// Taken only by a bee woken up again after its report (live run, 2026-09-24).
+			fauxAssistantMessage("FOUND: refresh() drops the cookie."),
+		]);
+
+		await harness.session.prompt("Investigate your angle.");
+
+		expect(reportContext).toContain("fails only when TZ=UTC");
+		expect(reportContext).toContain("Checkpoint for the other investigators");
+		expect(harness.getPendingResponseCount()).toBe(1);
+		expect(JSON.stringify(harness.session.messages.at(-1))).toContain("**Found**");
+	});
+
 	it("inside a bee: a note that arrives while it writes its report gets one last call, and only one", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kyrn-hive-test-"));
 		const harness = await bee(dir);

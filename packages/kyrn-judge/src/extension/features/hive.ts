@@ -315,17 +315,21 @@ function registerMember(runtime: KyrnRuntime, dir: string): void {
 			if (isWrappingUp(runtime)) return undefined;
 
 			if (event.toolResults.length > 0) {
-				// The bee goes on anyway, so what is waiting for it costs no extra turn.
+				// The bee goes on anyway, so what is waiting for it costs no extra turn. All of it goes in one message:
+				// a bee takes one queued message per step, so a second would wait a step, and when that step is the
+				// report it would wake the bee up again after it had finished.
+				const told: string[] = [];
 				if (inbox.length > 0) {
 					const lines = takeInbox();
-					if (lines.length > 0) tell(`${NOTES_HEADER}\n${lines.join("\n")}`);
+					if (lines.length > 0) told.push(`${NOTES_HEADER}\n${lines.join("\n")}`);
 				}
 				const spoke = candidates.some((candidate) => candidate.source === "said");
 				silentCalls = spoke ? 0 : silentCalls + event.toolResults.length;
 				if (options.checkpointEvery > 0 && silentCalls >= options.checkpointEvery) {
 					silentCalls = 0;
-					tell(CHECKPOINT);
+					told.push(CHECKPOINT);
 				}
+				if (told.length > 0) tell(told.join("\n\n"));
 				return undefined;
 			}
 
