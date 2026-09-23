@@ -165,6 +165,8 @@ function registerMember(runtime: KyrnRuntime, dir: string): void {
 		const verdicts = await runtime.engine.decideMany(hiveRelate, inputs, { signal });
 		pairs.forEach(({ note, earlier }, at) => {
 			const { relation, score } = verdicts[at].outcome;
+			// The judge's own reading before the bar, "none" included: what calibrating the bar is done from.
+			const answer = verdicts[at].answers?.relation;
 			board.log({
 				gate: "relate",
 				by: me,
@@ -172,6 +174,9 @@ function registerMember(runtime: KyrnRuntime, dir: string): void {
 				earlier: earlier.id,
 				relation,
 				score,
+				...(answer?.type === "choice"
+					? { choice: answer.choice, ...(answer.probabilities ? { p: answer.probabilities } : {}) }
+					: {}),
 				reason: verdicts[at].reason,
 			});
 			if (relation)

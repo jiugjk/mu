@@ -491,7 +491,13 @@ describe("hive in a session", () => {
 			score: 0.9,
 			by: "auth-code",
 		});
-		expect(readFileSync(join(dir, "gate.jsonl"), "utf8")).toContain('"gate":"relate"');
+		// The gate log keeps the judge's own reading beside the outcome: the bar is calibrated from it.
+		const relate = readFileSync(join(dir, "gate.jsonl"), "utf8")
+			.split("\n")
+			.filter(Boolean)
+			.map((line) => JSON.parse(line) as Record<string, unknown>)
+			.find((row) => row.gate === "relate");
+		expect(relate).toMatchObject({ relation: "supersedes", choice: "supersedes", p: { supersedes: 0.9 } });
 	});
 
 	it("inside a bee: the judge posts what the bee found and hands it what the others found", async () => {
