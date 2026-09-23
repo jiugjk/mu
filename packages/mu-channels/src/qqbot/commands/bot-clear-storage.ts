@@ -5,7 +5,7 @@ import type { SlashCommand } from "@tencent-connect/qqbot-nodejs";
 import { safeSegment } from "../../host/paths.ts";
 import type { ResolvedQQBotAccount } from "../types.ts";
 import { getQQBotMediaDir } from "../utils/platform.ts";
-import { checkCommandAuth } from "./config-util.ts";
+import { checkAdminCommandAuth } from "./config-util.ts";
 
 const MAX_DISPLAY = 10;
 
@@ -60,7 +60,7 @@ export function botClearStorage(account: ResolvedQQBotAccount): SlashCommand {
 		name: "bot-clear-storage",
 		description: "清理通过QQBot对话产生的文件以及下载的资源",
 		scope: "c2c",
-		authorized: checkCommandAuth,
+		authorized: checkAdminCommandAuth,
 		usage: [
 			"/bot-clear-storage",
 			"",

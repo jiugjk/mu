@@ -20,6 +20,25 @@ export function checkCommandAuth(ctx: SlashCommandHandlerContext): boolean | str
 	return allowFrom.includes(ctx.message.senderId) || "⚠️ 无权限执行此命令";
 }
 
+/**
+ * 敏感命令的授权检查（/bot-logs、/bot-clear-storage、/bot-approve）。
+ *
+ * mu 修正（偏离原行为）：原版这些命令也用 checkCommandAuth，dmPolicy 为 open 或 allowFrom 为空 / 含 "*" 时
+ * 所有人都能执行 —— 包括导出含其他人对话的日志、删除下载文件、切换审批模式。移植后只允许 allowFrom 中
+ * 明确列出的用户执行，"*" 不算；没有明确列出任何人时，这些命令在 QQ 里不可用（在主机上改配置）。
+ */
+export function checkAdminCommandAuth(ctx: SlashCommandHandlerContext): boolean | string {
+	const p = (ctx.state as any).policy;
+	const allowFrom: string[] = (p?.allowFrom ?? []).map((id: unknown) => String(id));
+	const senderId = ctx.message.senderId;
+	if (senderId && allowFrom.includes(senderId)) return true;
+	return [
+		`⚠️ /${ctx.command.name} 只允许 allowFrom 中明确列出的用户执行（"*" 不算）。`,
+		"",
+		"如需使用：私聊发送 /bot-me 查看你的 openid，把它加入 mu.json 的 channels.qqbot.allowFrom。",
+	].join("\n");
+}
+
 interface PersistResult {
 	persist: (updater: (cfg: any) => void) => Promise<void>;
 }

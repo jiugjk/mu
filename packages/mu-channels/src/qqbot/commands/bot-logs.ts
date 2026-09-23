@@ -4,7 +4,7 @@ import path from "node:path";
 import type { SlashCommand } from "@tencent-connect/qqbot-nodejs";
 import type { QQBotRuntime } from "../runtime.ts";
 import { getQQBotDataDir, getQQBotMediaDir } from "../utils/platform.ts";
-import { checkCommandAuth } from "./config-util.ts";
+import { checkAdminCommandAuth } from "./config-util.ts";
 
 const MAX_LINES_PER_FILE = 1000;
 const MAX_FILES = 4;
@@ -68,7 +68,7 @@ export function botLogs(_getRuntime: () => QQBotRuntime): SlashCommand {
 		name: "bot-logs",
 		description: "导出本地日志文件",
 		scope: "c2c",
-		authorized: checkCommandAuth,
+		authorized: checkAdminCommandAuth,
 		usage: [
 			"/bot-logs",
 			"",

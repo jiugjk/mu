@@ -2,7 +2,7 @@ import type { SlashCommand, SlashCommandHandlerContext } from "@tencent-connect/
 import { isExplicitAdmin } from "../host.ts";
 import type { QQBotRuntime } from "../runtime.ts";
 import type { MuPermissionMode, ResolvedQQBotAccount } from "../types.ts";
-import { checkCommandAuth, updateAccountConfig } from "./config-util.ts";
+import { checkAdminCommandAuth, updateAccountConfig } from "./config-util.ts";
 
 /**
  * mu 适配：原版修改 OpenClaw 的 tools.exec.security / tools.exec.ask；mu 用权限模式表达同样的意思：
@@ -12,7 +12,8 @@ import { checkCommandAuth, updateAccountConfig } from "./config-util.ts";
  *   reset  → 删除 channels.qqbot.permissions，回到 QQ 会话默认（jev）
  * 设置写入账户配置（新会话生效），并立即应用到已打开的 QQ 会话（/permissions <mode> --here）。
  *
- * 安全要求（mu 移植新增）：off 只允许在私聊中、由明确列在 allowFrom 中的用户执行，且需二次确认。
+ * 安全要求（mu 移植新增）：整个 /bot-approve 只允许 allowFrom 中明确列出的用户执行（"*" 不算，见 checkAdminCommandAuth）；
+ * off 另外只能在私聊中执行，且需二次确认。
  */
 const PRESETS: Record<"on" | "off" | "always", { mode: MuPermissionMode; desc: string }> = {
 	on: { mode: "jev", desc: "开启审批（Jev 审批模式）" },
@@ -82,7 +83,7 @@ export function botApprove(account: ResolvedQQBotAccount, getRuntime: () => QQBo
 		name: "bot-approve",
 		description: "管理命令执行审批配置",
 		scope: "c2c",
-		authorized: checkCommandAuth,
+		authorized: checkAdminCommandAuth,
 		usage: [
 			"/bot-approve            查看操作指引",
 			"/bot-approve on         开启审批（Jev 审批模式，推荐）",

@@ -100,8 +100,8 @@ describe("remaining commands and the platform API tool (group 6)", () => {
 	});
 });
 
-describe("/bot-* commands under dmPolicy open (the original's rule, kept)", () => {
-	it("lets anyone run them, as the original checkCommandAuth does", async () => {
+describe("who may run /bot-* commands", () => {
+	it("dmPolicy open: anyone may run the ordinary ones (the original's rule), not /bot-logs, /bot-clear-storage or /bot-approve", async () => {
 		const env = await startChannelTest({
 			qqbot: { allowFrom: [ADMIN], dmPolicy: "open", deliverDebounce: { enabled: false } },
 		});
@@ -110,8 +110,51 @@ describe("/bot-* commands under dmPolicy open (the original's rule, kept)", () =
 			await env.qq.waitFor(
 				() => env.qq.textsTo("c2c", OTHER).find((t) => t.includes("流式消息状态")),
 				15_000,
-				"command reply",
+				"ordinary command",
 			);
+			for (const command of ["/bot-logs", "/bot-clear-storage --force", "/bot-approve off"]) {
+				const name = command.split(" ")[0];
+				env.push("C2C_MESSAGE_CREATE", c2cMessage(OTHER, command));
+				const refusal = await env.qq.waitFor(
+					() =>
+						env.qq
+							.textsTo("c2c", OTHER)
+							.find((t) => t.startsWith(`⚠️ ${name} 只允许 allowFrom 中明确列出的用户执行`)),
+					15_000,
+					`refusal of ${command}`,
+				);
+				expect(refusal).toContain("/bot-me");
+			}
+			expect(env.qq.calls.some((call) => call.path === `/v2/users/${OTHER}/files`)).toBe(false);
+			expect((env.config().channels as { qqbot: { permissions?: string } }).qqbot.permissions).toBeUndefined();
+
+			// The admin, listed by openid, still can.
+			env.push("C2C_MESSAGE_CREATE", c2cMessage(ADMIN, "/bot-logs"));
+			await env.qq.waitFor(
+				() => env.qq.calls.some((call) => call.path === `/v2/users/${ADMIN}/files`),
+				15_000,
+				"log file",
+			);
+		} finally {
+			await env.stop();
+		}
+	});
+
+	it('allowFrom ["*"] lets everyone chat and run ordinary commands, but nobody runs the sensitive ones', async () => {
+		const env = await startChannelTest({ qqbot: { allowFrom: ["*"], deliverDebounce: { enabled: false } } });
+		try {
+			env.push("C2C_MESSAGE_CREATE", c2cMessage(OTHER, "/bot-me"));
+			await env.qq.waitFor(() => env.qq.textsTo("c2c", OTHER).find((t) => t.includes(OTHER)), 15_000, "/bot-me");
+			env.push("C2C_MESSAGE_CREATE", c2cMessage(OTHER, "/bot-logs"));
+			await env.qq.waitFor(
+				() =>
+					env.qq
+						.textsTo("c2c", OTHER)
+						.find((t) => t.includes('只允许 allowFrom 中明确列出的用户执行（"*" 不算）')),
+				15_000,
+				"refusal",
+			);
+			expect(env.qq.calls.some((call) => call.path === `/v2/users/${OTHER}/files`)).toBe(false);
 		} finally {
 			await env.stop();
 		}

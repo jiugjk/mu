@@ -171,7 +171,7 @@ npm install
 - 只有 `allowFrom` 里的人能作答（`allowFrom` 为空或含 `"*"` 时所有人都能）；群里按点击者本人判断，别人点会收到「你没有权限处理这个审批」。
 - 超过 `approvalTimeoutSeconds` 没人回答按拒绝处理。
 
-`/bot-approve` 在 QQ 里切换权限模式（写入 `channels.qqbot.permissions`，并立即作用于已打开的会话）：
+`/bot-approve` 在 QQ 里切换权限模式（写入 `channels.qqbot.permissions`，并立即作用于已打开的会话）。整个命令只允许 `allowFrom` 中明确列出的用户执行（`"*"` 不算）：
 
 | 命令 | mu 模式 | 含义 |
 | --- | --- | --- |
@@ -185,7 +185,11 @@ npm install
 
 ## QQ 里的命令
 
-以下命令在 QQ 里直接回答，不经过模型。`/bot-help`、`/bot-ping`、`/bot-version` 与 `/stop` 私聊和群里都能用（群里要 @ 机器人），其余只在私聊中可用；都需要 `allowFrom` 授权，`dmPolicy` 为 `open` 时所有人都能用（与原版相同）。任何命令后加 ` ?` 查看用法，例如 `/bot-streaming ?`。
+以下命令在 QQ 里直接回答，不经过模型。`/bot-help`、`/bot-ping`、`/bot-version` 与 `/stop` 私聊和群里都能用（群里要 @ 机器人），其余只在私聊中可用。
+
+谁能执行：
+- 一般命令需要 `allowFrom` 授权；`allowFrom` 为空、含 `"*"` 或 `dmPolicy` 为 `open` 时所有人都能用（与原版相同）。
+- **`/bot-logs`、`/bot-clear-storage`、`/bot-approve` 只允许 `allowFrom` 中明确列出 openid 的用户执行，`"*"` 不算**（导出的日志含其他人的对话，另两个会删文件、改审批）。只配了 `"*"` 时，这三条在 QQ 里不可用：先私聊发 `/bot-me` 查看自己的 openid，把它加入 `allowFrom`（可以与 `"*"` 并存）。任何命令后加 ` ?` 查看用法，例如 `/bot-streaming ?`。
 
 | 命令 | 作用 |
 | --- | --- |
@@ -194,10 +198,10 @@ npm install
 | `/bot-version` | mu 与通道版本、是否有新版本 |
 | `/bot-me` | 你的 openid（填 `allowFrom` 用） |
 | `/bot-upgrade` | 检查更新，给出升级命令 `npm i -g mu-agent@latest` |
-| `/bot-logs` | 把最近的通道日志以文件发给你（已脱敏） |
+| `/bot-logs` | 把最近的通道日志以文件发给你（已脱敏）。仅明确列出的用户 |
 | `/bot-streaming [on\|off]` | 私聊流式开关 |
-| `/bot-clear-storage [--force]` | 列出 / 删除本账户下载的文件 |
-| `/bot-approve …` | 权限模式，见上 |
+| `/bot-clear-storage [--force]` | 列出 / 删除本账户下载的文件。仅明确列出的用户 |
+| `/bot-approve …` | 权限模式，见上。仅明确列出的用户 |
 | `/bot-group-always [on\|off]` | 所有群是否不用 @ 也回答（`defaultRequireMention`） |
 | `/bot-pairing approve <配对码>` | 批准私聊配对（也可在主机上 `mu qqbot pairing approve <码>`） |
 | `/stop` | 中止当前正在进行的回答（插队处理） |
@@ -278,6 +282,7 @@ mu qqbot send qqbot:group:<group_openid> "日报" --media ./report.pdf
 - 不移植凭据备份（原版把明文 AppSecret 另存一份用于恢复）。
 - mu 自己的斜杠命令只对 `allowFrom` 中明确列出的用户生效。
 - `/bot-approve off` 只能在私聊中由明确列出的用户执行，并需二次确认。
+- `/bot-logs`、`/bot-clear-storage`、`/bot-approve` 只允许 `allowFrom` 中明确列出的用户执行（`"*"` 与 `dmPolicy: open` 都不算）。原版这三条与其他命令一样，`dmPolicy` 为 open 或 `allowFrom` 含 `"*"` 时所有人都能执行，包括导出含他人对话的日志。
 - 会话池：闲置 30 分钟回收，最多 32 个会话，超出先回收最久未用的。
 - 媒体下载目录与工作目录按会话隔离；AI 可发送的本地文件范围缩小到本会话的目录与临时目录（原版为 OpenClaw 的媒体目录与 agent 工作区）。
 
