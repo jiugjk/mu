@@ -247,7 +247,8 @@ export function permissionNeed(
 	if (LOOKING.has(toolName)) return undefined;
 	if (isShellTool(toolName) || toolName === "bg_start") {
 		const command = text(input.command);
-		if (isReadOnlyCommand(command)) return undefined;
+		// A background command on Windows may run in PowerShell as well.
+		if (isReadOnlyCommand(command, toolName === "powershell" || process.platform === "win32")) return undefined;
 		const guarded = touches(command);
 		const prefix = commandPrefix(command);
 		return {

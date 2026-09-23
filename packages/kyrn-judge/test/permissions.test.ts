@@ -47,6 +47,39 @@ describe("what needs permission", () => {
 		}
 	});
 
+	it("counts a listed program as looking only when none of its options writes a file or runs a program", () => {
+		for (const [tool, command] of [
+			["bash", "rg --pre sh TODO scripts/x.sh"],
+			["bash", "rg --pre=./run.sh x"],
+			["bash", "rg --hostname-bin=./name.sh --hyperlink-format=default x"],
+			["bash", "sort -o ~/.bashrc /dev/null"],
+			["bash", "sort -uo out.txt in.txt"],
+			["bash", "sort --compress-program=./x -S 1 big.txt"],
+			["bash", "cat notes.txt | sort | uniq - ~/.bashrc"],
+			["bash", "uniq notes.txt ~/.bashrc"],
+			["bash", "tree -o ~/.bashrc"],
+			["bash", "tree -R -H . src"],
+			["bash", "file -C -m magic"],
+			// PowerShell evaluates a parenthesis, a subexpression and a delay-bind script block where an argument goes.
+			["powershell", "Write-Output (Remove-Item -Recurse -Force C:\\work)"],
+			["powershell", "Write-Host @(Remove-Item x)"],
+			["powershell", "gci | Get-Content -Path { Remove-Item -Recurse C:\\work; $_.FullName }"],
+		] as const) {
+			expect(permissionNeed(tool, { command }, cwd), command).toBeDefined();
+		}
+		for (const command of [
+			"sort a.txt | uniq -c | head",
+			"uniq -c a.txt",
+			"uniq -f 1 a.txt",
+			"rg -o 'x' src",
+			"rg 'useState\\(' src",
+			"tree -L 2 src",
+			"sort -n -k2 data.txt",
+		]) {
+			expect(permissionNeed("bash", { command }, cwd), command).toBeUndefined();
+		}
+	});
+
 	it("says what a call is, and what allowing it for the conversation would cover", () => {
 		expect(permissionNeed("bash", { command: "npm test -- auth" }, cwd)).toEqual({
 			kind: "shell",
