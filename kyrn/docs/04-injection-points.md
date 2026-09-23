@@ -164,11 +164,11 @@ pi -e packages/kyrn-judge/src/extension/kyrn-swarm.ts     # 只要判断模型�
 - **检查点**：很多模型闷头干活、只在最后说结论，那时别的蜂已经收工。所以一只蜂连续 4 次工具调用没说话，就会被要求用一两句话说出目前确认或排除了什么（以 FOUND: / DEAD END: 开头），这句话才是判断模型能传出去的东西。第一次实测没有这个机制：2 条消息上板、0 次投递；加上之后才真正流动起来。
 - 每一次闸门判定（过或不过、分数、原因）都记在运行目录的 `gate.jsonl` 里，回答"为什么这条没人听到"。
 - 回到主上下文的只有：每只蜂的最终报告 + 白板（按分数排序，标明谁的消息到了谁手里）。
-- **传播纠正（H3 `hive.relate`，2026-09-22）**：白板只追加，所以一个已经不成立的结论会一直留着（"测试跑不起来"和后来的"清掉继承的环境变量就全过了"并排挂着，先听到前一条的蜂继续按它办）。现在每条过了 H1 的新消息，都会和板上跟它有足够共同词的旧消息（规则预筛，最多 6 条）逐对交给判断模型问一个四选一：`supersedes`（更新或替代，而且说明了为什么）、`contradicts`（相反但没有解释掉对方）、`supports`（佐证）、`none`。结果追加到 `relations.jsonl`，白板读取时折叠（`foldRelations`）：被替代的下线，被佐证的标"confirmed by N"，冲突的两边都保留并标"in dispute"。**规则先于判定**：同一只蜂后说的和先说的相反，按更新算，不必投票。**纠正按规则送达**：谁手里有被替代的那条（自己发的、或收到过的），就收到一条 `CORRECTION`（带被替代的原话和新结论），不占投递上限，也不再问判断模型"它想不想听"；还没送出去的旧消息直接撤下。冲突则给持有任一边的蜂一条 `CONFLICT, both kept`，请能验证的蜂去核实。**边界**：判断模型从不裁决谁对。一个冲突挂了 60 秒还没人解决、蜂群又还在跑，queen 就加派一只 `verify-N`（默认最多 1 只，`hive.verifyConflicts`），它的角度就是这两条消息；它的结论走同样的闸门，替代掉错的那边，纠正就传给所有听过的人。回到主上下文的白板多了"Corrected, no longer standing"和"Unsettled disputes, both sides kept"两节，主模型不用再自己排除陈旧结论。
+- **传播纠正（H3 `hive.relate`，2026-09-22）**：白板只追加，所以一个已经不成立的结论会一直留着（"测试跑不起来"和后来的"清掉继承的环境变量就全过了"并排挂着，先听到前一条的蜂继续按它办）。现在每条过了 H1 的新消息，都会和板上跟它有足够共同词的旧消息（规则预筛，最多 6 条）逐对交给判断模型问一个四选一：`supersedes`（更新或替代，而且说明了为什么）、`contradicts`（相反但没有解释掉对方）、`supports`（佐证）、`none`。结果追加到 `relations.jsonl`，白板读取时折叠（`foldRelations`）：被替代的下线，被别的蜂佐证的标"confirmed by <蜂名>"（一只蜂重复自己的话不算佐证，每只蜂只记一次），冲突的两边都保留并标"in dispute"。**规则先于判定**：同一只蜂后说的和先说的相反，按更新算，不必投票。**替代别的蜂的消息要更有把握**：跨蜂的 `supersedes` 要判定器至少 0.9 的把握，同一只蜂修正自己仍用 0.6（2026-09-24 用 11 次真实 hive 的 153 对人工标注校准：跨蜂读成 supersedes 的在 0.6 门槛上 0 对 6，最高 0.87，后一条其实是赞同并补充；同一只蜂的 12 对里对 5 对）。**纠正按规则送达**：谁手里有被替代的那条（自己发的、或收到过的），就收到一条 `CORRECTION`（带被替代的原话和新结论），不占投递上限，也不再问判断模型"它想不想听"；还没送出去的旧消息直接撤下。冲突则给持有任一边的蜂一条 `CONFLICT, both kept`，请能验证的蜂去核实。**边界**：判断模型从不裁决谁对。一个冲突挂了 60 秒还没人解决、蜂群又还在跑，queen 就加派一只 `verify-N`（默认最多 1 只，`hive.verifyConflicts`），它的角度就是这两条消息；它的结论走同样的闸门，替代掉错的那边，纠正就传给所有听过的人。回到主上下文的白板多了"Corrected, no longer standing"和"Unsettled disputes, both sides kept"两节，主模型不用再自己排除陈旧结论。
 
 **实测（2026-09-20，Jev 把关，两只蜂查"为什么只有 Laya 时 browse 返回 blocked"）**：发布闸 26 个候选（17 个工具返回 + 9 段叙述）→ 放行 6 条，全部是叙述；17 个工具返回的原始内容（文件开头的 import 等）一条没放，分数多在 0.5 左右。投递闸 4 对 → 送达 3 条，双向都有（cascade → browser-code 两条，browser-code → cascade 一条）。两次判断因网络失败，按 fail-closed 处理为"不传"。两只蜂的结论一致且正确。
 
-**还没做的**：先到先得的竞速模式（一只蜂解出来就叫停其他蜂；`SwarmRun.wrapUp()` 已经是现成的手段，缺的是"这条消息就是答案"的判定）；工具返回的分块打分（现在只看开头 600 字符，深处的关键片段靠蜂自己的叙述带出来）；需要并发改文件时的 git worktree 隔离；用 RPC 模式代替文件控制通道（父进程就能直接 steer 子进程）。运行时、可见性和收尾见 §8.6。
+**还没做的**：先到先得的竞速模式（一只蜂解出来就叫停其他蜂；`SwarmRun.wrapUp()` 已经是现成的手段，缺的是"这条消息就是答案"的判定）；工具返回的分块打分（现在只看开头 600 字符，深处的关键片段靠蜂自己的叙述带出来；2026-09-24 统计 11 次真实 hive：工具返回的 1188 个候选只过了 2 个，都是 grep 出来的文档原文，却占了发布闸约 80% 的判定，要么打分，要么不再把工具返回当候选）；需要并发改文件时的 git worktree 隔离；用 RPC 模式代替文件控制通道（父进程就能直接 steer 子进程）。运行时、可见性和收尾见 §8.6。
 
 ## 8.6 蜂群运行时（2026-09-21 重写）：不会卡死，每只蜂看得见
 
@@ -177,9 +177,9 @@ pi -e packages/kyrn-judge/src/extension/kyrn-swarm.ts     # 只要判断模型�
 | 现象（证据） | 根因 | 现在 |
 | --- | --- | --- |
 | 9 分 11 秒里屏幕上只有偶尔变一下的一行字 | 子进程用文本 print 模式，只有结束时才有输出；父进程只能显示"判断模型放行的最新一条消息"，而且每次 `onUpdate` 是覆盖不是追加 | 子进程改 `--mode json`，父进程逐事件重建每只蜂的状态并实时画出来 |
-| `pi-delta` 266 s 收工、`judge-code` 397 s 收工，整个 hive 到 551 s 才返回（`jev-web` 在被反爬拦住的搜索页上反复试） | 只等最慢的一只；没有时间预算 | 每只蜂 `beeMinutes`（默认 10）到点先**请它交报告**，`graceSeconds`（90）内不交才结束它；用户随时 `/swarm stop [name]` |
+| `pi-delta` 266 s 收工、`judge-code` 397 s 收工，整个 hive 到 551 s 才返回（`jev-web` 在被反爬拦住的搜索页上反复试） | 只等最慢的一只；没有时间预算 | 每只蜂 `beeMinutes`（默认 10）到点先**请它交报告**；`graceSeconds`（90）从它**听到**这句话算起（它正在跑的那一步结束时，或下一次工具调用被拒时），最多从请求算起两倍，到点还没交才结束它，并交回它已经写出的那部分报告；用户随时 `/swarm stop [name]` |
 | 任何一只蜂挂住 = 整个工具调用永远不返回，只能 Esc，而 Esc 会丢掉全部结果 | 子进程、模型流、工具调用、CDP 调用全都没有超时 | 看门狗：模型 `stallSeconds`（300）/ 工具 `toolStallSeconds`（900）无任何事件即结束该蜂，其余照常；CDP 每次调用 30 s 上限；被结束的蜂仍交回"到那时为止说过的话" |
-| `browser-code` 的报告变成了一句 "Acknowledged. The decisive path is fully established…"；`pi-delta` 在 **Found** 之后又多跑了 3 轮"补充：…" | 投递用 steer 即时注入；agent 循环在**最后一轮之后**也会取 steer 队列，于是收工的蜂被晚到的消息重新唤醒，多跑几轮，而返回给主模型的是"最后一条消息" | 收件箱：判断模型放行的消息先进 inbox，只在**还会继续的那一步**（有工具调用的 `turn_end`）交给蜂，不产生额外轮次；收尾时若有迟到消息，给**唯一一次** last call："给出完整的更正版报告，或只回 NO CHANGE"；报告选择忽略 NO CHANGE，并防止短句覆盖长报告 |
+| `browser-code` 的报告变成了一句 "Acknowledged. The decisive path is fully established…"；`pi-delta` 在 **Found** 之后又多跑了 3 轮"补充：…" | 投递用 steer 即时注入；agent 循环在**最后一轮之后**也会取 steer 队列，于是收工的蜂被晚到的消息重新唤醒，多跑几轮，而返回给主模型的是"最后一条消息" | 收件箱：判断模型放行的消息先进 inbox，只在**还会继续的那一步**（有工具调用的 `turn_end`）交给蜂，不产生额外轮次；同一步到期的消息和检查点合成一条发（pi 每步只取一条排队消息，第二条要晚一步，赶上报告那一步就会把收工的蜂再叫醒）；收尾时若有迟到消息，给**唯一一次** last call："给出完整的更正版报告，或只回 NO CHANGE"；报告选择忽略 NO CHANGE，并防止短句覆盖长报告 |
 | 每只蜂启动到第一次模型调用 5–7 s，结束后进程还要拖 3.3 s | 子进程也跑 preflight（还会覆盖父进程路由好的思考强度）；结束后 undici keep-alive 连接把进程挂住 | 子进程跳过 preflight；以 `agent_settled` 为完成信号，1.5 s 后主动结束进程。实测 3 只 delegate 子代理：全部返回用时 15 s |
 
 **结构**（`src/swarm/`，delegate 和 hive 共用）：
@@ -188,7 +188,7 @@ pi -e packages/kyrn-judge/src/extension/kyrn-swarm.ts     # 只要判断模型�
 - `run.ts`：`SwarmRun` 负责并发槽位（排队的蜂显示为 waiting for a free slot）、看门狗、时间预算、`wrapUp()` / `kill()`、每只蜂的事件 transcript（`<运行目录>/transcripts/<n>-<name>.jsonl`，不含 token 流）。`run()` 永不 reject：Esc、崩溃、超时都落成某只蜂的一个结局。
 - `view.ts`：纯渲染，`renderSwarm(snapshot, {expanded, width})`。工具的 `renderResult` 和 `/swarm` 命令共用。
 - `markers.ts`：harness 对蜂说的话（消息头、检查点、last call、wrap-up、工具已关闭）。两边共用原文，父进程在事件流里认出它们，显示成"← 收到 2 条消息"，不算蜂自己说的话。
-- 父→子的控制通道是一个文件（`control/bee-<n>.json`）：print 模式的子进程没有 stdin 可写。子进程里的 `features/swarm-child.ts` 在每个 `turn_end` 和 `tool_call` 看一眼；收到 wrap_up 就发一条"现在交报告"、把思考强度降到 low、此后所有工具调用直接被拒并附原因。
+- 父→子的控制通道是一个文件（`control/bee-<n>.json`）：print 模式的子进程没有 stdin 可写。子进程里的 `features/swarm-child.ts` 在每个 `turn_end` 和 `tool_call` 看一眼；收到 wrap_up 就发一条"现在交报告"（思考强度不动：降档会让大多数 provider 的提示缓存失效），此后所有工具调用直接被拒并附原因。
 - 每个子代理用自己的一次性 Chrome profile（`tmpdir()/kyrn-browser-<pid>`）：原来共用 `~/.kyrn/browser-profile`，先收工的那只会把浏览器关掉。
 
 **屏幕上**（hive；delegate 相同，只是没有 board）：
@@ -206,11 +206,23 @@ pi -e packages/kyrn-judge/src/extension/kyrn-swarm.ts     # 只要判断模型�
  /swarm stop [name]: report now, keep what was found · /swarm kill [name]: end at once · esc: cancel and lose all
 ```
 
-ctrl+o 展开：每只蜂最近 5 步（`14s ago  read packages/…`）、最新一段话、更多 board；结束后展开看每只蜂的报告和运行目录。`/swarm`（别名 `/hive`）在代理忙的时候也能用：`/swarm` 看快照，`/swarm stop [name]` 请它现在交报告，`/swarm kill [name]` 立即结束。特意没给参数补全：有补全时第一次回车只是选中补全项。
+ctrl+o 展开：每只蜂最近 5 步（`14s ago  read packages/…`）、最新一段话、更多 board；结束后展开看每只蜂的报告和运行目录。`/swarm`（不带问题的 `/hive` 同义）在代理忙的时候也能用：`/swarm` 看快照，`/swarm stop [name]` 请它现在交报告，`/swarm kill [name]` 立即结束。特意没给参数补全：有补全时第一次回车只是选中补全项。
+
+`/hive <问题>`（2026-09-24）：用户直接开一个 hive。命令把问题连同"现在就调用 hive，通常三个角度，回来后先答再给证据"的要求当作用户这一轮发出去，任务框架、经验召回和 Jev 审批都把它当用户说的话；角度由主模型定，因为它了解项目。print / json 模式下命令等这一轮结束再返回，RPC 同样可用。
 
 **配置**（`features.swarm` 与 `features.hive` 各自一份）：`concurrency`、`beeMinutes`（0 = 不限）、`graceSeconds`、`stallSeconds`、`toolStallSeconds`；hive 另有 `lastCall`、`checkpointEvery`。
 
 **实测（2026-09-21，Jev 把关）**：两只蜂的 hive 1 分 18 秒完成，5 条上板、1 次投递，`cascade` 在 last call 后交了并入对方发现的完整报告；`/swarm stop` 后两只蜂的工具调用被拒、各自交报告；delegate 3 个任务中 `/swarm kill slow-one` 即时生效，另两个 13 s / 15 s 返回，主模型如实写"slow-one 被用户停止，没有结果"。运行后无残留子进程。
+
+**实测（2026-09-24，`mu -p "/hive …"`，Jev 把关，每次 3 只蜂，问题都是本仓库里有确定答案的）**：
+
+| 问题 | 用时 | 蜂 | 候选 → 上板 → 投递 | H3 | 结局 |
+| --- | --- | --- | --- | --- | --- |
+| 默认设置下一次 hive 调用最长多久（完全权限，修复前） | 6 分 46 秒 | gpt-5.6-sol · high，$3.76 | 135 → 12 → 12（111 个工具返回一个没过） | 38 次判定：5 次替代（2 次跨蜂，都是误读），发出 8 条 CORRECTION | 三只都到 5 分钟预算，60 秒宽限（当时从请求算起）内都没交上报告被结束，其中两只正写到一半；回答仍正确 |
+| hive 蜂和 delegate 子代理的模型、思考强度（Jev 审批） | 3 分 4 秒 | gpt-5.6-terra · high，$0.93 | 91 → 11 → 18 | 43 次全是佐证 | 都在预算内交报告；一只交完报告后被晚一步的检查点叫醒；回答正确，并指出 hive 不走 `thinkingForRoute` |
+| 蜂超时后到 hive 返回之间发生什么（Jev 审批，2 分钟预算） | 3 分 45 秒 | gpt-5.6-terra · high，$0.95 | 93 → 11 → 10 | 28 次佐证 | 三只 120 秒到点：一只下一次工具调用被拒时听到，36 秒后交报告，另两只已在写报告；回答正确 |
+
+第一次暴露的问题（跨蜂误更正、截断的报告、宽限从请求算起、蜂给自己的话作佐证、实时视图带终端控制码）和第二次的（晚一步的检查点）都已修复并有测试。Jev 审批模式下 `/hive` 的调用直接获批；蜂的 `git status`、`git diff`、`vitest` 共 11 次被判"不是任务的一部分"而拒绝，蜂改为读文件。三次都没有残留进程，也没有验证蜂（没有冲突）。
 
 ## 9. 无总结压缩（beta）：给每个工具调用打分，而不是写摘要
 
