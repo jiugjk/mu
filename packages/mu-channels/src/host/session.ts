@@ -165,6 +165,8 @@ export interface ChannelTurn {
 	/** The text of the assistant message being written, whole, as it grows. */
 	onPartialText?: (text: string) => Promise<void>;
 	deliver: (payload: ChannelDeliverPayload, info: ChannelDeliverInfo) => Promise<void>;
+	/** Every session event of the turn, for monitoring. Throwing here does not affect the turn. */
+	onEvent?: (event: AgentSessionEvent) => void;
 	log?: ChannelLogger;
 }
 
@@ -256,6 +258,11 @@ export async function runChannelTurn(session: AgentSession, turn: ChannelTurn): 
 
 	let lastAssistant: AssistantLike | undefined;
 	const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
+		try {
+			turn.onEvent?.(event);
+		} catch (error) {
+			turn.log?.warn(`event monitor failed: ${error instanceof Error ? error.message : String(error)}`);
+		}
 		if (event.type === "message_update" && (event.message as AssistantLike).role === "assistant") {
 			const text = assistantText(event.message as AssistantLike);
 			if (text) partials?.push(text);

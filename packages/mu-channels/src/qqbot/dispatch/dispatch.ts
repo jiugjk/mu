@@ -34,6 +34,7 @@ import { StreamingController, shouldUseStreaming } from "../outbound/streaming-c
 import type { QQBotRuntime } from "../runtime.ts";
 import type { ResolvedQQBotAccount } from "../types.ts";
 import type { PluginLogger } from "../utils/plugin-logger.ts";
+import { createAgentEventMonitor } from "./agent-events.ts";
 import { type AssembledBody, assembleBody } from "./body-assembler.ts";
 import { type DispatchDeliverState, deliverDispatchPayloadSafe } from "./dispatch-deliver.ts";
 import { buildEnvelope } from "./envelope-builder.ts";
@@ -153,6 +154,8 @@ export async function dispatchToMu(
 				: undefined,
 			deliver: (payload: DeliverPayload, info: DeliverInfo) =>
 				deliverDispatchPayloadSafe(payload, info, deliverState),
+			// 原 replyOptions 的 agent 事件监控：只记日志，工具名 / 参数不发到 QQ
+			onEvent: createAgentEventMonitor(dlog),
 		});
 	} catch (err) {
 		if (err instanceof SessionPoolFullError) {
