@@ -333,7 +333,7 @@ export function announceRouting(
 export const SWARM_LIMIT_DEFAULTS = {
 	/** Minutes a sub-agent may work before it is told to wrap up and report. 0 means no budget. */
 	beeMinutes: 10,
-	/** Seconds it then has to hand in its report. */
+	/** Seconds it then has to hand in its report, from when it heard it was to; twice this at most from the asking. */
 	graceSeconds: 90,
 	/** Seconds without a sign of life before it is stopped: while the model thinks, and while a tool runs. */
 	stallSeconds: 300,

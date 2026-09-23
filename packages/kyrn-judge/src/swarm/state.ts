@@ -1,5 +1,14 @@
 import { type Coded, codedError, codeOf } from "../language.ts";
-import { CHECKPOINT, HIVE_MESSAGE, LAST_CALL, NO_CHANGE, NOTES_HEADER, SWARM_MESSAGE, WRAP_UP } from "./markers.ts";
+import {
+	CHECKPOINT,
+	HIVE_MESSAGE,
+	LAST_CALL,
+	NO_CHANGE,
+	NOTES_HEADER,
+	SWARM_MESSAGE,
+	TOOLS_CLOSED,
+	WRAP_UP,
+} from "./markers.ts";
 
 /**
  * What one sub-agent is doing, derived from the JSON event stream of its pi
@@ -76,8 +85,17 @@ export interface BeeState {
 	errorParams?: Readonly<Record<string, string | number>>;
 	/** Set by the watchdog when nothing has come out of the process for a while. */
 	quietMs?: number;
-	/** A wrap-up was requested: stop investigating, report now. */
-	wrapUp?: { at: number; reason: string; code?: string; params?: Readonly<Record<string, string | number>> };
+	/**
+	 * A wrap-up was requested: stop investigating, report now. `heardAt` is when its own stream showed it had
+	 * been told (a wrap-up message, or a tool call turned away), which is the end of the step it was in.
+	 */
+	wrapUp?: {
+		at: number;
+		reason: string;
+		code?: string;
+		params?: Readonly<Record<string, string | number>>;
+		heardAt?: number;
+	};
 	/** The last few things it did, newest last. */
 	recent: BeeActivity[];
 	/** Messages that ended a run of work: an assistant message with no tool call in it. */
@@ -119,6 +137,12 @@ function note(state: BeeState, at: number, text: string, coded?: Coded): void {
 		...(coded ? { code: coded.code, ...(coded.params ? { params: coded.params } : {}) } : {}),
 	});
 	if (state.recent.length > MAX_RECENT) state.recent.splice(0, state.recent.length - MAX_RECENT);
+}
+
+function told(state: BeeState, now: number): void {
+	if (state.wrapUp?.heardAt !== undefined) return;
+	if (state.wrapUp) state.wrapUp.heardAt = now;
+	note(state, now, "← told to wrap up and report", { code: "told_wrap_up" });
 }
 
 function textOf(content: unknown): string {
@@ -215,8 +239,10 @@ export function applyEvent(state: BeeState, event: BeeEvent, now: number): boole
 					});
 				else if (text === CHECKPOINT)
 					note(state, now, "← asked what it has found so far", { code: "asked_findings" });
-				else if (text.startsWith(WRAP_UP))
-					note(state, now, "← told to wrap up and report", { code: "told_wrap_up" });
+				else if (text.startsWith(WRAP_UP)) told(state, now);
+			} else if (event.message?.role === "toolResult" && textOf(event.message.content).startsWith(TOOLS_CLOSED)) {
+				// A bee asked mid-step hears it from the first tool call it makes after.
+				told(state, now);
 			}
 			break;
 		case "message_update":

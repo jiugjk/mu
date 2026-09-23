@@ -43,7 +43,10 @@ export interface SwarmLimits {
 	concurrency: number;
 	/** Minutes a bee may work before it is told to wrap up and report. 0 means no budget. */
 	beeMinutes: number;
-	/** Seconds a bee has to hand in its report once told to. */
+	/**
+	 * Seconds a bee has to hand in its report once it has heard it is to. A bee hears it at the end of the step it
+	 * is in, so one that has not heard it within this long gets as long again, and no longer.
+	 */
 	graceSeconds: number;
 	/** Seconds without a sign of life before a bee is shown as quiet. */
 	quietSeconds: number;
@@ -334,20 +337,23 @@ export class SwarmRun<Assignment> {
 				continue;
 			}
 			if (bee.wrapUp) {
-				if (now - bee.wrapUp.at >= this.limits.graceSeconds * 1000) {
-					this.kill(
-						bee.name,
-						`${bee.wrapUp.reason}; no report within ${this.limits.graceSeconds}s of being asked`,
-						"timed-out",
-						{
-							code: "no_report_in_time",
-							// What the wrap-up was for, so "time budget reached; no report in time" can be said whole.
-							params: {
-								seconds: this.limits.graceSeconds,
-								...(bee.wrapUp.code ? { after: bee.wrapUp.code } : {}),
-							},
+				// From when it heard, not from when it was asked: a model that thinks for a minute before its next
+				// tool call would otherwise spend the grace period finding out, and be cut off halfway through its report.
+				const grace = this.limits.graceSeconds * 1000;
+				const deadline = Math.min(
+					(bee.wrapUp.heardAt ?? Number.POSITIVE_INFINITY) + grace,
+					bee.wrapUp.at + 2 * grace,
+				);
+				if (now >= deadline) {
+					const seconds = Math.round((now - bee.wrapUp.at) / 1000);
+					this.kill(bee.name, `${bee.wrapUp.reason}; no report within ${seconds}s of being asked`, "timed-out", {
+						code: "no_report_in_time",
+						// What the wrap-up was for, so "time budget reached; no report in time" can be said whole.
+						params: {
+							seconds,
+							...(bee.wrapUp.code ? { after: bee.wrapUp.code } : {}),
 						},
-					);
+					});
 				}
 			} else if (this.limits.beeMinutes > 0 && now - (bee.startedAt ?? now) >= this.limits.beeMinutes * 60_000) {
 				this.wrapUp(bee.name, `time budget of ${this.limits.beeMinutes} min reached`, {

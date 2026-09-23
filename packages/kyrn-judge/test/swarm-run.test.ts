@@ -4,7 +4,15 @@ import { join } from "node:path";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Paint } from "../src/extension/features/welcome.ts";
-import { CHECKPOINT, HIVE_MESSAGE, lastCall, NOTES_HEADER, SWARM_MESSAGE, wrapUp } from "../src/swarm/markers.ts";
+import {
+	CHECKPOINT,
+	HIVE_MESSAGE,
+	lastCall,
+	NOTES_HEADER,
+	SWARM_MESSAGE,
+	toolsClosed,
+	wrapUp,
+} from "../src/swarm/markers.ts";
 import { activeRuns, type BeeObserver, type BeeRunner, controlPath, SwarmRun } from "../src/swarm/run.ts";
 import { applyEvent, type BeeEvent, codedError, newBee, reportOf, summarizeCall } from "../src/swarm/state.ts";
 import { clock, renderSwarm } from "../src/swarm/view.ts";
@@ -361,18 +369,96 @@ describe("swarm run", () => {
 			action: "wrap_up",
 			reason: "time budget of 1 min reached",
 		});
-		await vi.advanceTimersByTimeAsync(40_000);
+		// One that never shows it heard gets the grace period twice over, and no more.
+		await vi.advanceTimersByTimeAsync(50_000);
+		expect(run.bees[1].status).toBe("wrapping-up");
+		await vi.advanceTimersByTimeAsync(20_000);
 
 		const [obedient, deaf] = await finished;
 		expect(obedient.state.status).toBe("done");
 		expect(obedient.report).toBe("(Cut short: time budget of 1 min reached.)\nWhat I have so far: the docs moved.");
 		expect(deaf.state.status).toBe("timed-out");
-		expect(deaf.report).toContain("time budget of 1 min reached; no report within 30s of being asked");
+		expect(deaf.report).toContain("time budget of 1 min reached; no report within 60s of being asked");
 		expect(obedient.state.wrapUp).toMatchObject({ code: "time_budget", params: { minutes: 1 } });
 		expect(deaf.state).toMatchObject({
 			errorCode: "no_report_in_time",
-			errorParams: { seconds: 30, after: "time_budget" },
+			errorParams: { seconds: 60, after: "time_budget" },
 		});
+	});
+
+	it("counts the grace period from when a bee heard it was to report", async () => {
+		// Seen live, with a model thinking at "high": asked at 5m00s, heard it 22 s later when its step ended, wrote
+		// its report for 37 s and was cut off by a 60 s grace period counted from the asking.
+		vi.useFakeTimers();
+		const dir = tempDir();
+		const run = new SwarmRun<string>({
+			kind: "hive",
+			title: "slow thinkers",
+			dir,
+			bees: [spec("slow"), spec("cut")],
+			limits: { beeMinutes: 1, graceSeconds: 30, stallSeconds: 0, toolStallSeconds: 0 },
+		});
+		const asked = (env: Readonly<Record<string, string>>) =>
+			new Promise<void>((resolve) => {
+				const poll = setInterval(() => {
+					if (!existsSync(env.KYRN_SWARM_CONTROL)) return;
+					clearInterval(poll);
+					resolve();
+				}, 1000);
+			});
+		const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+		const delta = (text: string): BeeEvent => ({
+			type: "message_update",
+			assistantMessageEvent: { type: "text_delta", delta: text },
+		});
+		const reason = "time budget of 1 min reached";
+		const finished = run.run(
+			scripted({
+				// Deep in a step when it is asked: it hears 20 s later, from the tool call that step ends in.
+				slow: async (observer, _signal, env) => {
+					observer?.event({ type: "agent_start" });
+					observer?.event({ type: "message_start", message: { role: "assistant" } });
+					await asked(env);
+					for (let i = 0; i < 4; i++) {
+						await sleep(5000);
+						observer?.event(delta("."));
+					}
+					observer?.event({
+						type: "message_start",
+						message: { role: "toolResult", content: [{ type: "text", text: toolsClosed(reason) }] },
+					});
+					observer?.event({ type: "message_start", message: { role: "assistant" } });
+					for (let i = 0; i < 5; i++) {
+						await sleep(5000);
+						observer?.event(delta("Found it. "));
+					}
+					observer?.event(assistant("FOUND: the docs moved to /v2."));
+					return "FOUND: the docs moved to /v2.";
+				},
+				// Hears it at once and starts its report, but does not finish it in time.
+				cut: async (observer, signal, env) => {
+					observer?.event({ type: "agent_start" });
+					await asked(env);
+					observer?.event({
+						type: "message_start",
+						message: { role: "custom", customType: SWARM_MESSAGE, content: wrapUp(reason) },
+					});
+					observer?.event({ type: "message_start", message: { role: "assistant" } });
+					observer?.event(delta("FOUND: the cache key ignores the locale "));
+					observer?.event(delta("(src/cache.ts:41); ruled out: the CDN."));
+					const beat = setInterval(() => observer?.event(delta(" ")), 5000);
+					return untilAborted(signal).finally(() => clearInterval(beat));
+				},
+			}),
+		);
+		await vi.advanceTimersByTimeAsync(130_000);
+
+		const [slow, cut] = await finished;
+		expect(slow.state.status).toBe("done");
+		expect(slow.report).toBe(`(Cut short: ${reason}.)\nFOUND: the docs moved to /v2.`);
+		expect(slow.state.wrapUp?.heardAt).toBeGreaterThan(slow.state.wrapUp?.at ?? 0);
+		expect(cut.state.status).toBe("timed-out");
+		expect(cut.report).toMatch(/no report within 3\ds of being asked/);
 	});
 
 	it("lets the user stop one bee or all of them and still get what was found", async () => {
