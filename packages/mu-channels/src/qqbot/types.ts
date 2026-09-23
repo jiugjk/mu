@@ -290,7 +290,7 @@ export interface AudioFormatPolicy {
 export interface STTChannelConfig {
 	/** 是否启用 STT（默认 true，配置了 baseUrl+apiKey 即自动启用） */
 	enabled?: boolean;
-	/** STT 服务提供商 ID（对应 models.providers 中的 key，默认 "openai"） */
+	/** STT 服务提供商 ID（mu 适配：mu 的 provider，凭据取自 auth.json / 环境变量 / models.json；默认 "openai"） */
 	provider?: string;
 	/** STT API 地址（如 https://api.openai.com/v1） */
 	baseUrl?: string;

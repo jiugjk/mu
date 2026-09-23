@@ -14,7 +14,13 @@ export interface RecordedCall {
 
 export interface FakeQQOptions {
 	/** Answer message sends with this HTTP status and body instead of success (per path prefix). */
-	failures?: Array<{ match: RegExp; status: number; body: Record<string, unknown> }>;
+	failures?: Array<{
+		match: RegExp;
+		/** Only fail calls whose JSON body passes this check. */
+		when?: (body: Record<string, unknown>) => boolean;
+		status: number;
+		body: Record<string, unknown>;
+	}>;
 	/** Emit READY on identify. Default true. */
 	autoReady?: boolean;
 }
@@ -136,7 +142,7 @@ export class FakeQQ {
 		}
 
 		this.calls.push(call);
-		const failure = this.options.failures?.find((f) => f.match.test(path));
+		const failure = this.options.failures?.find((f) => f.match.test(path) && (f.when?.(body) ?? true));
 		if (failure) {
 			send(failure.status, failure.body);
 			return;

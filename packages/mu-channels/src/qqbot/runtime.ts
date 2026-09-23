@@ -21,6 +21,11 @@ export interface QQBotRuntime {
 	host: QQBotHost;
 	logger: ChannelLogger;
 	redactor: Redactor;
+	/**
+	 * mu provider 的凭据（auth.json / 环境变量 / models.json），供 STT 等非对话调用使用。
+	 * mu 适配：替代原版从 OpenClaw 配置 models.providers 读取。
+	 */
+	providerAuth?: (provider: string) => Promise<{ apiKey?: string; baseUrl?: string } | undefined>;
 }
 
 let runtime: QQBotRuntime | null = null;

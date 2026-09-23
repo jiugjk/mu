@@ -5,6 +5,11 @@
  * 配置优先级：
  *   1. channels.qqbot.stt（插件级）
  *   2. 框架级 audio model 配置
+ *
+ * mu 适配：mu.json 中没有 OpenClaw 的 models.providers / tools.media.audio，第 2 步改为
+ * 使用 mu 自己的 provider 凭据（stt.provider，默认 openai）：由 resolveSTTConfigWithProvider 通过
+ * QQBotRuntime.providerAuth 从 mu 的 auth.json / 环境变量 / models.json 取 apiKey 与 baseUrl。
+ * 凭据只来自配置或环境变量，不写日志。
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -62,6 +67,34 @@ export function resolveSTTConfig(cfg: Record<string, unknown>): STTConfig | null
 	}
 
 	return null;
+}
+
+/** mu provider 的凭据（见 QQBotRuntime.providerAuth） */
+export type ProviderAuthResolver = (provider: string) => Promise<{ apiKey?: string; baseUrl?: string } | undefined>;
+
+/**
+ * mu 适配：先按原版解析 channels.qqbot.stt；缺 baseUrl / apiKey 时用 mu provider 的凭据补齐。
+ * stt.enabled === false 或 channels.qqbot.stt 未配置时不启用（与原版一致：不配置不转写）。
+ */
+export async function resolveSTTConfigWithProvider(
+	cfg: Record<string, unknown>,
+	providerAuth: ProviderAuthResolver | undefined,
+): Promise<STTConfig | null> {
+	const direct = resolveSTTConfig(cfg);
+	if (direct) return direct;
+	const sttCfg = asRecord(asRecord(asRecord(cfg.channels)?.qqbot)?.stt);
+	if (!sttCfg || sttCfg.enabled === false || !providerAuth) return null;
+	const providerId = readString(sttCfg, "provider") ?? "openai";
+	const auth = await providerAuth(providerId).catch(() => undefined);
+	const baseUrl = readString(sttCfg, "baseUrl") ?? auth?.baseUrl?.trim();
+	const apiKey = readString(sttCfg, "apiKey") ?? auth?.apiKey?.trim();
+	if (!baseUrl || !apiKey) return null;
+	return {
+		enabled: true,
+		baseUrl: baseUrl.replace(/\/+$/, ""),
+		apiKey,
+		model: readString(sttCfg, "model") ?? "whisper-1",
+	};
 }
 
 /**

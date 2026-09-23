@@ -21,8 +21,18 @@ export interface RecordedRequest {
  * An OpenAI-compatible chat completions endpoint that answers from a script. mu's sessions reach it through a
  * models.json provider (api "openai-completions"), the same way they reach Ollama or vLLM: no test hook in mu.
  */
+/** One call to the OpenAI-compatible speech-to-text endpoint. */
+export interface TranscriptionRequest {
+	authorization: string | undefined;
+	/** The multipart body, as text (file name, model and the audio bytes). */
+	body: string;
+}
+
 export class FakeLLM {
 	readonly requests: RecordedRequest[] = [];
+	readonly transcriptions: TranscriptionRequest[] = [];
+	/** What /audio/transcriptions answers. */
+	transcript = "这是语音转写的文字";
 	private readonly script: ScriptedReply[] = [];
 	private server: Server | undefined;
 	fallback: ScriptedReply = { text: "好的。" };
@@ -41,6 +51,15 @@ export class FakeLLM {
 		this.server = createServer(async (req, res) => {
 			const chunks: Buffer[] = [];
 			for await (const chunk of req) chunks.push(chunk as Buffer);
+			if ((req.url ?? "").endsWith("/audio/transcriptions")) {
+				this.transcriptions.push({
+					authorization: req.headers.authorization,
+					body: Buffer.concat(chunks).toString("latin1"),
+				});
+				res.writeHead(200, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ text: this.transcript }));
+				return;
+			}
 			const body = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}") as RecordedRequest & {
 				stream?: boolean;
 			};

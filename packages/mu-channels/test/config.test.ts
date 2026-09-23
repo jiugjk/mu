@@ -14,6 +14,7 @@ import {
 import { resolveRateLimit } from "../src/qqbot/gateway/middleware-setup.ts";
 import { buildChannelPrompt, isExplicitAdmin, isOperatorAuthorized, toolAccessFor } from "../src/qqbot/host.ts";
 import type { MuConfig } from "../src/qqbot/types.ts";
+import { resolveSTTConfigWithProvider } from "../src/qqbot/utils/stt.ts";
 
 const cfg = (qqbot: Record<string, unknown>): MuConfig => ({ channels: { qqbot } });
 
@@ -171,5 +172,35 @@ describe("rate limit defaults (deviation: the original configured no tiers)", ()
 			global: undefined,
 		});
 		expect(resolveRateLimit(false)).toBeNull();
+	});
+});
+
+describe("STT settings (mu: provider credentials replace OpenClaw's models.providers)", () => {
+	const provider = async (id: string) =>
+		id === "openai" ? { apiKey: "k-openai", baseUrl: "https://api.openai.com/v1/" } : undefined;
+
+	it("is off unless channels.qqbot.stt is set, and off when stt.enabled is false", async () => {
+		expect(await resolveSTTConfigWithProvider(cfg({}), provider)).toBeNull();
+		expect(
+			await resolveSTTConfigWithProvider(cfg({ stt: { enabled: false, apiKey: "x", baseUrl: "y" } }), provider),
+		).toBeNull();
+	});
+
+	it("prefers baseUrl / apiKey from mu.json, then the named mu provider (default openai)", async () => {
+		expect(
+			await resolveSTTConfigWithProvider(cfg({ stt: { baseUrl: "https://stt/v1/", apiKey: "k" } }), provider),
+		).toEqual({
+			enabled: true,
+			baseUrl: "https://stt/v1",
+			apiKey: "k",
+			model: "whisper-1",
+		});
+		expect(await resolveSTTConfigWithProvider(cfg({ stt: { model: "gpt-4o-transcribe" } }), provider)).toEqual({
+			enabled: true,
+			baseUrl: "https://api.openai.com/v1",
+			apiKey: "k-openai",
+			model: "gpt-4o-transcribe",
+		});
+		expect(await resolveSTTConfigWithProvider(cfg({ stt: { provider: "none" } }), provider)).toBeNull();
 	});
 });

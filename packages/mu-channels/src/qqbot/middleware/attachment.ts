@@ -18,7 +18,7 @@ import { downloadRemoteMedia } from "../adapter/media.ts";
 import { getAdapters } from "../adapter/resolve.ts";
 import type { QQBotRuntime } from "../runtime.ts";
 import type { MessageAttachment } from "../types.ts";
-import { resolveSTTConfig, transcribeAudio } from "../utils/stt.ts";
+import { resolveSTTConfigWithProvider, type STTConfig, transcribeAudio } from "../utils/stt.ts";
 import { formatDuration, formatVoiceText, type TranscriptSource, type VoiceTranscript } from "../utils/voice-text.ts";
 
 export { formatVoiceText, formatDuration };
@@ -65,7 +65,9 @@ export function attachmentProcessor(opts: AttachmentMiddlewareOptions) {
 				runtime.host.dirsFor({ accountId: opts.accountId, scope: isGroup ? "group" : "c2c", peerId }).media,
 				"downloads",
 			);
-			const result = await processAttachments(attachments, cfg, downloadDir, log);
+			const sttCfg = await resolveSTTConfigWithProvider(cfg, runtime.providerAuth);
+			if (sttCfg) runtime.redactor.add(sttCfg.apiKey);
+			const result = await processAttachments(attachments, cfg, sttCfg, downloadDir, log);
 
 			if (result.voiceText || result.imageUrls.length > 0 || result.otherInfo || result.localMediaPaths.length > 0) {
 				ctx.state.processedAttachments = result;
@@ -83,10 +85,10 @@ type Log = { info: (m: string) => void; error: (m: string) => void; debug?: (m: 
 async function processAttachments(
 	attachments: MessageAttachment[],
 	cfg: Record<string, unknown>,
+	sttCfg: STTConfig | null,
 	downloadDir: string,
 	log?: Log,
 ): Promise<ProcessedAttachments> {
-	const sttCfg = resolveSTTConfig(cfg);
 	const audioPolicy = resolveAudioPolicy(cfg);
 
 	const imageUrls: string[] = [];
@@ -167,7 +169,7 @@ async function processAttachments(
 
 async function processVoiceAttachment(
 	att: MessageAttachment,
-	sttCfg: ReturnType<typeof resolveSTTConfig>,
+	sttCfg: STTConfig | null,
 	audioPolicy: AudioPolicyResolved,
 	downloadDir: string,
 	log?: Log,
@@ -284,7 +286,7 @@ function normalizeFormats(formats: string[]): string[] {
 	});
 }
 
-function cfg2stt(sttCfg: NonNullable<ReturnType<typeof resolveSTTConfig>>): Record<string, unknown> {
+function cfg2stt(sttCfg: STTConfig): Record<string, unknown> {
 	return { channels: { qqbot: { stt: sttCfg } } };
 }
 

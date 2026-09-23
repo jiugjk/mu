@@ -5,14 +5,16 @@
  * deliver 的 mediaUrl(s)，再由插件的 outbound.sendMedia / deliver-pipeline 发出。mu 没有这两者，
  * 因此提供这个工具，调用链走原版的统一富媒体入口 outbound/media-send.ts：
  * 类型推断、本地路径白名单（本会话的 workspace 与下载目录、临时目录）、SSRF 防护、语音失败改发文件，全部不变。
+ * 发送失败时与原版 deliver-pipeline 一样通知用户「⚠️ 媒体发送失败」，同时把错误返回给模型。
  */
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import type { ConversationRef } from "../host.ts";
 import { conversationTarget } from "../host.ts";
 import { sendMedia } from "../outbound/media-send.ts";
-import type { MediaKind } from "../outbound/outbound-service.ts";
+import { type MediaKind, sendText } from "../outbound/outbound-service.ts";
 import { getRequestContext } from "../request-context.ts";
+import type { ResolvedQQBotAccount } from "../types.ts";
 import { createPluginLogger } from "../utils/plugin-logger.ts";
 
 const SendMediaSchema = Type.Object({
@@ -28,7 +30,10 @@ const SendMediaSchema = Type.Object({
 	text: Type.Optional(Type.String({ description: "随媒体附带的文字（可选）。" })),
 });
 
-export function createSendMediaTool(ref: ConversationRef): ToolDefinition {
+export function createSendMediaTool(
+	ref: ConversationRef,
+	getAccount: (accountId: string) => ResolvedQQBotAccount,
+): ToolDefinition {
 	const log = createPluginLogger({ prefix: `[${ref.accountId}]` }).child("send-media");
 	const tool: ToolDefinition<typeof SendMediaSchema> = {
 		name: "qqbot_send_media",
@@ -41,16 +46,28 @@ export function createSendMediaTool(ref: ConversationRef): ToolDefinition {
 		async execute(_toolCallId, params) {
 			const to = conversationTarget(ref);
 			const ctx = getRequestContext();
+			const replyToId = ctx?.target === to ? ctx.messageId : undefined;
 			const result = await sendMedia({
 				to,
 				source: params.source,
 				text: params.text,
 				mediaKind: params.kind as MediaKind | undefined,
-				replyToId: ctx?.target === to ? ctx.messageId : undefined,
+				replyToId,
 				accountId: ref.accountId,
 				conversation: ref,
 				log,
 			});
+			if (result.error) {
+				log.error(`[media] ${result.error}`);
+				// 与原版 sendMediaUrls 相同的失败通知
+				const notice = await sendText({
+					to,
+					text: "⚠️ 媒体发送失败（1 个），请重试",
+					replyToId,
+					account: getAccount(ref.accountId),
+				});
+				if (notice.error) log.error(`[media] failed to send failure notification: ${notice.error}`);
+			}
 			const details = {
 				ok: !result.error,
 				messageId: result.messageId,

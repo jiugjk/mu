@@ -25,8 +25,11 @@ export interface ChannelTestEnv {
 }
 
 export interface ChannelTestOptions {
-	/** `channels.qqbot`, merged over { appId, clientSecret, model: "fakellm/fake-1" }. */
-	qqbot?: Record<string, unknown>;
+	/**
+	 * `channels.qqbot`, merged over { appId, clientSecret, model: "fakellm/fake-1" }; a function receives the
+	 * started fakes (for settings that point at them).
+	 */
+	qqbot?: Record<string, unknown> | ((fakes: { qq: FakeQQ; llm: FakeLLM }) => Record<string, unknown>);
 	/** Extensions loaded into every QQ session (MU_QQBOT_EXTENSIONS). Default: none. */
 	extensions?: string[];
 	/** mu.json keys besides `channels` (e.g. judge settings). */
@@ -94,7 +97,7 @@ export async function startChannelTest(options: ChannelTestOptions = {}): Promis
 			),
 		);
 	};
-	writeMuConfig(options.qqbot ?? {});
+	writeMuConfig((typeof options.qqbot === "function" ? options.qqbot({ qq, llm }) : options.qqbot) ?? {});
 
 	process.env.PI_CODING_AGENT_DIR = agentDir;
 	process.env.MU_QQBOT_HOME = qqHome;

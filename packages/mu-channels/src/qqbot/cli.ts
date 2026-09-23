@@ -16,6 +16,7 @@
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
+import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { MuConfigFile } from "../host/config-store.ts";
 import { createChannelLogger, type LogLevel, Redactor } from "../host/logger.ts";
 import { muAgentDir, muConfigPath } from "../host/paths.ts";
@@ -110,7 +111,7 @@ export function createRuntime(options: { console?: boolean } = {}): { runtime: Q
 		skillPaths: skillsDir ? [skillsDir] : [],
 		log: logger.child("host"),
 		getAccount,
-		createTools: (ref) => [createSendMediaTool(ref), createPlatformTool(ref.accountId)],
+		createTools: (ref) => [createSendMediaTool(ref, getAccount), createPlatformTool(ref.accountId)],
 		createSurface: (ref) =>
 			createQQChatSurface({
 				ref,
@@ -119,8 +120,26 @@ export function createRuntime(options: { console?: boolean } = {}): { runtime: Q
 			}),
 		defaultWorkspaceRoot: path.join(getQQBotHome(), "workspace"),
 	});
+	// STT 等非对话调用用 mu 自己的 provider 凭据（auth.json / 环境变量 / models.json），首次使用时加载
+	let models: Promise<ModelRuntime> | undefined;
+	const providerAuth = async (provider: string) => {
+		models ??= ModelRuntime.create({
+			authPath: path.join(muAgentDir(), "auth.json"),
+			modelsPath: path.join(muAgentDir(), "models.json"),
+			signal: AbortSignal.timeout(15_000),
+		});
+		const registry = await models.catch((error: unknown) => {
+			models = undefined;
+			throw error;
+		});
+		const auth = await registry.getAuth(provider);
+		const apiKey = auth?.auth.apiKey;
+		if (apiKey) redactor.add(apiKey);
+		return { apiKey, baseUrl: auth?.auth.baseUrl ?? registry.getModels(provider)[0]?.baseUrl };
+	};
 	const runtime: QQBotRuntime = {
 		version: process.env.MU_VERSION || "unknown",
+		providerAuth,
 		getConfig: () => config.read() as MuConfig,
 		persistConfig: (mutator) => config.update((cfg) => mutator(cfg as MuConfig)),
 		host,
