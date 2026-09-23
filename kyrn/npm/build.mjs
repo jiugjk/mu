@@ -18,6 +18,9 @@
 //   judge/             the judgment layer built to JavaScript, with its prompts, skills and agents, and the
 //                      manifest.json the desktop app reads its settings from; dist/auth.js is `mu auth`, the
 //                      desktop app's subscription sign-in, and dist/import.js is `mu import`
+//   channels/          mu's chat channels: dist/qqbot.js is `mu qqbot` (packages/mu-channels, the QQ Bot channel
+//                      ported from tencent-connect/openclaw-qqbot), with silk.wasm beside it, its skills and the
+//                      original's MIT license
 //   docs/, examples/   pi's documentation, which the agent reads when asked about itself
 //   package.json       names the app mu (piConfig), so pi keeps its files in ~/.mu
 import { execFileSync, spawnSync } from "node:child_process";
@@ -33,7 +36,7 @@ import {
 	statSync,
 	writeFileSync,
 } from "node:fs";
-import { isBuiltin } from "node:module";
+import { createRequire, isBuiltin } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -42,12 +45,22 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "..", "..");
 const codingAgent = join(repo, "packages", "coding-agent");
 const judgeSource = join(repo, "packages", "kyrn-judge");
+const channelsSource = join(repo, "packages", "mu-channels");
 
 /** Optional modules their callers try and do without, as pi's own bundle allows them (scripts/build-coding-agent-bundle.mjs). */
 const OPTIONAL = new Set(["bufferutil", "utf-8-validate", "kerberos", "supports-color"]);
 
 /** pi's bundle, where judge/dist/auth.js (`mu auth`) finds pi: the index of pi's public API. */
 const PI_BUNDLE_INDEX = "../../dist/bundle/index.js";
+
+/** Optional modules the QQ SDK imports when it runs and does without (an MP3 decoder; ffmpeg or silk-wasm cover it). */
+const CHANNEL_OPTIONAL = new Set(["mpg123-decoder"]);
+
+/**
+ * What `mu qqbot` leaves to node_modules: qrcode-terminal is old CommonJS (octal escapes) that an ES module bundle
+ * cannot carry, so the package depends on it, at the version packages/mu-channels pins.
+ */
+const CHANNEL_DEPENDENCIES = ["qrcode-terminal"];
 
 /** From judge/dist/, where the judgment layer's bundle is, to the chunks of pi's bundle. */
 const PI_BUNDLE_CHUNKS = "../../dist/bundle/chunks";
@@ -276,6 +289,68 @@ async function buildJudge(out) {
 	return judgePackage.version;
 }
 
+/**
+ * `mu qqbot` (packages/mu-channels): a program of its own that runs mu sessions through pi's public API. Like
+ * `mu auth`, it takes pi from pi's bundle index and carries everything else it imports (the QQ Bot SDK, ws,
+ * TypeBox, the QR code printer, silk-wasm). silk-wasm loads silk.wasm from beside the module that imports it,
+ * which in the bundle is channels/dist/qqbot.js, so the wasm is copied there.
+ */
+async function buildChannels(out) {
+	const { build } = await import("esbuild");
+	const root = join(out, "channels");
+	const result = await build({
+		absWorkingDir: repo,
+		bundle: true,
+		format: "esm",
+		platform: "node",
+		target: "node22.19",
+		tsconfig: join(repo, "tsconfig.json"),
+		banner: {
+			js: 'import { createRequire as __muCreateRequire } from "node:module"; const require = __muCreateRequire(import.meta.url);',
+		},
+		legalComments: "none",
+		logLevel: "warning",
+		metafile: true,
+		entryPoints: { qqbot: join(channelsSource, "src/qqbot/cli.ts") },
+		outdir: join(root, "dist"),
+		external: [...CHANNEL_OPTIONAL, ...CHANNEL_DEPENDENCIES],
+		plugins: [
+			{
+				name: "pi-bundle",
+				setup(builder) {
+					builder.onResolve({ filter: /^@earendil-works\/pi-coding-agent(\/|$)/ }, (args) => {
+						if (args.path !== "@earendil-works/pi-coding-agent") throw new Error(`mu qqbot imports ${args.path}, which pi's bundle does not export`);
+						return { path: PI_BUNDLE_INDEX, external: true };
+					});
+				},
+			},
+		],
+	});
+	for (const output of Object.values(result.metafile.outputs)) {
+		for (const imported of output.imports) {
+			if (!imported.external || isBuiltin(imported.path) || imported.path === PI_BUNDLE_INDEX) continue;
+			if (CHANNEL_DEPENDENCIES.includes(imported.path)) continue;
+			if (CHANNEL_OPTIONAL.has(imported.path) && imported.kind === "dynamic-import") continue;
+			if (OPTIONAL.has(imported.path) && imported.kind === "require-call") continue;
+			throw new Error(`mu qqbot leaves ${imported.path} (${imported.kind}) to be found at run time, and nothing provides it`);
+		}
+	}
+	const channelsRequire = createRequire(join(channelsSource, "package.json"));
+	const silkDir = dirname(channelsRequire.resolve("silk-wasm"));
+	cpSync(join(silkDir, "silk.wasm"), join(root, "dist", "silk.wasm"));
+	cpSync(join(channelsSource, "skills"), join(root, "skills"), { recursive: true });
+	cpSync(join(channelsSource, "LICENSE.openclaw-qqbot"), join(root, "LICENSE.openclaw-qqbot"));
+	const channelsPackage = readJson(join(channelsSource, "package.json"));
+	writeFileSync(
+		join(root, "package.json"),
+		`${JSON.stringify({ name: channelsPackage.name, version: channelsPackage.version, private: true, type: "module" }, null, "\t")}\n`,
+	);
+	const dependencies = Object.fromEntries(
+		CHANNEL_DEPENDENCIES.map((name) => [name, exactVersion(channelsPackage.dependencies[name])]),
+	);
+	return { version: channelsPackage.version, dependencies };
+}
+
 /** pi's Node bundle, from `npm run build`: the package carries it, and the judgment layer takes pi's modules from it. */
 function piBundle() {
 	const bundle = join(codingAgent, "dist", "bundle");
@@ -365,6 +440,7 @@ export async function main(argv = process.argv.slice(2)) {
 	const pi = copyPi(out);
 	const judgeVersion = await buildJudge(out);
 	checkNativeImport(join(out, "judge", "dist", "kyrn-judge.js"));
+	const channels = await buildChannels(out);
 	copyLauncher(out);
 	cpSync(join(repo, "LICENSE"), join(out, "LICENSE"));
 	cpSync(join(here, "README.md"), join(out, "README.md"));
@@ -373,9 +449,12 @@ export async function main(argv = process.argv.slice(2)) {
 	// What pi's bundle leaves to node_modules (scripts/build-coding-agent-bundle.mjs); the optional native
 	// accelerators it can also use are left out, as their callers do without them.
 	const bundleDependencies = ["@earendil-works/chord", "@silvia-odwyer/photon-node", "jiti"];
-	const dependencies = Object.fromEntries(bundleDependencies.map((name) => [name, exactVersion(pi.dependencies[name])]));
+	const dependencies = {
+		...Object.fromEntries(bundleDependencies.map((name) => [name, exactVersion(pi.dependencies[name])])),
+		...channels.dependencies,
+	};
 	const template = readJson(join(here, "package.template.json"));
-	const manifest = { ...template, dependencies, muBuild: { pi: pi.version, judge: judgeVersion, commit: gitCommit() } };
+	const manifest = { ...template, dependencies, muBuild: { pi: pi.version, judge: judgeVersion, channels: channels.version, commit: gitCommit() } };
 	writeFileSync(join(out, "package.json"), `${JSON.stringify(manifest, null, "\t")}\n`);
 
 	const files = listFiles(out).map((file) => relative(out, file));

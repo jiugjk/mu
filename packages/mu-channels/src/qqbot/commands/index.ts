@@ -45,5 +45,24 @@ export function buildCommandList(account: ResolvedQQBotAccount, opts: CommandBui
 		botPairing(opts.getRuntime),
 	);
 
-	return commands;
+	return commands.map(withUsageHelp);
+}
+
+/**
+ * `/指令名 ?` 查看用法。
+ * mu 修正：原版 /bot-help 写着「使用 /指令名 ? 可查看某条指令的详细用法」，但插件与 SDK 都没有处理 `?`，
+ * 参数被当成普通参数（如 /bot-streaming ? 会被当作「关闭」）。这里在进入命令之前统一回答用法。
+ */
+function withUsageHelp(command: SlashCommand): SlashCommand {
+	if (!command.usage) return command;
+	const name = Array.isArray(command.name) ? command.name[0] : command.name;
+	const handler = command.handler;
+	return {
+		...command,
+		handler: (ctx) => {
+			const raw = typeof ctx.command.raw === "string" ? ctx.command.raw.trim() : "";
+			if (raw === "?" || raw === "？") return [`📖 /${name} 用法`, "", String(command.usage)].join("\n");
+			return handler(ctx);
+		},
+	};
 }

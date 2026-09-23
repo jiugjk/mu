@@ -123,7 +123,7 @@ export interface QQBotAccountConfig {
 	transport?: TransportMode;
 	/** webhook 传输配置（transport="webhook" 时生效） */
 	webhook?: WebhookTransportConfig;
-	/** 群消息策略（默认 allowlist） */
+	/** 群消息策略（默认 open） */
 	groupPolicy?: GroupPolicy;
 	/** 群白名单（groupPolicy 为 allowlist 时生效） */
 	groupAllowFrom?: string[];
@@ -151,13 +151,15 @@ export interface QQBotAccountConfig {
 	urlDirectUpload?: boolean;
 	/**
 	 * /bot-upgrade 指令返回的升级指引网址
-	 * 默认: https://docs.qq.com/doc/DSGxOZk1oVnVKVkpq
+	 * mu 适配：默认为 mu 的 docs/qqbot.md（原版默认 https://docs.qq.com/doc/DSGxOZk1oVnVKVkpq）
 	 */
 	upgradeUrl?: string;
 	/**
 	 * /bot-upgrade 指令的行为模式
 	 * - "doc"：展示升级文档链接（安全模式）
 	 * - "hot-reload"：检测到新版本时直接执行 npm 升级脚本进行热更新（默认）
+	 *
+	 * mu 适配：不生效。QQ 通道随 mu 发布，/bot-upgrade 只给出升级命令（npm i -g mu-agent@latest）。
 	 */
 	upgradeMode?: "doc" | "hot-reload";
 	/**
@@ -165,6 +167,8 @@ export interface QQBotAccountConfig {
 	 * 支持 "scope/name"（自动补 @）或 "@scope/name" 格式
 	 * 默认: "@tencent-connect/openclaw-qqbot"
 	 * 示例: "ryantest/openclaw-qqbot"
+	 *
+	 * mu 适配：不生效（见 upgradeMode）。
 	 */
 	upgradePkg?: string;
 	/**
@@ -203,13 +207,13 @@ export interface QQBotAccountConfig {
 	 *
 	 * 设为 0 表示不限制超时。默认 0（不限制）。
 	 *
-	 * 可通过环境变量 OPENCLAW_PROCESSING_TIMEOUT_MS 覆盖全局默认值，
+	 * 可通过环境变量 MU_QQBOT_PROCESSING_TIMEOUT_MS（原版 OPENCLAW_PROCESSING_TIMEOUT_MS）覆盖全局默认值，
 	 * 账户级配置优先级高于环境变量。
 	 */
 	processingTimeoutMs?: number;
 	/**
 	 * User-Agent 尾部追加内容（用于私有化部署标识等场景）
-	 * 追加在 `QQBotPlugin/{version} (Node/{nodeVersion}; {os}; OpenClaw/{version})` 之后
+	 * 追加在 `QQBotPlugin/{version} (Node/{nodeVersion}; {os}; mu/{version})` 之后
 	 */
 	userAgentSuffix?: string;
 
