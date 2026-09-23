@@ -1,4 +1,5 @@
 import type { SlashCommand } from "@tencent-connect/qqbot-nodejs";
+import { shouldUseStreaming } from "../outbound/streaming-controller.ts";
 import type { QQBotRuntime } from "../runtime.ts";
 import type { ResolvedQQBotAccount } from "../types.ts";
 import { checkCommandAuth, updateAccountConfig } from "./config-util.ts";
@@ -18,8 +19,9 @@ export function botStreaming(account: ResolvedQQBotAccount, getRuntime: () => QQ
 			const args = (Array.isArray(ctx.command.args) ? ctx.command.args.join(" ") : String(ctx.command.args ?? ""))
 				.trim()
 				.toLowerCase();
-			const streaming = account.config?.streaming;
-			const currentEnabled = typeof streaming === "boolean" ? streaming : (streaming as any)?.mode !== "off";
+			// mu 修正：原版未配置 streaming 时显示「已启用」（实际不流式），且 /bot-streaming on 回答「无需切换」，
+			// 无法开启；改为与实际发送一致的判断
+			const currentEnabled = shouldUseStreaming(account, "c2c");
 
 			// 无参数 → 显示状态
 			if (!args) {
