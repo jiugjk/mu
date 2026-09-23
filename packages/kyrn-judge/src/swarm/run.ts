@@ -8,6 +8,8 @@ import {
 	type BeeState,
 	type Coded,
 	codeOf,
+	type Draft,
+	followDraft,
 	isOver,
 	isRunning,
 	newBee,
@@ -193,6 +195,8 @@ export class SwarmRun<Assignment> {
 	private readonly now: () => number;
 	private runner?: BeeRunner<Assignment>;
 	private outcomes: BeeOutcome[] = [];
+	/** Per bee, the message it is writing, whole: the report of one cut off halfway is in it. */
+	private readonly drafts: (Draft | undefined)[] = [];
 	/** Slots at work; each one takes the next bee that has not been started until there is none. */
 	private workers: Promise<void>[] = [];
 	private next = 0;
@@ -392,8 +396,13 @@ export class SwarmRun<Assignment> {
 			bee.status === "failed" ? "FAILED" : bee.status === "timed-out" ? "STOPPED BY THE WATCHDOG" : "STOPPED";
 		const lines = [`${label}: ${bee.error ?? "unknown reason"} (${spent}).`];
 		// A bee that was asked to wrap up and did has a real report; one that was cut off has at most its last words.
+		const draft = this.drafts[index];
+		const heardAt = bee.wrapUp?.heardAt;
 		if (report) lines.push(`What it had reported by then:\n${report}`);
-		else if (bee.said) lines.push(`The last thing it said: ${bee.said}`);
+		// Told to report, and cut off while it wrote: what it had written is most of a report.
+		else if (draft?.text.trim() && heardAt !== undefined && draft.at >= heardAt)
+			lines.push(`What it had written of its report when it was stopped:\n${draft.text.trim()}`);
+		else if (draft?.text.trim() || bee.said) lines.push(`The last thing it said: ${draft?.text.trim() || bee.said}`);
 		return { state: bee, report: lines.join("\n") };
 	}
 
@@ -417,6 +426,7 @@ export class SwarmRun<Assignment> {
 				event: (event) => {
 					if (isOver(bee.status)) return;
 					applyEvent(bee, event, this.now());
+					this.drafts[index] = followDraft(this.drafts[index], event, this.now());
 					if (event.type !== "message_update" && event.type !== "tool_execution_update" && bee.transcript) {
 						try {
 							appendFileSync(bee.transcript, `${JSON.stringify({ at: this.now(), ...event })}\n`);

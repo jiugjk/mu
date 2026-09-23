@@ -386,9 +386,9 @@ describe("swarm run", () => {
 		});
 	});
 
-	it("counts the grace period from when a bee heard it was to report", async () => {
+	it("counts the grace period from when a bee heard it was to report, and keeps what a cut-off one had written", async () => {
 		// Seen live, with a model thinking at "high": asked at 5m00s, heard it 22 s later when its step ended, wrote
-		// its report for 37 s and was cut off by a 60 s grace period counted from the asking.
+		// its report for 37 s and was cut off by a 60 s grace period counted from the asking, report and all.
 		vi.useFakeTimers();
 		const dir = tempDir();
 		const run = new SwarmRun<string>({
@@ -459,6 +459,9 @@ describe("swarm run", () => {
 		expect(slow.state.wrapUp?.heardAt).toBeGreaterThan(slow.state.wrapUp?.at ?? 0);
 		expect(cut.state.status).toBe("timed-out");
 		expect(cut.report).toMatch(/no report within 3\ds of being asked/);
+		expect(cut.report).toContain(
+			"What it had written of its report when it was stopped:\nFOUND: the cache key ignores the locale (src/cache.ts:41); ruled out: the CDN.",
+		);
 	});
 
 	it("lets the user stop one bee or all of them and still get what was found", async () => {

@@ -344,6 +344,38 @@ export function applyEvent(state: BeeState, event: BeeEvent, now: number): boole
 	return false;
 }
 
+/** The longest draft kept: a report is rarely a tenth of this. */
+const MAX_DRAFT = 40_000;
+
+/** A message a bee is writing, whole: `said` keeps only its end, for the view. */
+export interface Draft {
+	text: string;
+	/** When the message began. */
+	at: number;
+}
+
+/**
+ * Follows the message a bee is writing, token by token, so that one cut off
+ * halfway through its report still hands back what it had written.
+ */
+export function followDraft(draft: Draft | undefined, event: BeeEvent, now: number): Draft | undefined {
+	if (event.type === "message_start" && event.message?.role === "assistant") return { text: "", at: now };
+	if (
+		draft &&
+		event.type === "message_update" &&
+		event.assistantMessageEvent?.type === "text_delta" &&
+		typeof event.assistantMessageEvent.delta === "string" &&
+		draft.text.length < MAX_DRAFT
+	) {
+		return { ...draft, text: draft.text + event.assistantMessageEvent.delta };
+	}
+	if (event.type === "message_end" && event.message?.role === "assistant") {
+		const text = textOf(event.message.content).trim();
+		return text ? { text: text.slice(0, MAX_DRAFT), at: draft?.at ?? now } : draft;
+	}
+	return draft;
+}
+
 /**
  * What the bee hands back. Normally its last message. A bee that was spoken to
  * after it had finished answers with a line or two ("Acknowledged."), and that
