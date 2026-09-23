@@ -1,6 +1,11 @@
 import { homedir } from "node:os";
-import { join } from "node:path";
-import type { ExtensionContext, ToolCallEvent, ToolCallEventResult } from "@earendil-works/pi-coding-agent";
+import { join, resolve, sep } from "node:path";
+import {
+	CONFIG_DIR_NAME,
+	type ExtensionContext,
+	type ToolCallEvent,
+	type ToolCallEventResult,
+} from "@earendil-works/pi-coding-agent";
 import { toolApproval } from "../../decisions/tool-approval.ts";
 import { toolRisk } from "../../decisions/tool-risk.ts";
 import { say } from "../../language.ts";
@@ -15,6 +20,7 @@ import {
 	parseMode,
 	permissionNeed,
 	protectedSpellings,
+	toolPath,
 } from "../../permissions/modes.ts";
 import { clip, type KyrnRuntime } from "../runtime.ts";
 import { isShellTool } from "../shell-tools.ts";
@@ -61,9 +67,19 @@ export function modeLabel(mode: PermissionMode): string {
 	return say({ zh: MODE_TEXT[mode].zh, en: MODE_TEXT[mode].en });
 }
 
-/** Where mu keeps its own settings, as a command may spell it: a call touching it is the user's to allow. */
+/** Where mu keeps its own settings, as a command may spell it, and where it really is: a call touching it is the user's to allow. */
 function protectedPaths(roots: HarnessRoots | undefined): string[] {
-	return roots ? protectedSpellings(roots.agentDir, homedir(), process.platform) : [];
+	if (!roots) return [];
+	const spelled = protectedSpellings(roots.agentDir, homedir(), process.platform);
+	const real = toolPath(roots.agentDir, roots.agentDir);
+	return real && real !== roots.agentDir ? [...spelled, real] : spelled;
+}
+
+/** The project's own mu folder (`.mu`, a stock pi's `.pi`): its settings and extensions run inside mu. */
+function projectSettings(cwd: string): string[] {
+	const spelled = join(resolve(cwd), CONFIG_DIR_NAME);
+	const real = toolPath(cwd, CONFIG_DIR_NAME) ?? spelled;
+	return [...new Set([spelled, real])].map((path) => `${path}${sep}`);
 }
 
 /**
@@ -264,7 +280,7 @@ export function registerPermissions(runtime: KyrnRuntime, roots: HarnessRoots | 
 	const gate = async (event: ToolCallEvent, ctx: ExtensionContext): Promise<ToolCallEventResult | undefined> => {
 		if (mode === "full") return undefined;
 		const input = event.input as Record<string, unknown>;
-		const need = permissionNeed(event.toolName, input, ctx.cwd, guarded);
+		const need = permissionNeed(event.toolName, input, ctx.cwd, [...guarded, ...projectSettings(ctx.cwd)]);
 		if (!need) return undefined;
 		const command = isShellTool(event.toolName) || event.toolName === "bg_start" ? String(input.command ?? "") : "";
 		const flag = command ? riskFlag(command) : undefined;

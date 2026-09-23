@@ -1,9 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
+import { CONFIG_DIR_NAME, type ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHarness, type Harness } from "../../coding-agent/test/suite/harness.ts";
@@ -59,7 +60,8 @@ describe("what needs permission", () => {
 		});
 		expect(permissionNeed("write", { path: "/etc/hosts" }, cwd)).toMatchObject({
 			kind: "outside",
-			grant: { key: "outside:/etc/hosts" },
+			// Where the file really is: /etc is a link to /private/etc on macOS.
+			grant: { key: `outside:${realpathSync("/etc/hosts")}`, label: "/etc/hosts" },
 		});
 		expect(permissionNeed("write", { path: "../other/x" }, cwd)).toMatchObject({ kind: "outside" });
 		expect(permissionNeed("sg_rewrite", { pattern: "a", apply: true }, cwd)).toMatchObject({ kind: "edit" });
@@ -72,6 +74,49 @@ describe("what needs permission", () => {
 			kind: "other",
 			grant: { key: "tool:mcp_github_create_issue" },
 		});
+	});
+
+	it("reads a path the way the file tools will: the home, an @, a file URL and a link all lead out of the project", () => {
+		const dir = mkdtempSync(join(tmpdir(), "mu-paths-"));
+		try {
+			const project = join(dir, "project");
+			const elsewhere = join(dir, "elsewhere");
+			mkdirSync(join(project, "src"), { recursive: true });
+			mkdirSync(elsewhere);
+			symlinkSync(elsewhere, join(project, "link"));
+			// A link to a file that does not exist yet: writing it creates the file where the link points.
+			symlinkSync(join(elsewhere, "not-yet.txt"), join(project, "dangling.txt"));
+			for (const [tool, input] of [
+				["write", { path: "~/.zshrc" }],
+				["write", { path: "@~/.ssh/authorized_keys" }],
+				["write", { path: `@${join(elsewhere, "x.txt")}` }],
+				["write", { path: pathToFileURL(join(elsewhere, "x.txt")).href }],
+				["write", { path: "link/x.txt" }],
+				["edit", { path: "link/new/deeper.txt" }],
+				["write", { path: "dangling.txt" }],
+				// Git runs its hooks and reads its config on the user's next command, and no checkpoint holds them.
+				["edit", { path: ".git/hooks/pre-commit" }],
+				["write", { path: ".GIT/config" }],
+				["sg_rewrite", { pattern: "a", rewrite: "b", apply: true, paths: ["src", elsewhere] }],
+			] as const) {
+				const need = permissionNeed(tool, input, project);
+				expect(need?.kind, JSON.stringify(input)).toBe("outside");
+				expect(need?.inProject, JSON.stringify(input)).toBeUndefined();
+			}
+			expect(permissionNeed("write", { path: "@src/a.ts" }, project)).toMatchObject({
+				kind: "edit",
+				inProject: true,
+			});
+			expect(
+				permissionNeed("sg_rewrite", { pattern: "a", rewrite: "b", apply: true, paths: ["src"] }, project),
+			).toMatchObject({ kind: "edit", inProject: true });
+			expect(permissionNeed("write", { path: "link/x.txt" }, project)?.grant).toEqual({
+				key: `outside:${join(realpathSync(elsewhere), "x.txt")}`,
+				label: "link/x.txt",
+			});
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 
 	it("allows a command for the conversation only by a prefix that cannot carry more", () => {
@@ -377,6 +422,39 @@ describe("permission modes in a session", () => {
 		);
 		harness.setResponses([call("write", { path: join(dir, "mu.json") }), fauxAssistantMessage("Left it.")]);
 		await harness.session.prompt("Turn permissions off in the config");
+		expect(ran).toEqual([]);
+		expect(asked[0].title).toContain("mu's own settings");
+		expect(asked[0].options).toEqual(["Allow once", "Don't allow"]);
+	});
+
+	it("Jev approves: a write to the home spelled with ~ is no edit in the project, and goes to Jev and then the user", async () => {
+		const questions: string[] = [];
+		const { harness, ran, asked } = await start(
+			(request): Record<string, Answer> => {
+				if (!("verdict" in request.questions)) return {};
+				questions.push(String((request.state as { tool_call: string }).tool_call));
+				return { verdict: verdict("unrelated") };
+			},
+			{ mode: "jev", pick: (options) => options.at(-1) },
+		);
+		harness.setResponses([call("write", { path: "~/.zshrc" }), fauxAssistantMessage("Left it.")]);
+		await harness.session.prompt("Tidy up the README");
+		expect(ran).toEqual([]);
+		expect(questions).toEqual(["write: ~/.zshrc"]);
+		expect(asked[0].title).toContain("change a file outside the project");
+	});
+
+	it("the project's own mu folder is the user's to allow: an extension there runs inside mu", async () => {
+		const { harness, ran, asked } = await start(
+			(request): Record<string, Answer> =>
+				"verdict" in request.questions ? { verdict: verdict("needed", 0.99) } : {},
+			{ mode: "jev", pick: (options) => options.at(-1) },
+		);
+		harness.setResponses([
+			call("write", { path: `${CONFIG_DIR_NAME}/extensions/helper.ts` }),
+			fauxAssistantMessage("Left it."),
+		]);
+		await harness.session.prompt("Add a helper extension");
 		expect(ran).toEqual([]);
 		expect(asked[0].title).toContain("mu's own settings");
 		expect(asked[0].options).toEqual(["Allow once", "Don't allow"]);
