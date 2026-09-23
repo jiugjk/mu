@@ -101,7 +101,7 @@ describe("remaining commands and the platform API tool (group 6)", () => {
 });
 
 describe("who may run /bot-* commands", () => {
-	it("dmPolicy open: anyone may run the ordinary ones (the original's rule), not /bot-logs, /bot-clear-storage or /bot-approve", async () => {
+	it("dmPolicy open: anyone may run the ordinary ones (the original's rule), not the four sensitive ones", async () => {
 		const env = await startChannelTest({
 			qqbot: { allowFrom: [ADMIN], dmPolicy: "open", deliverDebounce: { enabled: false } },
 		});
@@ -112,7 +112,12 @@ describe("who may run /bot-* commands", () => {
 				15_000,
 				"ordinary command",
 			);
-			for (const command of ["/bot-logs", "/bot-clear-storage --force", "/bot-approve off"]) {
+			for (const command of [
+				"/bot-logs",
+				"/bot-clear-storage --force",
+				"/bot-approve off",
+				"/bot-group-always on",
+			]) {
 				const name = command.split(" ")[0];
 				env.push("C2C_MESSAGE_CREATE", c2cMessage(OTHER, command));
 				const refusal = await env.qq.waitFor(
@@ -126,7 +131,10 @@ describe("who may run /bot-* commands", () => {
 				expect(refusal).toContain("/bot-me");
 			}
 			expect(env.qq.calls.some((call) => call.path === `/v2/users/${OTHER}/files`)).toBe(false);
-			expect((env.config().channels as { qqbot: { permissions?: string } }).qqbot.permissions).toBeUndefined();
+			const qqbot = (env.config().channels as { qqbot: { permissions?: string; defaultRequireMention?: boolean } })
+				.qqbot;
+			expect(qqbot.permissions).toBeUndefined();
+			expect(qqbot.defaultRequireMention).toBeUndefined();
 
 			// The admin, listed by openid, still can.
 			env.push("C2C_MESSAGE_CREATE", c2cMessage(ADMIN, "/bot-logs"));

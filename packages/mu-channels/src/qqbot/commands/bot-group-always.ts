@@ -1,7 +1,7 @@
 import type { SlashCommand } from "@tencent-connect/qqbot-nodejs";
 import type { QQBotRuntime } from "../runtime.ts";
 import type { ResolvedQQBotAccount } from "../types.ts";
-import { checkCommandAuth, updateAccountConfig } from "./config-util.ts";
+import { checkAdminCommandAuth, updateAccountConfig } from "./config-util.ts";
 
 /** /bot-group-always — 修改群消息默认响应模式 */
 export function botGroupAlways(account: ResolvedQQBotAccount, getRuntime: () => QQBotRuntime): SlashCommand {
@@ -9,7 +9,8 @@ export function botGroupAlways(account: ResolvedQQBotAccount, getRuntime: () => 
 		name: ["bot-group-always", "bot-group-allways"],
 		description: "修改群消息默认响应模式",
 		scope: "c2c",
-		authorized: checkCommandAuth,
+		// mu 修正：改变所有群的默认 @ 行为，只允许 allowFrom 中明确列出的用户（见 checkAdminCommandAuth）
+		authorized: checkAdminCommandAuth,
 		usage: [
 			"/bot-group-always on   AI 自主判断何时发言（无需 @）",
 			"/bot-group-always off  仅在被 @ 时回复",

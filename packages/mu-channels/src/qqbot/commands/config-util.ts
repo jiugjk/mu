@@ -21,10 +21,10 @@ export function checkCommandAuth(ctx: SlashCommandHandlerContext): boolean | str
 }
 
 /**
- * 敏感命令的授权检查（/bot-logs、/bot-clear-storage、/bot-approve）。
+ * 敏感命令的授权检查（/bot-logs、/bot-clear-storage、/bot-approve、/bot-group-always）。
  *
  * mu 修正（偏离原行为）：原版这些命令也用 checkCommandAuth，dmPolicy 为 open 或 allowFrom 为空 / 含 "*" 时
- * 所有人都能执行 —— 包括导出含其他人对话的日志、删除下载文件、切换审批模式。移植后只允许 allowFrom 中
+ * 所有人都能执行 —— 包括导出含其他人对话的日志、删除下载文件、切换审批模式、让所有群不 @ 也回答。移植后只允许 allowFrom 中
  * 明确列出的用户执行，"*" 不算；没有明确列出任何人时，这些命令在 QQ 里不可用（在主机上改配置）。
  */
 export function checkAdminCommandAuth(ctx: SlashCommandHandlerContext): boolean | string {

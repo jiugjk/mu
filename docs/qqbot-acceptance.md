@@ -78,8 +78,8 @@
 | F44 `/bot-streaming` | 通过 | `commands-more.test.ts` | 修正：原版未配置时显示"已启用"且无法开启 |
 | F45 `/bot-clear-storage` | 通过 | `commands-more.test.ts` | 清理本账号各会话的下载目录。偏离：只允许明确列出的用户（M11） |
 | F46 `/bot-approve` | 通过 | `approvals.test.ts`（always / reset、off 的全部限制） | on/always/off 对应 jev/ask/full。off 只能在私聊中、由 allowFrom 中明确列出的用户执行，并需二次确认 |
-| F47 `/bot-group-always` | 通过 | `group-and-access.test.ts` | |
-| F48 `/bot-pairing`、`/命令 ?`、私聊限定、allowFrom 鉴权 | 通过 | `group-and-access.test.ts`、`misc.test.ts`（`?`）、`commands-more.test.ts`（鉴权：一般命令在 `dmPolicy: open` 或 `"*"` 时所有人可用，与原版一致；三条敏感命令除外，见 M11） | 修正：原版 `/bot-help` 声称支持 `/命令 ?`，但没有实现 |
+| F47 `/bot-group-always` | 通过 | `group-and-access.test.ts`；`commands-more.test.ts`（未明确列出的用户被拒） | 偏离：只允许明确列出的用户（M11） |
+| F48 `/bot-pairing`、`/命令 ?`、私聊限定、allowFrom 鉴权 | 通过 | `group-and-access.test.ts`、`misc.test.ts`（`?`）、`commands-more.test.ts`（鉴权：一般命令在 `dmPolicy: open` 或 `"*"` 时所有人可用，与原版一致；四条敏感命令除外，见 M11） | 修正：原版 `/bot-help` 声称支持 `/命令 ?`，但没有实现 |
 | F49 `/stop` | 通过 | `commands-basic.test.ts`、`streaming-and-delivery.test.ts` | |
 
 ### F. 绑定与配置
@@ -115,7 +115,7 @@
 | M8 QQ 会话默认中文（`MU_LANG=zh-CN`）；会话打开时扩展的提示只写日志 | 通过 | `approvals.test.ts`（中文按钮）；`host.test.ts`（静默提示） | |
 | M9 事件监控（原 reply-options） | 通过 | `agent-events.test.ts`；`streaming-and-delivery.test.ts`（日志里有工具名、没有参数） | 原版测试针对 OpenClaw 专有选项，改为测试 mu 的事件映射 |
 | M10 npm 打包 | 通过 | `node kyrn/npm/build.mjs`：`channels/dist/qqbot.js`、`silk.wasm`、技能、许可证；打包产物实际运行 `mu qqbot start` 并回答私聊；`kyrn/npm/smoke.mjs` 增加 `mu qqbot help/status` | qrcode-terminal 作为 mu-agent 的固定版本依赖 |
-| M11 敏感命令（`/bot-logs`、`/bot-clear-storage`、`/bot-approve`）只允许 allowFrom 中明确列出的用户，`"*"` 与 `dmPolicy: open` 不算 | 通过 | `commands-more.test.ts`（open 模式下普通命令照常、三条敏感命令被拒并提示用 `/bot-me` 加入 allowFrom、明确列出的管理员可用；只配 `"*"` 时所有人都不能执行）；`approvals.test.ts` | 偏离（第 6 组后确认的方案 b）：原版这三条在 open / `"*"` 时所有人可执行 |
+| M11 敏感命令（`/bot-logs`、`/bot-clear-storage`、`/bot-approve`、`/bot-group-always`）只允许 allowFrom 中明确列出的用户，`"*"` 与 `dmPolicy: open` 不算 | 通过 | `commands-more.test.ts`（open 模式下普通命令照常、四条敏感命令被拒并提示用 `/bot-me` 加入 allowFrom、明确列出的管理员可用；只配 `"*"` 时所有人都不能执行）；`approvals.test.ts` | 偏离（第 6 组后确认的方案 b）：原版这四条在 open / `"*"` 时所有人可执行 |
 
 ### 未移植的原版内容（非功能）
 
@@ -234,8 +234,8 @@ MU_QQBOT_LOG_LEVEL=debug mu qqbot start
 - 预期：显示 mu 的版本与 npm 上 mu-agent 的最新版本。
 - 操作：发 `/bot-logs`。
 - 预期：收到日志文件，文件中没有 AppSecret 与 access token 明文。
-- 操作：把 allowFrom 改为 `["*", "A 的 openid"]`，用 B 私聊发 `/bot-logs`、`/bot-approve off`。
-- 预期：两条都被拒，提示"只允许 allowFrom 中明确列出的用户执行（"*" 不算）"；B 发 `/bot-ping` 仍正常；A 发 `/bot-logs` 仍能收到文件。
+- 操作：把 allowFrom 改为 `["*", "A 的 openid"]`，用 B 私聊发 `/bot-logs`、`/bot-approve off`、`/bot-group-always on`。
+- 预期：三条都被拒，提示"只允许 allowFrom 中明确列出的用户执行（"*" 不算）"；B 发 `/bot-ping` 仍正常；A 发 `/bot-logs` 仍能收到文件。
 
 **13. 断线恢复与引用**
 - 操作：让机器人回复一条消息后，断开主机网络 30 秒再恢复。
