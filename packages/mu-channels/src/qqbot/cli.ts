@@ -17,16 +17,24 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import qrcode from "qrcode-terminal";
 import { MuConfigFile } from "../host/config-store.ts";
 import { createChannelLogger, type LogLevel, Redactor } from "../host/logger.ts";
 import { muAgentDir, muConfigPath } from "../host/paths.ts";
 import { getPairingStore } from "./adapter/pairing.ts";
+import { sendChunkedText } from "./channel.ts";
 import { listQQBotAccountIds, resolveQQBotAccount } from "./config.ts";
 import { createQQChatSurface } from "./features/chat-surface.ts";
 import { flushAllRefIndexStores } from "./features/ref-index-store.ts";
 import { logoutAndClearCredentials, startAccount, stopAccountGracefully } from "./gateway/lifecycle.ts";
 import { QQBotHost } from "./host.ts";
+import { sendMedia } from "./outbound/media-send.ts";
+import { getOrCreateGateway } from "./outbound/outbound-service.ts";
+import { normalizeTarget } from "./outbound/target.ts";
 import { type QQBotRuntime, setQQBotRuntime } from "./runtime.ts";
+import { applyAccountDefaults } from "./setup/finalize.ts";
+import { applyLoginCredentials, type BoundCredentials, parseChannelInput } from "./setup/login.ts";
+import { qrConnect } from "./setup/qr-connect.ts";
 import { createPlatformTool } from "./tools/platform.ts";
 import { createSendMediaTool } from "./tools/send-media.ts";
 import type { MuConfig, ResolvedQQBotAccount } from "./types.ts";
@@ -438,6 +446,161 @@ function commandPairing(args: ParsedArgs): number {
 	return 1;
 }
 
+// ── login ──
+
+export interface LoginOptions {
+	/** 扫码轮询间隔（测试用） */
+	pollIntervalMs?: number;
+	out?: (line: string) => void;
+	signal?: AbortSignal;
+}
+
+/**
+ * `mu qqbot login`：扫码（默认）、--token AppID:AppSecret，或 --use-env。
+ * 凭据写入 mu.json（0600），不在终端或日志中输出 AppSecret。
+ */
+export async function commandLogin(args: ParsedArgs, options: LoginOptions = {}): Promise<number> {
+	const out = options.out ?? ((line: string) => console.log(line));
+	const config = new MuConfigFile(muConfigPath());
+	let cfg: MuConfig;
+	try {
+		cfg = config.read() as MuConfig;
+	} catch (err) {
+		console.error(`无法读取 ${config.path}: ${err instanceof Error ? err.message : String(err)}`);
+		return 1;
+	}
+	const accountFlag = stringFlag(args.flags, "account");
+
+	const persist = async (credentials: BoundCredentials[]): Promise<string[]> => {
+		let written: string[] = [];
+		await config.update((current) => {
+			const result = applyLoginCredentials(current as MuConfig, credentials, accountFlag);
+			written = result.accountIds;
+			return result.cfg;
+		});
+		return written;
+	};
+
+	if (args.flags.token !== undefined) {
+		const parsed = parseChannelInput(stringFlag(args.flags, "token"));
+		if (!parsed) {
+			console.error("--token 需要 AppID:AppSecret（在 q.qq.com 机器人管理页查看）。");
+			return 1;
+		}
+		const [key] = await persist([{ appId: parsed.appId, appSecret: parsed.clientSecret }]);
+		out(`QQ 机器人已配置：账户 ${key}，AppID ${parsed.appId}。运行 \`mu qqbot start\` 启动。`);
+		return 0;
+	}
+
+	if (args.flags["use-env"]) {
+		const appId = process.env.QQBOT_APP_ID?.trim();
+		if (!appId || !process.env.QQBOT_CLIENT_SECRET?.trim()) {
+			console.error("--use-env 需要同时设置环境变量 QQBOT_APP_ID 与 QQBOT_CLIENT_SECRET。");
+			return 1;
+		}
+		// 凭据留在环境变量中（只适用于 default 账户），配置里只写默认值
+		await config.update((current) => {
+			const next = applyAccountDefaults(current as MuConfig, "default");
+			const qqbot = (next.channels?.qqbot ?? {}) as Record<string, unknown>;
+			qqbot.enabled = true;
+			qqbot.allowFrom ??= ["*"];
+			return next;
+		});
+		out(`将使用环境变量中的凭据（AppID ${appId}），AppSecret 不写入配置。运行 \`mu qqbot start\` 启动。`);
+		return 0;
+	}
+
+	const qqbotCfg = (cfg.channels?.qqbot ?? {}) as { clawType?: string };
+	const abort = new AbortController();
+	const onSignal = () => abort.abort(new Error("已取消"));
+	process.once("SIGINT", onSignal);
+	try {
+		const credentials = await qrConnect({
+			source: stringFlag(args.flags, "source") ?? (qqbotCfg.clawType?.trim() || "mu"),
+			pollIntervalMs: options.pollIntervalMs,
+			signal: options.signal ? AbortSignal.any([options.signal, abort.signal]) : abort.signal,
+			userAgent: `mu/${process.env.MU_VERSION || "unknown"} (qqbot)`,
+			onQrReady: (url) => {
+				out("请用手机 QQ 扫描二维码，创建并绑定一个 QQ 机器人：");
+				qrcode.generate(url, { small: true }, (code) => out(code));
+				out(`二维码无法显示时，在手机 QQ 中打开：${url}`);
+			},
+			onScanned: () => out("已扫码，请在手机上确认…"),
+		});
+		const keys = await persist(credentials);
+		for (const [i, cred] of credentials.entries()) {
+			out(`绑定成功：账户 ${keys[i]}，AppID ${cred.appId}${cred.userOpenid ? "（扫码者已加入 allowFrom）" : ""}。`);
+		}
+		out("运行 `mu qqbot start` 启动机器人。");
+		return 0;
+	} catch (err) {
+		console.error(`绑定失败：${err instanceof Error ? err.message : String(err)}`);
+		console.error("也可以在 q.qq.com 创建机器人后运行：mu qqbot login --token <AppID:AppSecret>");
+		return 1;
+	} finally {
+		process.off("SIGINT", onSignal);
+	}
+}
+
+// ── send ──
+
+/** `mu qqbot send <目标> <文本> [--media <路径或URL>] [--account <id>]`：主动消息（不需要 start 在运行） */
+export async function commandSend(args: ParsedArgs): Promise<number> {
+	const [to, ...words] = args.positional;
+	const text = words.join(" ");
+	const media = stringFlag(args.flags, "media");
+	if (!to || (!text && !media)) {
+		console.error(
+			"用法: mu qqbot send <qqbot:c2c:openid|qqbot:group:openid> <文本> [--media <路径或URL>] [--account <id>]",
+		);
+		return 1;
+	}
+	const target = to ? normalizeTarget(to) : undefined;
+	if (!target) {
+		console.error(`无法识别的目标：${to}（应为 qqbot:c2c:<openid> 或 qqbot:group:<openid>）`);
+		return 1;
+	}
+	const { runtime } = createRuntime({ console: false });
+	setQQBotRuntime(runtime);
+	try {
+		const cfg = runtime.getConfig();
+		const account = resolveQQBotAccount(
+			cfg,
+			stringFlag(args.flags, "account") ?? listQQBotAccountIds(cfg)[0] ?? "default",
+		);
+		if (!account.appId || !account.clientSecret) {
+			console.error(`账户 ${account.accountId} 未配置 AppID / AppSecret，先运行 mu qqbot login。`);
+			return 1;
+		}
+		runtime.redactor.add(account.clientSecret);
+		getOrCreateGateway(account);
+		if (media) {
+			const result = await sendMedia({
+				to: target,
+				source: media,
+				text: text || undefined,
+				accountId: account.accountId,
+				// 路径由主机上的人给出，不是 AI 选的
+				trustedLocalPath: true,
+			});
+			if (result.error) {
+				console.error(`发送失败：${result.error}`);
+				return 1;
+			}
+		} else {
+			const result = await sendChunkedText({ to: target, text, account });
+			if (result.error) {
+				console.error(`发送失败：${result.error}`);
+				return 1;
+			}
+		}
+		console.log("已发送。");
+		return 0;
+	} finally {
+		setQQBotRuntime(null);
+	}
+}
+
 export async function main(argv: readonly string[]): Promise<number> {
 	const args = parseArgs(argv);
 	switch (args.command) {
@@ -447,6 +610,10 @@ export async function main(argv: readonly string[]): Promise<number> {
 			return commandStatus();
 		case "logout":
 			return commandLogout(args);
+		case "login":
+			return commandLogin(args);
+		case "send":
+			return commandSend(args);
 		case "pairing":
 			return commandPairing(args);
 		case "help":

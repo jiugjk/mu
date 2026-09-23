@@ -563,6 +563,8 @@ export function planQqbot({ platform, env, argv, root, home, execPath, fs, canEx
 			MU_QQBOT_SKILLS: skills,
 			MU_VERSION: version ?? base.env.MU_VERSION ?? "unknown",
 		},
+		// Only a running bot asks the judge; login, send and status do not need the sidecar.
+		startJudge: base.startJudge && argv[0] === "start",
 		preface: undefined,
 	};
 }

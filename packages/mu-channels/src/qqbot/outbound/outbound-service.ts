@@ -55,7 +55,7 @@ export function getGateway(accountId: string): QQBotGateway | undefined {
 }
 
 /** gateway 未运行时，惰性构造 send-only 实例并注册进 Map 缓存复用 */
-function getOrCreateGateway(account: ResolvedQQBotAccount): QQBotGateway {
+export function getOrCreateGateway(account: ResolvedQQBotAccount): QQBotGateway {
 	let gw = gateways.get(account.accountId);
 	if (!gw) {
 		gw = new QQBotGateway(account);

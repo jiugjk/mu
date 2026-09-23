@@ -1147,6 +1147,21 @@ describe("mu qqbot", () => {
 		expect(plan.preface).toBeUndefined();
 	});
 
+	it("starts the local judge for a running bot only, not for login, send or status", () => {
+		const source = `${POSIX_ROOT}/packages/mu-channels/src/qqbot/cli.ts`;
+		const files = {
+			...posixInstalled,
+			[source]: "",
+			"/home/bai/.mu/agent/mu.json": '{ "tiers": ["laya", "jev"] }',
+		};
+		const plan = (argv: string[]) =>
+			planQqbot({ ...args, argv, platform: "darwin", root: POSIX_ROOT, fs: disk(files) }) as {
+				startJudge?: boolean;
+			};
+		expect(plan(["start"]).startJudge).toBe(true);
+		for (const command of ["login", "send", "status"]) expect(plan([command]).startJudge).toBe(false);
+	});
+
 	it("runs the built channel in the npm package, and says to update a package without it", () => {
 		const pkg = "/usr/local/lib/node_modules/mu-agent";
 		const installed = {

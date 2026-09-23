@@ -53,6 +53,11 @@ export interface SendMediaParams {
 	log?: PluginLogger;
 	/** 会话（mu 适配：原版为 agentId；用于解析该会话的工作区与允许发送的目录） */
 	conversation?: ConversationRef;
+	/**
+	 * 本地路径由主机上的人直接给出（`mu qqbot send --media`），不受目录白名单限制。
+	 * 白名单约束的是 AI 选择的路径；AI 调用的入口（工具、deliver）从不设置它。
+	 */
+	trustedLocalPath?: boolean;
 }
 
 export interface SendMediaResult {
@@ -138,7 +143,7 @@ export async function sendMedia(params: SendMediaParams): Promise<SendMediaResul
 	// 1. 安全校验 + 路径规范化
 	const dirs = resolveConversationDirs(params.conversation);
 	mlog?.debug(`resolveMediaPath source=${source} workspaceDir=${dirs?.workspace ?? "none"}`);
-	const resolved = await resolveMediaPath(source, mlog, dirs);
+	const resolved = await resolveMediaPath(source, mlog, dirs, params.trustedLocalPath === true);
 	if (!resolved.ok) {
 		mlog?.error(`resolveMediaPath failed: ${resolved.error}`);
 		return { error: resolved.error };
@@ -188,6 +193,7 @@ async function resolveMediaPath(
 	source: string,
 	log?: SendMediaParams["log"],
 	dirs?: { workspace: string; media: string },
+	trusted = false,
 ): Promise<ResolveResult | ResolveError> {
 	const workspaceDir = dirs?.workspace;
 	const normalized = normalizePath(source);
@@ -234,6 +240,8 @@ async function resolveMediaPath(
 	} catch {
 		return { ok: false, error: `Cannot resolve path: ${resolved}` };
 	}
+
+	if (trusted) return { ok: true, path: real, isLocal: true };
 
 	// 动态白名单：静态根目录 + 当前 agent 工作区
 	const dynamicRoots = buildDynamicAllowedRoots(dirs);
