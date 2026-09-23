@@ -32,6 +32,8 @@ export interface ChatUIOptions {
 	/** The context the session had before (pi's no-op one): theme and the terminal-only calls come from it. */
 	base: ExtensionUIContext;
 	onError?: (error: unknown) => void;
+	/** Where notices go while the bridge is muted (e.g. a log). */
+	onMutedNotice?: (message: string, level: "info" | "warning" | "error") => void;
 }
 
 export type AnswerOutcome = "answered" | "unknown" | "unauthorized" | "invalid";
@@ -56,6 +58,11 @@ export class ChatUIBridge {
 	private readonly pending = new Map<string, Pending>();
 	private readonly options: ChatUIOptions;
 	readonly context: ExtensionUIContext;
+	/**
+	 * While true, notices are not sent into the chat but to `onMutedNotice`: what extensions say while a session
+	 * opens (welcome lines, what was loaded) is for a terminal, not for the people in a chat.
+	 */
+	muted = false;
 
 	constructor(options: ChatUIOptions) {
 		this.options = options;
@@ -163,7 +170,8 @@ export class ChatUIBridge {
 			input: (title, placeholder, dialog) => this.ask("input", title, placeholder, [], dialog),
 			notify: (message, type) => {
 				try {
-					surface.notify(message, type ?? "info");
+					if (this.muted) this.options.onMutedNotice?.(message, type ?? "info");
+					else surface.notify(message, type ?? "info");
 				} catch (error) {
 					this.options.onError?.(error);
 				}

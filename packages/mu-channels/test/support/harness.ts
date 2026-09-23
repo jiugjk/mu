@@ -49,6 +49,9 @@ const touchedEnv = [
 	"MU_PERMISSIONS",
 	"MU_JUDGE",
 	"MU_QQBOT_LOG_LEVEL",
+	"HOME",
+	"USERPROFILE",
+	"MU_LANG",
 ];
 
 /**
@@ -99,6 +102,11 @@ export async function startChannelTest(options: ChannelTestOptions = {}): Promis
 	};
 	writeMuConfig((typeof options.qqbot === "function" ? options.qqbot({ qq, llm }) : options.qqbot) ?? {});
 
+	// A home of its own: extensions (kyrn-judge) must not read the real user's ~/.claude and the like.
+	const home = join(root, "home");
+	mkdirSync(home, { recursive: true });
+	process.env.HOME = home;
+	process.env.USERPROFILE = home;
 	process.env.PI_CODING_AGENT_DIR = agentDir;
 	process.env.MU_QQBOT_HOME = qqHome;
 	process.env.QQBOT_BASE_URL = qq.baseUrl;
@@ -107,6 +115,7 @@ export async function startChannelTest(options: ChannelTestOptions = {}): Promis
 	process.env.MU_VERSION = "0.0.0-test";
 	process.env.MU_QQBOT_LOG_LEVEL = "debug";
 	delete process.env.MU_PERMISSIONS;
+	delete process.env.MU_LANG;
 	delete process.env.MU_QQBOT_SKILLS;
 	for (const [key, value] of Object.entries(options.env ?? {})) process.env[key] = value;
 

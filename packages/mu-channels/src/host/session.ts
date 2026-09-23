@@ -119,7 +119,10 @@ export async function openChannelSession(profile: ChannelSessionProfile): Promis
 		timeoutMs: profile.uiTimeoutMs,
 		base: session.extensionRunner.getUIContext(),
 		onError: (error) => profile.log.warn(`chat UI: ${error instanceof Error ? error.message : String(error)}`),
+		onMutedNotice: (message, level) => profile.log.info(`notice while opening (${level}): ${message}`),
 	});
+	// What the extensions say while the session starts stays in the log; questions still reach the chat.
+	ui.muted = true;
 	await session.bindExtensions({
 		uiContext: ui.context,
 		mode: "rpc",
@@ -129,6 +132,7 @@ export async function openChannelSession(profile: ChannelSessionProfile): Promis
 	if (profile.permissionMode && session.extensionRunner.getCommand("permissions")) {
 		await session.prompt(`/permissions ${profile.permissionMode} --here`, { source: "extension" });
 	}
+	ui.muted = false;
 
 	return {
 		session,

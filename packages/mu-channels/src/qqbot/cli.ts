@@ -193,6 +193,8 @@ export interface RunningQQBot {
 export async function startQQBot(options: { only?: string; console?: boolean } = {}): Promise<RunningQQBot> {
 	// QQ 会话的权限模式来自 channels.qqbot.permissions（默认 jev），不继承终端里 mu 的默认模式
 	process.env.MU_PERMISSIONS ??= "jev";
+	// QQ 用户读中文：mu 扩展（审批按钮、提示）的措辞随 MU_LANG；已设置时尊重用户的选择
+	process.env.MU_LANG ??= "zh-CN";
 	const { runtime, config } = createRuntime({ console: options.console });
 	setQQBotRuntime(runtime);
 	const log = runtime.logger;

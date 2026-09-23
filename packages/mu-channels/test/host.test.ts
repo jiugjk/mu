@@ -1,7 +1,9 @@
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it } from "vitest";
+import { ChatUIBridge } from "../src/host/chat-ui.ts";
 import { MuConfigFile } from "../src/host/config-store.ts";
 import { createChannelLogger, Redactor } from "../src/host/logger.ts";
 import { safeSegment } from "../src/host/paths.ts";
@@ -181,5 +183,23 @@ describe("paths", () => {
 		expect(safeSegment("..")).not.toMatch(/^\./);
 		expect(safeSegment("E7A8F3B2C1D4")).toBe("E7A8F3B2C1D4");
 		expect(safeSegment("a/b\\c")).toBe("a_b_c");
+	});
+});
+
+describe("chat UI bridge", () => {
+	it("keeps notices out of the chat while muted (a session opening) and sends them afterwards", () => {
+		const sent: string[] = [];
+		const logged: string[] = [];
+		const bridge = new ChatUIBridge({
+			surface: { ask: async () => {}, notify: (message) => sent.push(message) },
+			base: {} as ExtensionUIContext,
+			onMutedNotice: (message, level) => logged.push(`${level}:${message}`),
+		});
+		bridge.muted = true;
+		bridge.context.notify("Inherited 6 skills", "info");
+		bridge.muted = false;
+		bridge.context.notify("已清空", "info");
+		expect(logged).toEqual(["info:Inherited 6 skills"]);
+		expect(sent).toEqual(["已清空"]);
 	});
 });

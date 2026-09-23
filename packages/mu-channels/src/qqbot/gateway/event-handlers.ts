@@ -211,7 +211,7 @@ async function handleApproval(
  * 从交互事件中提取操作者身份标识。
  * QQ Bot 按钮回调事件中，操作者 openid 通常在 `user_openid` 或 `data.resolved.user_id` 字段。
  */
-function resolveOperatorId(event: InteractionEvent): string | undefined {
+export function resolveOperatorId(event: InteractionEvent): string | undefined {
 	const evt = event as any;
 	// mu 修正：群聊按钮的操作者在 group_member_openid（原版遗漏，导致设置了 allowFrom 时群内审批总被拒）
 	return (
