@@ -8,7 +8,8 @@ import { parseConfig } from "../src/config.ts";
 import type { SwarmRunner } from "../src/extension/features/swarm.ts";
 import { createKyrnJudgeExtension } from "../src/extension/kyrn-judge.ts";
 import { hiveRequest, parseHiveArgs } from "../src/hive/request.ts";
-import { MockJudgeProvider } from "../src/providers/mock.ts";
+import { MockJudgeProvider, type MockResponder } from "../src/providers/mock.ts";
+import type { Answer } from "../src/types.ts";
 
 describe("/hive, what it reads from its argument", () => {
 	it("keeps /swarm's words and takes anything longer as a question", () => {
@@ -59,7 +60,14 @@ describe("/hive in a session", () => {
 		fauxAssistantMessage([fauxToolCall("hive", { goal: QUESTION, bees: BEES })], { stopReason: "toolUse" });
 
 	/** A hive whose bees report at once, or when `hold` lets them. */
-	async function start(options: { hold?: Promise<void>; tools?: AgentTool[] } = {}) {
+	async function start(
+		options: {
+			hold?: Promise<void>;
+			tools?: AgentTool[];
+			permissions?: "full" | "jev";
+			responder?: MockResponder;
+		} = {},
+	) {
 		const bees: string[] = [];
 		const runner: SwarmRunner = async (task, _assignment, signal, env) => {
 			bees.push(env?.KYRN_HIVE_BEE ?? "");
@@ -75,9 +83,11 @@ describe("/hive in a session", () => {
 			tools: options.tools,
 			extensionFactories: [
 				createKyrnJudgeExtension({
-					provider: new MockJudgeProvider(() => ({})),
+					provider: new MockJudgeProvider(options.responder ?? (() => ({}))),
 					mode: "active",
-					config: parseConfig({ features: { memory: false, permissions: { mode: "full" } } }),
+					config: parseConfig({
+						features: { memory: false, permissions: { mode: options.permissions ?? "full" } },
+					}),
 					swarmRunner: runner,
 				}),
 			],
@@ -142,6 +152,37 @@ describe("/hive in a session", () => {
 		expect(getUserTexts(harness)).toEqual([hiveRequest(QUESTION)]);
 		expect(JSON.stringify(harness.session.messages.at(-1))).toContain("The answer.");
 		expect(notes).toEqual([]);
+	});
+
+	it("in Jev-approves mode: the hive is judged against /hive as the user's own words, not the turn before", async () => {
+		const approvals: Record<string, unknown>[] = [];
+		const responder: MockResponder = (request): Record<string, Answer> => {
+			if (!("verdict" in request.questions)) return {};
+			const state = request.state as Record<string, unknown>;
+			approvals.push(state);
+			const asked = String(state.user_message).startsWith("/hive ");
+			const choice = asked ? "needed" : "unrelated";
+			return { verdict: { type: "choice", choice, probabilities: { [choice]: 0.95 } } };
+		};
+		const { harness, bees } = await start({ permissions: "jev", responder });
+		const notes = await asRpc(harness);
+		harness.setResponses([
+			fauxAssistantMessage("Hello."),
+			callHive(),
+			fauxAssistantMessage("The answer, from the hive."),
+		]);
+
+		await harness.session.prompt("hi");
+		await harness.session.prompt(`/hive ${QUESTION}`);
+		await vi.waitFor(() => expect(harness.getPendingResponseCount()).toBe(0));
+		await harness.session.waitForIdle();
+
+		expect(approvals.map((state) => state.user_message)).toEqual([`/hive ${QUESTION}`]);
+		expect(String(approvals[0]?.tool_call)).toContain("hive");
+		expect(bees).toEqual(["where", "config", "run"]);
+		// Nobody was asked: Jev approved it.
+		expect(notes).toEqual([]);
+		expect(JSON.stringify(harness.session.messages.at(-1))).toContain("The answer, from the hive.");
 	});
 
 	it("without a question it is /swarm: it shows what runs, and stops or ends a bee by name", async () => {
