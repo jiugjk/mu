@@ -96,11 +96,34 @@ describe("hive board", () => {
 		expect(state.current.map((entry) => entry.id)).toEqual(["b", "c", "d"]);
 		expect(state.superseded.get("a")?.later).toBe("b");
 		expect([...state.contested.keys()]).toEqual(["b", "c"]);
-		expect(state.supported.get("c")).toBe(1);
+		expect(state.supported.get("c")).toEqual(["auth"]);
 		// A dispute one side of which was since replaced is over.
 		const settled = foldRelations(notes, [row("c", "b", "contradicts"), row("d", "b", "supersedes")]);
 		expect(settled.contested.size).toBe(0);
 		expect(settled.current.map((entry) => entry.id)).toEqual(["a", "c", "d"]);
+	});
+
+	it("counts a note as confirmed only by other investigators, each once", () => {
+		// Seen live: a bee's three notes in a row "supported" each other, and the report said "confirmed by 4"
+		// of a note only one other investigator had spoken to.
+		const notes = [
+			note({ id: "a", bee: "history" }),
+			note({ id: "b", bee: "history" }),
+			note({ id: "c", bee: "web" }),
+			note({ id: "d", bee: "web" }),
+			note({ id: "e", bee: "repro" }),
+		];
+		const row = (later: string, earlier: string) => ({
+			later,
+			earlier,
+			relation: "supports" as const,
+			score: 0.9,
+			by: "",
+			at: "",
+		});
+		const state = foldRelations(notes, [row("b", "a"), row("c", "a"), row("d", "a"), row("e", "a"), row("d", "c")]);
+		expect(state.supported.get("a")).toEqual(["web", "repro"]);
+		expect(state.supported.has("c")).toBe(false);
 	});
 
 	it("knows without asking that a repeated note is not news", () => {
@@ -702,6 +725,58 @@ describe("hive in a session", () => {
 		const said = lines.find((line) => line.trim().startsWith("FOUND:")) ?? "";
 		expect(said.endsWith(" …")).toBe(true);
 		expect(lines.join("\n")).not.toContain("...");
+	});
+
+	it("the queen: the report names who confirmed a note, and a bee never confirms itself", async () => {
+		const runner: SwarmRunner = async (task, _assignment, _signal, env) => {
+			const board = new Board(env?.KYRN_HIVE_DIR ?? "");
+			const supports = (later: string, by: string) =>
+				board.relate({ later, earlier: "r1", relation: "supports", score: 0.9, by, at: "" });
+			if (env?.KYRN_HIVE_BEE === "repro") {
+				board.post(note({ id: "r1" }));
+				board.post(note({ id: "r2", text: "npm test -- login fails again with TZ=UTC after a clean install" }));
+				supports("r2", "repro");
+			} else {
+				board.post(note({ id: "h1", bee: "history", text: "CI sets TZ=UTC in .github/workflows/ci.yml:12" }));
+				board.post(note({ id: "h2", bee: "history", text: "login.test.ts builds its dates with TZ=UTC in mind" }));
+				supports("h1", "history");
+				supports("h2", "history");
+			}
+			return `${task.title}: done`;
+		};
+		const harness = await createHarness({
+			extensionFactories: [
+				createKyrnJudgeExtension({
+					provider: new MockJudgeProvider(() => ({})),
+					mode: "active",
+					config: parseConfig({ features: { memory: false, permissions: { mode: "full" } } }),
+					swarmRunner: runner,
+				}),
+			],
+		});
+		harnesses.push(harness);
+		harness.setResponses([
+			fauxAssistantMessage(
+				[
+					fauxToolCall("hive", {
+						goal: "Login is flaky in CI only.",
+						bees: [
+							{ name: "repro", focus: "Reproduce the failure locally" },
+							{ name: "history", focus: "Find the commit that introduced it" },
+						],
+					}),
+				],
+				{ stopReason: "toolUse" },
+			),
+			fauxAssistantMessage("It is TZ=UTC."),
+		]);
+
+		await harness.session.prompt("Why is login flaky?");
+
+		const result = JSON.stringify(harness.session.messages.find((message) => message.role === "toolResult"));
+		expect(result).toContain("] repro (confirmed by history): npm test -- login fails only when TZ=UTC is set");
+		expect(result).not.toContain("confirmed by 3");
+		expect(result.match(/confirmed by/g)).toHaveLength(1);
 	});
 
 	it("the queen: a dispute nobody settles gets a verifier while the hive still runs", async () => {

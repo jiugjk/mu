@@ -555,7 +555,7 @@ export function registerHive(runtime: KyrnRuntime, runner: SwarmRunner = spawnRu
 			const marks = (note: Note) => {
 				const parts: string[] = [];
 				const confirmed = state.supported.get(note.id);
-				if (confirmed) parts.push(`confirmed by ${confirmed}`);
+				if (confirmed) parts.push(`confirmed by ${confirmed.join(", ")}`);
 				if (state.contested.has(note.id)) parts.push("in dispute");
 				return parts.length > 0 ? ` (${parts.join(", ")})` : "";
 			};

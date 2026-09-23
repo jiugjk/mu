@@ -192,8 +192,11 @@ export interface BoardState {
 	readonly superseded: ReadonlyMap<string, RelationRow>;
 	/** Note id → the rows disputing it, while both sides still stand. */
 	readonly contested: ReadonlyMap<string, RelationRow[]>;
-	/** Note id → how many later notes confirmed it. */
-	readonly supported: ReadonlyMap<string, number>;
+	/**
+	 * Note id → the other investigators whose later notes confirmed it, each named once. A bee that says the
+	 * same thing twice, or builds on what it said before, has not been confirmed by anyone.
+	 */
+	readonly supported: ReadonlyMap<string, readonly string[]>;
 }
 
 /**
@@ -205,11 +208,16 @@ export interface BoardState {
 export function foldRelations(notes: readonly Note[], relations: readonly RelationRow[]): BoardState {
 	const ids = new Set(notes.map((note) => note.id));
 	const known = relations.filter((row) => ids.has(row.earlier) && ids.has(row.later));
+	const beeOf = new Map(notes.map((note) => [note.id, note.bee]));
 	const superseded = new Map<string, RelationRow>();
-	const supported = new Map<string, number>();
+	const supported = new Map<string, string[]>();
 	for (const row of known) {
 		if (row.relation === "supersedes") superseded.set(row.earlier, row);
-		else if (row.relation === "supports") supported.set(row.earlier, (supported.get(row.earlier) ?? 0) + 1);
+		else if (row.relation === "supports") {
+			const by = beeOf.get(row.later) ?? row.by;
+			const named = supported.get(row.earlier) ?? [];
+			if (by !== beeOf.get(row.earlier) && !named.includes(by)) supported.set(row.earlier, [...named, by]);
+		}
 	}
 	const contested = new Map<string, RelationRow[]>();
 	for (const row of known) {
