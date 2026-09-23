@@ -56,6 +56,8 @@ const helpZh = () => `mu ${VERSIONS.mu} · 先判断再动手的编程代理，�
   /implement <任务>：侦察、计划、实现，三个子代理接力，每个按自己的清单做
   /scout-and-plan <任务>：先侦察，再计划；什么都不改
   /implement-and-review <任务>：实现、评审、修正
+  /hive <问题>：让几个调查员从不同角度同时查一个问题，判定器把每个人的发现传给用得上的其他人，
+    回答综合所有人的结果
   /swarm：每个正在运行的子代理此刻在做什么；/swarm stop [名字] 让它现在交报告并保留发现，
     /swarm kill [名字] 立刻结束它
   /review [要审的内容]：交给评审子代理审查；判定器把评审发现按轻重排成 P0 到 P3
@@ -106,6 +108,8 @@ Tools the agent can use (and you can ask for)
   /implement <task>        scout, plan, implement: a chain of sub-agents, each working to its own checklist
   /scout-and-plan <task>   scout, then plan; nothing is changed
   /implement-and-review <task>   implement, review, fix
+  /hive <question>         several investigators on one question at once, each from its own angle; the judge
+                           passes what one finds to the others it matters to, and the answer draws on all of them
   /swarm                   what every running sub-agent is doing right now; /swarm stop [name] has it report
                            now and keeps what it found, /swarm kill [name] ends it at once
   /review [what]           hand a review to the reviewer role; the judge sorts its findings P0 to P3

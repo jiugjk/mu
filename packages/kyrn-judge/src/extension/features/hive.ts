@@ -13,6 +13,8 @@ import {
 } from "../../decisions/hive.ts";
 import { type RoutingOutcome, swarmRouting } from "../../decisions/swarm-routing.ts";
 import { Board, foldRelations, isDuplicate, type Note, overlapping } from "../../hive/board.ts";
+import { hiveRequest, parseHiveArgs } from "../../hive/request.ts";
+import { say } from "../../language.ts";
 import { knownLessons } from "../../swarm/brief.ts";
 import { CHECKPOINT, conflictLine, correctionLine, HIVE_MESSAGE, lastCall, NOTES_HEADER } from "../../swarm/markers.ts";
 import { type BeeSpec, type BoardSummary, SwarmRun } from "../../swarm/run.ts";
@@ -21,6 +23,7 @@ import { clip, failOpen, type KyrnRuntime, textOf } from "../runtime.ts";
 import {
 	announceRouting,
 	compactSnapshot,
+	controlSwarm,
 	limitsFrom,
 	permissionEnv,
 	pickModel,
@@ -614,6 +617,96 @@ export function registerHive(runtime: KyrnRuntime, runner: SwarmRunner = spawnRu
 	});
 
 	registerSwarmCommand(runtime);
+	registerHiveCommand(runtime);
+}
+
+/** How long `/hive` in print mode waits for the turn it asked for to start. It takes that long only when something is wrong. */
+const TURN_START_MS = 60_000;
+
+/**
+ * `/hive <question>`: a person asks for a hive. The command sends the question
+ * with the request to put a hive on it at once (`hiveRequest`); the main model
+ * plans the bees, because it knows the project and the angles. Without a
+ * question, `/hive` is `/swarm`, as it always was.
+ *
+ * The request is a user message the command sends, so the turn runs as a typed
+ * message's would. Print mode is the exception: it ends the process when the
+ * command returns, so there the command waits for the turn it started to end.
+ */
+function registerHiveCommand(runtime: KyrnRuntime): void {
+	const { pi } = runtime;
+	/** The turn a waiting `/hive` asked for: whether it has started, and what to call when it is over. */
+	let waiting: { started: boolean; over: () => void } | undefined;
+	pi.on(
+		"agent_start",
+		failOpen(() => {
+			if (waiting) waiting.started = true;
+			return undefined;
+		}),
+	);
+	pi.on(
+		"agent_settled",
+		failOpen(() => {
+			if (waiting?.started) waiting.over();
+			return undefined;
+		}),
+	);
+	const untilTurnEnds = (): Promise<void> =>
+		new Promise<void>((resolve) => {
+			let timer: ReturnType<typeof setTimeout> | undefined;
+			const over = () => {
+				clearTimeout(timer);
+				waiting = undefined;
+				resolve();
+			};
+			waiting = { started: false, over };
+			// A request pi refused never starts a turn: its error is printed, and waiting for it would hang.
+			timer = setTimeout(() => {
+				if (!waiting?.started) over();
+			}, TURN_START_MS);
+			timer.unref?.();
+		});
+
+	pi.registerCommand("hive", {
+		description: say({
+			zh: "让几个调查员同时查一个问题：/hive <问题>；不带问题时同 /swarm，看正在干活的子代理",
+			en: "Put several investigators on one question at once: /hive <question>. Without one, the same as /swarm",
+		}),
+		// No argument completions, like /swarm: "/hive stop" is typed by someone who wants it to happen now.
+		handler: async (args, ctx) => {
+			runtime.touch(ctx);
+			const asked = parseHiveArgs(args);
+			if (asked.kind !== "question") {
+				const control = asked.kind === "control" ? `${asked.verb} ${asked.name ?? ""}` : "";
+				controlSwarm(runtime, control, ctx, "/hive <question> puts several investigators on a question of yours.");
+				return;
+			}
+			const refuse = (message: string): void => {
+				// Print mode has nobody to notify: an error is what it prints.
+				if (!ctx.hasUI) throw new Error(message);
+				ctx.ui.notify(message, "warning");
+			};
+			if (!pi.getActiveTools().includes("hive")) {
+				refuse("The hive tool is not active in this session (--tools leaves it out), so /hive cannot start one.");
+				return;
+			}
+			if (!ctx.model) {
+				refuse("No model is selected: /login, then /model.");
+				return;
+			}
+			const request = hiveRequest(asked.question);
+			if (!ctx.isIdle()) {
+				pi.sendUserMessage(request, { deliverAs: "followUp" });
+				ctx.ui.notify("The hive starts when the current turn is over.", "info");
+				return;
+			}
+			// Without credentials pi refuses the request with an error of its own; there is no turn to wait for.
+			const wait = (ctx.mode === "print" || ctx.mode === "json") && ctx.modelRegistry.hasConfiguredAuth(ctx.model);
+			const over = wait ? untilTurnEnds() : undefined;
+			pi.sendUserMessage(request);
+			await over;
+		},
+	});
 }
 
 /** The board as the live view shows it. Read from the files every time: the bees write them from their own processes. */

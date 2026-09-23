@@ -1635,8 +1635,8 @@ export const MANIFEST: HarnessManifest = {
 			name: "hive",
 			title: { zh: "蜂群", en: "Hive" },
 			summary: {
-				zh: "多只蜂并行攻一个难题，判定器把关它们之间传什么。",
-				en: "Several bees work one hard task in parallel; the judge gates what passes between them.",
+				zh: "多只蜂并行攻一个难题，判定器把关它们之间传什么。输入 /hive <问题> 就能自己发起；遇到直接做不下去的难题，代理也会自己发起。",
+				en: "Several bees work one hard task in parallel; the judge gates what passes between them. /hive <question> starts one yourself; the agent also starts one when a problem resists a direct attempt.",
 			},
 			defaultEnabled: true,
 			options: [
