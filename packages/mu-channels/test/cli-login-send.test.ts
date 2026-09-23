@@ -176,6 +176,16 @@ describe("mu qqbot login / send (group 6)", () => {
 		expect(JSON.stringify(qqbotConfig())).not.toContain("env-secret");
 	});
 
+	it("mu qqbot logout removes the AppSecret from mu.json and keeps the rest", async () => {
+		expect(await login("--token", "5005:logout-secret")).toBe(0);
+		vi.spyOn(console, "log").mockImplementation(() => {});
+		expect(await main(["logout"])).toBe(0);
+		const cfg = qqbotConfig();
+		expect(cfg?.appId).toBe("5005");
+		expect(cfg?.clientSecret).toBeUndefined();
+		expect(readFileSync(muJson, "utf8")).not.toContain("logout-secret");
+	});
+
 	it("mu qqbot send sends a proactive text and a local file, without the bot running", async () => {
 		const qq = new FakeQQ();
 		await qq.start();

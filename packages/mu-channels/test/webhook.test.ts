@@ -107,3 +107,55 @@ describe("webhook transport (group 6)", () => {
 		expect(env?.qq.sentTo("c2c", ALICE)).toHaveLength(0);
 	});
 });
+
+describe("webhook with two accounts on one path", () => {
+	it("routes each signed event to the account whose secret signed it", async () => {
+		const port = await freePort();
+		const OTHER_SECRET = "second-account-secret-51c2";
+		const env = await startChannelTest({
+			qqbot: {
+				transport: "webhook",
+				webhook: { host: "127.0.0.1", port, path: PATH },
+				deliverDebounce: { enabled: false },
+				accounts: {
+					second: {
+						appId: "102400002",
+						clientSecret: OTHER_SECRET,
+						model: "fakellm/fake-1",
+						transport: "webhook",
+						webhook: { host: "127.0.0.1", port, path: PATH },
+						deliverDebounce: { enabled: false },
+					},
+				},
+			},
+			waitForReady: false,
+		});
+		try {
+			for (let tries = 0; ; tries++) {
+				try {
+					await fetch(`http://127.0.0.1:${port}/`);
+					break;
+				} catch (error) {
+					if (tries > 200) throw error;
+					await new Promise((resolve) => setTimeout(resolve, 50));
+				}
+			}
+			await new Promise((resolve) => setTimeout(resolve, 500));
+			env.llm.reply({ text: "第二个账户回答。" });
+			const message = c2cMessage(ALICE, "找第二个机器人");
+			const res = await post(
+				port,
+				{ op: 0, s: 1, t: "C2C_MESSAGE_CREATE", id: "evt-9", d: message },
+				{ secret: OTHER_SECRET },
+			);
+			expect(res.status).toBe(200);
+			await env.qq.waitFor(() => env.qq.textsTo("c2c", ALICE).includes("第二个账户回答。"), 15_000, "reply");
+			const sent = env.qq.sentTo("c2c", ALICE)[0];
+			// Only the second account's secret verifies this signature: a 200 and a reply mean it took the event.
+			expect(sent?.body.msg_id).toBe(message.id);
+			expect(env.bot.accountIds().sort()).toEqual(["default", "second"]);
+		} finally {
+			await env.stop();
+		}
+	});
+});

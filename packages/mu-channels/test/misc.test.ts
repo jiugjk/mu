@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { isReservedAddr, validateRemoteUrl } from "../src/qqbot/utils/ssrf-guard.ts";
 import { c2cMessage, groupMessage } from "./support/fake-qq.ts";
 import { APP_ID, APP_SECRET, type ChannelTestEnv, startChannelTest } from "./support/harness.ts";
 
@@ -126,5 +127,44 @@ describe("the rest of the inventory (acceptance)", () => {
 			10_000,
 			"session.json",
 		);
+	});
+});
+
+describe("F31 SSRF guard for media URLs (ported as is)", () => {
+	it("refuses private, loopback and link-local addresses and other schemes; lets QQ's own hosts through", async () => {
+		for (const ip of [
+			"127.0.0.1",
+			"10.1.2.3",
+			"172.16.0.1",
+			"192.168.1.1",
+			"169.254.169.254",
+			"::1",
+			"fd00::1",
+			"0.0.0.0",
+		]) {
+			expect(isReservedAddr(ip)).toBe(true);
+		}
+		expect(isReservedAddr("203.0.113.5")).toBe(false);
+		await expect(validateRemoteUrl("http://127.0.0.1:8080/a.png")).rejects.toThrow(/SSRF/);
+		await expect(validateRemoteUrl("http://169.254.169.254/latest/meta-data")).rejects.toThrow(/SSRF/);
+		await expect(validateRemoteUrl("file:///etc/passwd")).rejects.toThrow(/协议/);
+		await expect(validateRemoteUrl("https://multimedia.nt.qq.com.cn/x.png")).resolves.toBeUndefined();
+	});
+
+	it("tells the user when the model asks to send a URL on the host's network", async () => {
+		const env = await startChannelTest({ qqbot: { deliverDebounce: { enabled: false } } });
+		try {
+			env.llm.reply(
+				{ toolCalls: [{ name: "qqbot_send_media", args: { source: "http://127.0.0.1:9/secret.png" } }] },
+				{ text: "发不出去。" },
+			);
+			env.push("C2C_MESSAGE_CREATE", c2cMessage(ALICE, "发张图"));
+			await env.qq.waitFor(() => env.qq.textsTo("c2c", ALICE).includes("发不出去。"), 20_000, "final");
+			expect(env.qq.textsTo("c2c", ALICE)).toContain("⚠️ 媒体发送失败（1 个），请重试");
+			expect(JSON.stringify(env.llm.requests[1]?.messages)).toContain("SSRF");
+			expect(env.qq.calls.some((call) => call.path.endsWith("/files"))).toBe(false);
+		} finally {
+			await env.stop();
+		}
 	});
 });

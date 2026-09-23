@@ -218,6 +218,40 @@ describe("button approvals (group 5)", () => {
 	});
 });
 
+describe("mu's own commands from QQ (Q5a), with mu's extensions loaded", () => {
+	let env: ChannelTestEnv | undefined;
+	afterEach(async () => {
+		await env?.stop();
+		env = undefined;
+	});
+
+	it('runs /permissions for a user listed in allowFrom, and hands it to the model as text for one let in by "*"', async () => {
+		env = await startChannelTest({
+			qqbot: { deliverDebounce: { enabled: false }, allowFrom: [ADMIN, "*"], permissions: "ask" },
+			extensions: [KYRN_JUDGE],
+			env: { MU_JUDGE: "mock" },
+		});
+		env.llm.reply({ text: "这只是文字。" });
+		env.push("C2C_MESSAGE_CREATE", c2cMessage(STRANGER, "/permissions full"));
+		await env.qq.waitFor(() => env?.qq.textsTo("c2c", STRANGER).includes("这只是文字。"), 20_000, "model reply");
+		expect(env.llm.userTexts(0).join("\n")).toContain("/permissions full");
+
+		// The admin's command runs in the admin's conversation: nothing goes to the model, and commands no longer ask.
+		const requests = env.llm.requests.length;
+		env.push("C2C_MESSAGE_CREATE", c2cMessage(ADMIN, "/permissions full --here"));
+		await new Promise((resolve) => setTimeout(resolve, 1500));
+		expect(env.llm.requests.length).toBe(requests);
+		env.llm.reply(
+			{ toolCalls: [{ name: "bash", args: { command: "touch free.txt && echo no-question" } }] },
+			{ text: "直接做了。" },
+		);
+		env.push("C2C_MESSAGE_CREATE", c2cMessage(ADMIN, "跑一下"));
+		await env.qq.waitFor(() => env?.qq.textsTo("c2c", ADMIN).includes("直接做了。"), 20_000, "final");
+		expect(env.qq.sentTo("c2c", ADMIN).some((call) => call.body.keyboard !== undefined)).toBe(false);
+		expect(JSON.stringify(env.llm.requests.at(-1)?.messages)).toContain("no-question");
+	});
+});
+
 describe("claw_cfg interactions (group 5)", () => {
 	let env: ChannelTestEnv | undefined;
 	afterEach(async () => {

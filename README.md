@@ -177,6 +177,8 @@ Node 22.19 or newer. `mu -p "prompt"` runs once and prints; `mu -c` continues th
 
 pi's own commands (`/model`, `/thinking`, `/login`, `/resume`, `/tree`, `/fork`, `/compact`, `/export` and the rest) are unchanged. `MU_JUDGE=laya,jev mu` overrides the judges for one run.
 
+**QQ bot.** `mu qqbot login` binds a QQ bot by scanning a QR code with mobile QQ; `mu qqbot start` runs it. Each private chat and each group gets its own mu session with the judgment layer, and what needs your approval arrives in QQ as buttons. Setup, configuration and local debugging: [docs/qqbot.md](docs/qqbot.md) (in Chinese).
+
 ## Privacy
 
 Keys stay on this machine. mu never downloads a model or a runtime on its own; anything that needs a download asks first. The judge sees only the fields a question needs; every verdict is logged locally, and you can read them all.
@@ -193,7 +195,7 @@ The desktop app is in `desktop/`: `bun install`, then `KYRN_ROOT="$(cd .. && pwd
 
 ## Credits and license
 
-mu is built on [pi](https://github.com/earendil-works/pi) (the coding agent, MIT; the root [LICENSE](LICENSE) covers `packages/` and `kyrn/`) and [AionUi](https://github.com/iOfficeAI/AionUi) (the desktop app, Apache 2.0; `desktop/` keeps its [LICENSE](desktop/LICENSE)). We are grateful to both. Third-party code in the judgment kernel is listed in [THIRD_PARTY_NOTICES.md](packages/kyrn-judge/THIRD_PARTY_NOTICES.md).
+mu is built on [pi](https://github.com/earendil-works/pi) (the coding agent, MIT; the root [LICENSE](LICENSE) covers `packages/` and `kyrn/`) and [AionUi](https://github.com/iOfficeAI/AionUi) (the desktop app, Apache 2.0; `desktop/` keeps its [LICENSE](desktop/LICENSE)). We are grateful to both. Third-party code in the judgment kernel is listed in [THIRD_PARTY_NOTICES.md](packages/kyrn-judge/THIRD_PARTY_NOTICES.md). The QQ Bot channel (`packages/mu-channels`) is ported from [tencent-connect/openclaw-qqbot](https://github.com/tencent-connect/openclaw-qqbot) (MIT; [LICENSE.openclaw-qqbot](packages/mu-channels/LICENSE.openclaw-qqbot)).
 
 ## Community
 
