@@ -2,7 +2,7 @@
 
 mu 内置 QQ 机器人通道：在 QQ 里私聊机器人，或在群里 @ 它，由 mu 来回答和干活。每个私聊、每个群各有一个独立的 mu 会话，照常加载 mu 的判断层（权限审批、风险命令守卫、经验等），需要你批准的操作会以按钮消息发到 QQ。
 
-这个通道移植自 [tencent-connect/openclaw-qqbot](https://github.com/tencent-connect/openclaw-qqbot)（MIT），QQ 侧的逻辑（网关、收发、切分、流式、富媒体、限额、msgid 缓存等）原样保留，只把与 OpenClaw 的耦合换成了 mu 的接口。原版许可证见 [packages/mu-channels/LICENSE.openclaw-qqbot](../packages/mu-channels/LICENSE.openclaw-qqbot)，与原版的差异见文末[与原版的差异](#与原版的差异)。
+这个通道移植自 [tencent-connect/openclaw-qqbot](https://github.com/tencent-connect/openclaw-qqbot)（MIT），QQ 侧的逻辑（网关、收发、切分、流式、富媒体、限额、msgid 缓存等）原样保留，只把与 OpenClaw 的耦合换成了 mu 的接口。原版许可证见 [packages/mu-channels/LICENSE.openclaw-qqbot](../packages/mu-channels/LICENSE.openclaw-qqbot)，与原版的差异见文末[与原版的差异](#与原版的差异)，逐项验收结果与真机走查清单见 [qqbot-acceptance.md](qqbot-acceptance.md)。
 
 - [快速开始](#快速开始)
 - [绑定与凭据](#绑定与凭据)
