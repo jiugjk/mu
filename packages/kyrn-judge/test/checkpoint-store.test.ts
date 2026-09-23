@@ -164,8 +164,8 @@ describe("checkpoint store", () => {
 
 	it("never overwrites or deletes what it did not snapshot: ignored files, oversized files, nested repositories", async () => {
 		const root = temp("mu-ignored-");
-		write(root, ".gitignore", "secret.env\n");
-		write(root, "secret.env", "TOKEN=original\n");
+		write(root, ".gitignore", "private-notes.txt\n");
+		write(root, "private-notes.txt", "TOKEN=original\n");
 		write(root, "node_modules/pkg/index.js", "module.exports = 1;\n");
 		write(root, "big.bin", Buffer.alloc(4096, 1));
 		write(root, "small-then.txt", "small\n");
@@ -182,7 +182,7 @@ describe("checkpoint store", () => {
 
 		// The attempt un-ignores the secret, shrinks the big file, drops the nested repository's .git, and grows a small file.
 		write(root, ".gitignore", "\n");
-		write(root, "secret.env", "TOKEN=changed\n");
+		write(root, "private-notes.txt", "TOKEN=changed\n");
 		write(root, "big.bin", "now small\n");
 		rmSync(join(root, "vendor/lib/.git"), { recursive: true });
 		write(root, "small-then.txt", Buffer.alloc(4096, 2));
@@ -193,20 +193,52 @@ describe("checkpoint store", () => {
 		expect(plan.remove).toEqual([]);
 		expect(plan.leftAlone.map((entry) => entry.path).sort()).toEqual([
 			"big.bin",
-			"secret.env",
+			"private-notes.txt",
 			"vendor/lib/file.txt",
 		]);
 		const result = await applyRestore(store, plan);
 
 		expect(read(root, "app.ts")).toBe("v1\n");
-		expect(read(root, ".gitignore")).toBe("secret.env\n");
-		expect(read(root, "secret.env")).toBe("TOKEN=changed\n");
+		expect(read(root, ".gitignore")).toBe("private-notes.txt\n");
+		expect(read(root, "private-notes.txt")).toBe("TOKEN=changed\n");
 		expect(read(root, "big.bin")).toBe("now small\n");
 		expect(read(root, "vendor/lib/file.txt")).toBe("somebody else's history\n");
 		expect(read(root, "node_modules/pkg/index.js")).toBe("module.exports = 2;\n");
 		// It grew past the cap, so its current content is in no snapshot: not replaced by the old small one.
 		expect(statSync(join(root, "small-then.txt")).size).toBe(4096);
 		expect(result.leftAlone.find((entry) => entry.path === "small-then.txt")?.why).toContain("ignored or too large");
+	});
+
+	it("keeps secret files out of snapshots, also ones an older mu took in, and keeps the snapshots private", async () => {
+		const root = temp("mu-secrets-");
+		write(root, "src/app.ts", "v1\n");
+		write(root, ".env", "API_KEY=sk-live-1\n");
+		write(root, ".env.example", "API_KEY=\n");
+		write(root, "config/prod.env", "DB_PASSWORD=hunter2\n");
+		write(root, ".env.local", "API_KEY=sk-live-2\n");
+		write(root, "certs/server.key", "-----BEGIN PRIVATE KEY-----\n");
+		write(root, "deploy/id_ed25519", "-----BEGIN OPENSSH PRIVATE KEY-----\n");
+		write(root, "deploy/id_ed25519.pub", "ssh-ed25519 AAAA\n");
+		const base = temp("mu-shadow-");
+		const files = async (store: Awaited<ReturnType<typeof openStore>>, commit: string) =>
+			userGit(root, "--git-dir", store.gitDir, "ls-tree", "-r", "--name-only", commit).split("\n").filter(Boolean);
+
+		// An older mu, without the secret rules, took everything in.
+		const older = await openStore({ baseDir: base, root, run: spawnGit(), ignore: [] });
+		expect(await files(older, (await snapshot(older, "s/1")).commit)).toContain(".env");
+
+		const store = await openStore({ baseDir: base, root, run: spawnGit() });
+		write(root, ".env", "API_KEY=sk-live-3\n");
+		const now = await snapshot(store, "s/2");
+		expect(await files(store, now.commit)).toEqual([".env.example", "deploy/id_ed25519.pub", "src/app.ts"]);
+		if (process.platform !== "win32") expect(statSync(store.gitDir).mode & 0o777).toBe(0o700);
+
+		// A secret the attempt changed is left as it is: it is in no snapshot to go back to.
+		write(root, ".env", "API_KEY=broken\n");
+		write(root, "src/app.ts", "v2\n");
+		await applyRestore(store, await planRestore(store, now.commit, (await scan(store)).tree));
+		expect(read(root, "src/app.ts")).toBe("v1\n");
+		expect(read(root, ".env")).toBe("API_KEY=broken\n");
 	});
 
 	it("does not clear a folder that took a file's place, and keeps the files the user asked to keep", async () => {

@@ -1,6 +1,6 @@
 # 检查点与判断回退（`/checkpoints`、`/rewind`、`turn.rewind`）
 
-更新日期：2026-09-23（主目录、mu 自己的目录与快照上限）。代码：`packages/kyrn-judge/src/checkpoint/git.ts`（跑 git）、`src/checkpoint/store.ts`（快照与还原，纯函数）、`src/checkpoint/mutating.ts`（哪些调用会改文件）、`src/decisions/turn-rewind.ts`、`src/extension/features/checkpoint.ts`（接线、命令、提议）。monitor 多了两行：发现打转或跑偏时告诉运行时（`runtime.trouble`）。
+更新日期：2026-09-24（密钥文件不进快照，影子目录 0700）；2026-09-23（主目录、mu 自己的目录与快照上限）。代码：`packages/kyrn-judge/src/checkpoint/git.ts`（跑 git）、`src/checkpoint/store.ts`（快照与还原，纯函数）、`src/checkpoint/mutating.ts`（哪些调用会改文件）、`src/decisions/turn-rewind.ts`、`src/extension/features/checkpoint.ts`（接线、命令、提议）。monitor 多了两行：发现打转或跑偏时告诉运行时（`runtime.trouble`）。
 
 ## 1. 要解决什么
 
@@ -13,7 +13,9 @@
 - `mu-project.json`：项目路径和最近一次使用时间（清扫用）；
 - `config` 追加一段：`autocrlf=false`、`safecrlf=false`、`longpaths=true`、`quotepath=false`、`fsmonitor=false`、`gc.auto=0`、`commit.gpgsign=false`、`hooksPath` 指向影子目录里一个不存在的子目录；
 - `info/attributes`：`* -text -filter -ident -working-tree-encoding`，压过项目的 `.gitattributes`，于是不做行尾转换、不跑 clean/smudge 过滤器（LFS）、不改编码，还原就是逐字节还原；
-- `info/exclude`：内置的忽略清单（`node_modules/`、`dist/`、`build/`、`target/`、`.venv/`、`coverage/`、`.next/` 等 28 条）加上用户在 `features.checkpoint.ignore` 里补的，再加上 **mu 自己的目录**：影子仓库所在的目录、mu 主目录（`~/.mu`）、pi 的 agent 目录，只要它们在项目里面，就各写一条锚定在项目根的规则（`/.agent/` 这样，名字里的 `[`、`*` 等按字面转义）。快照因此永远不会拍进快照自己、会话记录或凭据。
+- `info/exclude`：内置的忽略清单（`node_modules/`、`dist/`、`build/`、`target/`、`.venv/`、`coverage/`、`.next/` 等 28 条重目录，外加**存密钥的文件**：`*.env`、`.env.*`（`.env.example`、`.env.sample`、`.env.template` 除外）、`.envrc`、`.netrc`、`*.pem`、`*.key`、`*.p12`、`*.pfx`、`id_rsa`、`id_dsa`、`id_ecdsa`、`id_ed25519`）加上用户在 `features.checkpoint.ignore` 里补的，再加上 **mu 自己的目录**：影子仓库所在的目录、mu 主目录（`~/.mu`）、pi 的 agent 目录，只要它们在项目里面，就各写一条锚定在项目根的规则（`/.agent/` 这样，名字里的 `[`、`*` 等按字面转义）。快照因此永远不会拍进快照自己、会话记录或凭据。密钥文件不进快照，是因为快照是项目的第二份拷贝，要留好几天；代价是 `/rewind` 不还原它们，还原也从不碰它们。
+
+影子目录的权限是 0700，每次打开都设一次：上层目录（`~/.mu/agent` 由启动器按默认权限创建）在多用户的 Linux 上可能别人也能进。打开时还会把索引里**已经被忽略的路径**移出去（旧版 mu 拍进去的 `.env`、项目后来才忽略的目录）：索引会一直留着它拿到过的东西，不移出的话之后每个快照都带着它。移出之后，还原把它当作“现在被忽略的文件”，不覆盖也不删除。
 
 每条 git 命令都在同一套环境里跑：继承的环境先**去掉所有 `GIT_*` 变量**（在 git 钩子里启动的代理会带着指向真实 index 的 `GIT_INDEX_FILE`，一个漏网的变量就够把快照写进用户的 index），再设 `GIT_DIR=<影子>`、`GIT_WORK_TREE=<项目>`、`GIT_INDEX_FILE=<影子>/index`、固定的作者身份、`GIT_TERMINAL_PROMPT=0`、`GIT_OPTIONAL_LOCKS=0`、`GIT_LITERAL_PATHSPECS=1`（`a[1].txt` 这样的文件名不当模式）。不经过 shell，参数数组直接 `spawn`。
 

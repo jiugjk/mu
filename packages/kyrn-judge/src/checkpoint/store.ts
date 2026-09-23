@@ -7,15 +7,16 @@
  * the same way. git never adds a path with a `.git` component, so the real repository is not copied either.
  *
  * What goes into a snapshot: everything the project's `.gitignore` does not ignore, minus a built-in
- * list of heavy folders, minus mu's own folders (the snapshots themselves among them) and minus files
- * over a size cap. What a restore may touch follows from that: only paths that are in one of the two
- * trees it compares. An ignored or oversized file is in neither, so it is never overwritten and never
- * deleted.
+ * list of heavy folders and secret files, minus mu's own folders (the snapshots themselves among them)
+ * and minus files over a size cap. What a restore may touch follows from that: only paths that are in
+ * one of the two trees it compares. An ignored or oversized file is in neither, so it is never
+ * overwritten and never deleted.
  */
 import { createHash, randomUUID } from "node:crypto";
 import {
 	accessSync,
 	appendFileSync,
+	chmodSync,
 	constants,
 	existsSync,
 	lstatSync,
@@ -32,7 +33,11 @@ import {
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { GitFailed, type GitRun, shadowEnv, TIMED_OUT } from "./git.ts";
 
-/** Folders that are practically never source and are expensive to copy, ignored even when the project does not ignore them. */
+/**
+ * Ignored even when the project does not ignore them: folders that are practically never source and are
+ * expensive to copy, and files that hold secrets. A snapshot is a second copy of every file it takes in,
+ * kept for days, so a key file is not one of them; a restore leaves such a file as it finds it.
+ */
 export const BUILT_IN_IGNORES: readonly string[] = [
 	"node_modules/",
 	"bower_components/",
@@ -62,6 +67,21 @@ export const BUILT_IN_IGNORES: readonly string[] = [
 	".dart_tool/",
 	".DS_Store",
 	"Thumbs.db",
+	"*.env",
+	".env.*",
+	"!.env.example",
+	"!.env.sample",
+	"!.env.template",
+	".envrc",
+	".netrc",
+	"*.pem",
+	"*.key",
+	"*.p12",
+	"*.pfx",
+	"id_rsa",
+	"id_dsa",
+	"id_ecdsa",
+	"id_ed25519",
 ];
 
 const CONFIG_MARKER = "# mu checkpoint settings";
@@ -266,11 +286,17 @@ export async function openStore(options: StoreOptions): Promise<Store> {
 		maxFileBytes: options.maxFileBytes ?? 5 * 1024 * 1024,
 	};
 	if (!existsSync(join(gitDir, "HEAD"))) {
-		mkdirSync(gitDir, { recursive: true });
+		mkdirSync(gitDir, { recursive: true, mode: 0o700 });
 		// Created without the work tree in the environment: `init --bare` refuses one.
 		const { GIT_WORK_TREE: _tree, GIT_INDEX_FILE: _index, GIT_DIR: _dir, ...bare } = store.env;
 		const result = await options.run(["-c", "init.defaultBranch=mu", "init", "--bare", "--quiet", gitDir], bare);
 		if (result.code !== 0) throw new GitFailed(["init"], result);
+	}
+	try {
+		// A copy of the project is the user's alone, whoever else may look into the folders above it.
+		chmodSync(gitDir, 0o700);
+	} catch {
+		// Not ours to change: the snapshots work all the same.
 	}
 	const config = join(gitDir, "config");
 	if (!readFileSync(config, "utf8").includes(CONFIG_MARKER)) appendFileSync(config, `\n${shadowConfig(gitDir)}`);
@@ -280,6 +306,10 @@ export async function openStore(options: StoreOptions): Promise<Store> {
 	writeFileSync(join(gitDir, "info", "attributes"), SHADOW_ATTRIBUTES);
 	writeFileSync(join(gitDir, PROJECT_FILE), `${JSON.stringify({ root: options.root, lastUsed: Date.now() })}\n`);
 	releaseLocks(store, STALE_LOCK_MS);
+	// The index keeps what it once took in, ignored or not: a key file an older mu snapshotted, a folder the project
+	// ignores since. Out of the index, it is out of every later snapshot, and a restore leaves it alone.
+	const stale = zList(await git(store, ["ls-files", "-z", "--cached", "--ignored", "--exclude-standard"]));
+	if (stale.length > 0) await git(store, ["update-index", "-z", "--force-remove", "--stdin"], `${stale.join("\0")}\0`);
 	return store;
 }
 
