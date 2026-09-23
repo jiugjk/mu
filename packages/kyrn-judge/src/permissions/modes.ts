@@ -97,7 +97,6 @@ const LOOKING: ReadonlySet<string> = new Set([
 	"conflicts_show",
 	"sg_search",
 	"review_triage",
-	"debug_inspect",
 	"debug_step",
 	"debug_stop",
 ]);
@@ -297,6 +296,17 @@ export function permissionNeed(
 			kind: "delegate",
 			summary: clip(`${toolName} ${tasks ? `${tasks} task${tasks === 1 ? "" : "s"}` : title}`, 300),
 			grant: { key: `tool:${toolName}`, label: toolName },
+		};
+	}
+	// Looking at a stopped program only looks. An expression evaluated in it can call anything there, which is more
+	// than running the program the user allowed: `__import__('os').system(...)`.
+	if (toolName === "debug_inspect") {
+		const expression = text(input.expression).trim();
+		if (!expression) return undefined;
+		return {
+			kind: "run",
+			summary: clip(`${toolName} ${expression}`, 300),
+			grant: { key: "tool:debug_inspect", label: toolName },
 		};
 	}
 	if (toolName === "debug_start") {

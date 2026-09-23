@@ -34,6 +34,14 @@ const verdict = (option: string, p = 0.95): Answer => ({
 describe("what needs permission", () => {
 	const cwd = "/work/project";
 
+	it("an expression evaluated in a debugged program can run anything there: it asks, and looking at variables does not", () => {
+		expect(permissionNeed("debug_inspect", { expression: "__import__('os').system('rm -rf ~')" }, cwd)).toMatchObject(
+			{ kind: "run", grant: { key: "tool:debug_inspect" } },
+		);
+		for (const input of [{ frame: 1 }, { reference: 7 }, { expression: "  " }])
+			expect(permissionNeed("debug_inspect", input, cwd)).toBeUndefined();
+	});
+
 	it("never asks to look: reading tools and read-only commands", () => {
 		for (const [tool, input] of [
 			["read", { path: "/etc/hosts" }],
