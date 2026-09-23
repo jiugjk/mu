@@ -82,7 +82,10 @@ describe("reminder scheduler", () => {
 						sent.push(`${job.to} ${text}`);
 					}),
 			});
-		return { file, sent, make, advance: (ms: number) => (now += ms), now: () => now };
+		const advance = (ms: number) => {
+			now += ms;
+		};
+		return { file, sent, make, advance, now: () => now };
 	}
 
 	it("sends a one-off reminder when due, then forgets it; the jobs survive a restart", async () => {
