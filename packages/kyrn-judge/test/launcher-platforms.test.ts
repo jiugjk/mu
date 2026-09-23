@@ -39,6 +39,7 @@ import {
 	planJudge,
 	planLaunch,
 	planLink,
+	planQqbot,
 	planUnlink,
 	platformName,
 	resolveTsx,
@@ -1110,5 +1111,63 @@ describe("the launcher, run for real on this machine", () => {
 		const doctor = run(["doctor"], { HOME: dir, MU_LAUNCH: "spawn" });
 		expect(doctor.out).toContain("login");
 		expect(doctor.code).toBe(1);
+	});
+});
+
+describe("mu qqbot", () => {
+	const args = { env: {}, argv: ["start"], home: "/home/bai", execPath: "/usr/bin/node" };
+
+	it("starts the QQ channel like mu itself, told where the judgment layer, the skills and the version are", () => {
+		const source = `${POSIX_ROOT}/packages/mu-channels/src/qqbot/cli.ts`;
+		const plan = planQqbot({
+			...args,
+			platform: "linux",
+			root: POSIX_ROOT,
+			fs: disk({
+				...posixInstalled,
+				[source]: "",
+				[`${POSIX_ROOT}/kyrn/npm/package.template.json`]: '{"version":"9.9.9"}',
+				[`${POSIX_ROOT}/.env`]: "AI_GATEWAY_API_KEY=k",
+			}),
+		});
+		if (plan.error !== undefined) throw new Error(plan.error);
+		expect(plan.args).toEqual([
+			`${POSIX_ROOT}/node_modules/tsx/dist/cli.mjs`,
+			"--tsconfig",
+			`${POSIX_ROOT}/tsconfig.json`,
+			source,
+			"start",
+		]);
+		expect(plan.env.MU_QQBOT_EXTENSIONS).toBe(`${POSIX_ROOT}/packages/kyrn-judge/src/extension/kyrn-judge.ts`);
+		expect(plan.env.MU_QQBOT_SKILLS).toBe(`${POSIX_ROOT}/packages/mu-channels/skills`);
+		expect(plan.env.MU_VERSION).toBe("9.9.9");
+		expect(plan.env.PI_CODING_AGENT_DIR).toBe("/home/bai/.mu/agent");
+		// The .env is read as data, as for mu: the Jev key reaches the QQ sessions' judge.
+		expect(plan.env.AI_GATEWAY_API_KEY).toBe("k");
+		expect(plan.preface).toBeUndefined();
+	});
+
+	it("runs the built channel in the npm package, and says to update a package without it", () => {
+		const pkg = "/usr/local/lib/node_modules/mu-agent";
+		const installed = {
+			[`${pkg}/dist/bundle/cli.js`]: "",
+			[`${pkg}/judge/dist/kyrn-judge.js`]: "",
+			[`${pkg}/package.json`]: '{"version":"1.2.3"}',
+		};
+		const built = `${pkg}/channels/dist/qqbot.js`;
+		expect(packageEntries({ root: pkg, platform: "linux" }).qqbot).toBe(built);
+		const plan = planQqbot({ ...args, platform: "linux", root: pkg, fs: disk({ ...installed, [built]: "" }) });
+		if (plan.error !== undefined) throw new Error(plan.error);
+		expect(plan.args).toEqual([built, "start"]);
+		expect(plan.env.MU_QQBOT_EXTENSIONS).toBe(`${pkg}/judge/dist/kyrn-judge.js`);
+		expect(plan.env.MU_QQBOT_SKILLS).toBe(`${pkg}/channels/skills`);
+		expect(plan.env.MU_VERSION).toBe("1.2.3");
+		expect(planQqbot({ ...args, platform: "linux", root: pkg, fs: disk(installed) }).error).toContain(
+			"npm i -g mu-agent",
+		);
+	});
+
+	it("is listed in mu help", () => {
+		expect(usage("linux")).toContain("mu qqbot <cmd>");
 	});
 });
