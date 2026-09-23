@@ -1,4 +1,7 @@
 import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
+import { muAgentDir } from "../host/paths.ts";
 import type {
 	GroupConfig,
 	GroupPolicy,
@@ -191,7 +194,8 @@ export function listQQBotAccountIds(cfg: MuConfig): string[] {
 	const ids = new Set<string>();
 	const qqbot = cfg.channels?.qqbot as QQBotChannelConfig | undefined;
 
-	if (qqbot?.appId) {
+	// mu 修正：只在环境变量里有凭据的 default 账户（`mu qqbot login --use-env`）也要列出，否则 start 找不到它
+	if (qqbot?.appId || process.env.QQBOT_APP_ID?.trim()) {
 		ids.add(DEFAULT_ACCOUNT_ID);
 	}
 
@@ -254,6 +258,7 @@ export function resolveQQBotAccount(cfg: MuConfig, accountId?: string | null): R
 	let appId = "";
 	let clientSecret = "";
 	let secretSource: "config" | "file" | "env" | "none" = "none";
+	let secretError: string | undefined;
 
 	if (resolvedAccountId === DEFAULT_ACCOUNT_ID) {
 		// 默认账户从顶层读取（展开所有字段，避免遗漏新增配置项）
@@ -264,9 +269,19 @@ export function resolveQQBotAccount(cfg: MuConfig, accountId?: string | null): R
 		};
 		appId = normalizeAppId(qqbot?.appId);
 	} else {
-		// 命名账户从 accounts 读取
+		// 命名账户从 accounts 读取。mu 修正：原版不继承顶层配置，未写 allowFrom 的命名账户解析为 []（= 所有人），
+		// 文档示例（顶层 allowFrom + 只有 appId 的 accounts.work）因此对所有人开放。现在顶层的访问与行为配置
+		// 作为默认值，账户自己的键覆盖它们；凭据、名称不继承。
 		const account = qqbot?.accounts?.[resolvedAccountId];
-		accountConfig = account ?? {};
+		const {
+			accounts: _accounts,
+			appId: _appId,
+			clientSecret: _clientSecret,
+			clientSecretFile: _clientSecretFile,
+			name: _name,
+			...inherited
+		} = qqbot ?? ({} as QQBotChannelConfig);
+		accountConfig = account ? { ...inherited, ...account } : {};
 		appId = normalizeAppId(account?.appId);
 	}
 
@@ -275,11 +290,14 @@ export function resolveQQBotAccount(cfg: MuConfig, accountId?: string | null): R
 		clientSecret = accountConfig.clientSecret;
 		secretSource = "config";
 	} else if (accountConfig.clientSecretFile) {
-		// mu 修正：原版只标记 secretSource="file"，从未真正读取文件
+		// mu 修正：原版只标记 secretSource="file"，从未真正读取文件。`~` 展开；相对路径相对 mu.json 所在目录
+		const file = accountConfig.clientSecretFile.trim();
+		const expanded = file === "~" || file.startsWith("~/") ? join(homedir(), file.slice(1)) : file;
 		try {
-			clientSecret = readFileSync(accountConfig.clientSecretFile, "utf8").trim();
-		} catch {
+			clientSecret = readFileSync(resolve(muAgentDir(), expanded), "utf8").trim();
+		} catch (err) {
 			clientSecret = "";
+			secretError = `clientSecretFile ${file}: ${err instanceof Error ? err.message : String(err)}`;
 		}
 		secretSource = "file";
 	} else if (process.env.QQBOT_CLIENT_SECRET && resolvedAccountId === DEFAULT_ACCOUNT_ID) {
@@ -299,6 +317,7 @@ export function resolveQQBotAccount(cfg: MuConfig, accountId?: string | null): R
 		appId,
 		clientSecret,
 		secretSource,
+		...(secretError ? { secretError } : {}),
 		systemPrompt: accountConfig.systemPrompt,
 		markdownSupport: accountConfig.markdownSupport !== false,
 		userAgentSuffix: resolveUserAgentSuffix(cfg),
@@ -327,16 +346,13 @@ export function applyQQBotAccountConfig(
 	const next = { ...cfg };
 
 	if (accountId === DEFAULT_ACCOUNT_ID) {
-		// 如果没有设置过 allowFrom，默认设置为 ["*"]
-		const existingConfig = (next.channels?.qqbot as QQBotChannelConfig) || {};
-		const allowFrom = existingConfig.allowFrom ?? ["*"];
-
+		// mu 修正：原版在没有 allowFrom 时写入 ["*"]，任何 QQ 用户都能私聊并自己批准自己的命令。
+		// 现在不写 allowFrom；未设置 dmPolicy 时由 applyAccountDefaults 设为 pairing（陌生人需配对）。
 		next.channels = {
 			...next.channels,
 			qqbot: {
 				...((next.channels?.qqbot as Record<string, unknown>) || {}),
 				enabled: true,
-				allowFrom,
 				...(input.appId ? { appId: input.appId } : {}),
 				...(input.clientSecret
 					? { clientSecret: input.clientSecret }
@@ -347,10 +363,6 @@ export function applyQQBotAccountConfig(
 			},
 		};
 	} else {
-		// 如果没有设置过 allowFrom，默认设置为 ["*"]
-		const existingAccountConfig = (next.channels?.qqbot as QQBotChannelConfig)?.accounts?.[accountId] || {};
-		const allowFrom = existingAccountConfig.allowFrom ?? ["*"];
-
 		next.channels = {
 			...next.channels,
 			qqbot: {
@@ -361,7 +373,6 @@ export function applyQQBotAccountConfig(
 					[accountId]: {
 						...((next.channels?.qqbot as QQBotChannelConfig)?.accounts?.[accountId] || {}),
 						enabled: true,
-						allowFrom,
 						...(input.appId ? { appId: input.appId } : {}),
 						...(input.clientSecret
 							? { clientSecret: input.clientSecret }

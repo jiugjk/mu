@@ -24,9 +24,9 @@ export type MuPermissionMode = "full" | "jev" | "ask";
  * 每档 { max, windowMs }；某档设为 false 关闭该档；整个 rateLimit 设为 false 关闭限流。
  */
 export interface RateLimitConfig {
-	perSender?: { max: number; windowMs: number } | false;
-	perGroup?: { max: number; windowMs: number } | false;
-	global?: { max: number; windowMs: number } | false;
+	perSender?: { max?: number; windowMs?: number } | false;
+	perGroup?: { max?: number; windowMs?: number } | false;
+	global?: { max?: number; windowMs?: number } | false;
 }
 
 /** 会话池（mu 移植新增） */
@@ -56,6 +56,8 @@ export interface ResolvedQQBotAccount {
 	appId: string;
 	clientSecret: string;
 	secretSource: "config" | "file" | "env" | "none";
+	/** clientSecretFile 读取失败的原因（启动时记录，status 中显示） */
+	secretError?: string;
 	/** 系统提示词 */
 	systemPrompt?: string;
 	/** 是否支持 markdown 消息（默认 true） */

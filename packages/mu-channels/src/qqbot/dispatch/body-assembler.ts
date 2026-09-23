@@ -75,9 +75,17 @@ export function assembleBody(
 	const quotePart = buildQuotePart(quote);
 
 	// ── Layer 3: userMessage（群带 [sender] 前缀 + (@you)，合并消息特殊处理） ──
+	// mu 修正：合并批次原先只拼各条的文字，语音转写与附件描述（在合并后的消息上处理）被丢掉
+	const merged = Boolean(mergedMessages && mergedMessages.length > 1);
+	const mergedAttachments = merged ? buildUserContent("", processed).trim() : "";
 	const userMessage =
 		mergedMessages && mergedMessages.length > 0
-			? buildMergedUserMessage({ messages: mergedMessages, quotePart, isGroup, wasMentioned, getRuntime })
+			? [
+					buildMergedUserMessage({ messages: mergedMessages, quotePart, isGroup, wasMentioned, getRuntime }),
+					mergedAttachments,
+				]
+					.filter(Boolean)
+					.join("\n")
 			: buildUserMessage({ msg, userContent, quotePart, isGroup, wasMentioned });
 
 	// ── Layer 4: dynamicCtx（媒体元数据块 + msg_elements 上下文） ──
@@ -85,7 +93,8 @@ export function assembleBody(
 
 	// ── Layer 5: agentBody（命令直通 / 群被@时前置历史） ──
 	const agentBody = buildAgentBody({
-		userContent,
+		// mu 修正：合并批次的最后一条是斜杠命令时，原先只把这条命令交出去，前面的消息全部丢失
+		userContent: merged ? "" : userContent,
 		base: dynamicCtx + userMessage,
 		isGroup,
 		wasMentioned,

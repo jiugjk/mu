@@ -1,4 +1,6 @@
-import { mkdirSync } from "node:fs";
+import { lstatSync, mkdirSync, realpathSync } from "node:fs";
+import { homedir } from "node:os";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import {
 	type AgentSession,
@@ -7,6 +9,7 @@ import {
 	createAgentSessionServices,
 	type ExtensionFactory,
 	SessionManager,
+	SettingsManager,
 	type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { type ChatSurface, ChatUIBridge } from "./chat-ui.ts";
@@ -21,6 +24,27 @@ import type { ChannelLogger } from "./logger.ts";
 export type ToolAccess = "full" | "readonly" | "none";
 
 export const READONLY_TOOLS: readonly string[] = ["read", "grep", "find", "ls"];
+
+/** pi's file tools: their `path` (default: the working directory) is what the guard checks. */
+const FILE_TOOLS: ReadonlySet<string> = new Set(["read", "grep", "find", "ls", "edit", "write"]);
+
+/**
+ * Who may make a conversation's tools reach outside it. A chat session serves people the operator does not
+ * control, so pi's tools are not left to mu's permission gate alone: the gate asks "did the user want this?",
+ * not "may this user do it?". Checked on every tool call of the current turn.
+ */
+export interface ToolGuard {
+	/** The conversation's own directories. */
+	roots: readonly string[];
+	/** Tools that check their own scope and always run (the channel's tools). */
+	freeTools: readonly string[];
+	/** Whether the file tools are limited to `roots` in the current turn. */
+	confine(): boolean;
+	/** Whether the current turn comes from an operator; other people's turns need an operator's yes for other tools. */
+	trusted(): boolean;
+	/** Whether an operator can see and answer a question in this conversation. */
+	operatorPresent(): boolean;
+}
 
 export interface ChannelSessionProfile {
 	/** Working directory: the conversation's own folder. */
@@ -43,6 +67,9 @@ export interface ChannelSessionProfile {
 	systemPrompt: () => string | undefined;
 	surface: ChatSurface;
 	authorize?: (operatorId: string | undefined) => boolean;
+	/** False when nobody who may answer can see the chat: questions get their default at once. Default: true. */
+	answerable?: () => boolean;
+	guard?: ToolGuard;
 	uiTimeoutMs?: number;
 	log: ChannelLogger;
 }
@@ -63,6 +90,18 @@ export async function openChannelSession(profile: ChannelSessionProfile): Promis
 	mkdirSync(profile.cwd, { recursive: true });
 	mkdirSync(profile.sessionDir, { recursive: true });
 	const sessionManager = SessionManager.continueRecent(profile.cwd, profile.sessionDir);
+	const guard = profile.guard;
+	const roots = (guard?.roots ?? []).map((root) => {
+		mkdirSync(root, { recursive: true });
+		return realpathSync(root);
+	});
+	// Set when mu's permission gate is missing: then even operators' turns ask before anything but the file tools.
+	let gateMissing = false;
+	// The chat UI, once the session exists. `answersSeen` is how many answers the guard has accounted for: mu's own
+	// gate runs before it on each tool call, and when an operator just answered that gate's question, asking again
+	// would only repeat it.
+	let bridge: ChatUIBridge | undefined;
+	let answersSeen = 0;
 
 	const channelExtension: ExtensionFactory = (pi) => {
 		pi.on("before_agent_start", (event) => {
@@ -70,11 +109,45 @@ export async function openChannelSession(profile: ChannelSessionProfile): Promis
 			if (!extra) return undefined;
 			return { systemPrompt: `${event.systemPrompt}\n\n${extra}` };
 		});
+		if (!guard) return;
+		pi.on("tool_call", async (event, ctx) => {
+			const justAnswered = (bridge?.answeredCount ?? 0) > answersSeen;
+			answersSeen = bridge?.answeredCount ?? 0;
+			if (guard.freeTools.includes(event.toolName)) return undefined;
+			if (FILE_TOOLS.has(event.toolName)) {
+				if (!guard.confine()) return undefined;
+				const input = event.input as { path?: unknown };
+				const target = typeof input.path === "string" && input.path ? input.path : ".";
+				const real = resolveGuardedPath(target, profile.cwd);
+				if (real && roots.some((root) => real === root || real.startsWith(root + sep))) return undefined;
+				return {
+					block: true,
+					reason: `${target} is outside this conversation's folders; here only its working folder and its downloads can be used.`,
+				};
+			}
+			if (guard.trusted() && !gateMissing) return undefined;
+			if (justAnswered) return undefined;
+			if (!guard.operatorPresent()) {
+				return {
+					block: true,
+					reason: "Only the bot's operators (listed in allowFrom) may start this; ask one of them.",
+				};
+			}
+			const allowed = await ctx.ui.confirm(
+				"需要管理员允许",
+				`${event.toolName}\n${JSON.stringify(event.input).slice(0, 400)}`,
+			);
+			answersSeen = bridge?.answeredCount ?? 0;
+			return allowed ? undefined : { block: true, reason: "An operator did not allow this." };
+		});
 	};
 
 	const services = await createAgentSessionServices({
 		cwd: profile.cwd,
 		agentDir: profile.agentDir,
+		// A conversation's folder is written by the people in the chat: its project settings, extensions, skills and
+		// MCP servers are never trusted (pi's CLI decides the same without a UI to ask in).
+		settingsManager: SettingsManager.create(profile.cwd, profile.agentDir, { projectTrusted: false }),
 		modelRuntimeSignal: AbortSignal.timeout(15_000),
 		resourceLoaderOptions: {
 			additionalExtensionPaths: [...profile.extensionPaths],
@@ -117,10 +190,12 @@ export async function openChannelSession(profile: ChannelSessionProfile): Promis
 		surface: profile.surface,
 		authorize: profile.authorize,
 		timeoutMs: profile.uiTimeoutMs,
+		answerable: profile.answerable,
 		base: session.extensionRunner.getUIContext(),
 		onError: (error) => profile.log.warn(`chat UI: ${error instanceof Error ? error.message : String(error)}`),
 		onMutedNotice: (message, level) => profile.log.info(`notice while opening (${level}): ${message}`),
 	});
+	bridge = ui;
 	// What the extensions say while the session starts stays in the log; questions still reach the chat.
 	ui.muted = true;
 	await session.bindExtensions({
@@ -129,8 +204,14 @@ export async function openChannelSession(profile: ChannelSessionProfile): Promis
 		onError: (error) => profile.log.error(`extension error (${error.extensionPath}): ${error.error}`),
 	});
 
-	if (profile.permissionMode && session.extensionRunner.getCommand("permissions")) {
-		await session.prompt(`/permissions ${profile.permissionMode} --here`, { source: "extension" });
+	if (profile.permissionMode) {
+		if (session.extensionRunner.getCommand("permissions")) {
+			await session.prompt(`/permissions ${profile.permissionMode} --here`, { source: "extension" });
+		} else if (profile.permissionMode !== "full") {
+			// The operator asked for a gate (jev / ask) and it is not there: fail closed rather than run everything.
+			gateMissing = true;
+			profile.log.error("mu's permission gate is not loaded: every tool but the file tools asks an operator");
+		}
 	}
 	ui.muted = false;
 
@@ -142,11 +223,41 @@ export async function openChannelSession(profile: ChannelSessionProfile): Promis
 			ui.cancelAll();
 			try {
 				if (session.isStreaming) await session.abort();
+				// What extensions started for the session (language servers, MCP servers, background jobs, timers)
+				// stops on session_shutdown; pi's dispose() does not send it.
+				if (session.extensionRunner.hasHandlers("session_shutdown")) {
+					await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+				}
+			} catch (error) {
+				profile.log.warn(`session shutdown: ${error instanceof Error ? error.message : String(error)}`);
 			} finally {
 				session.dispose();
 			}
 		},
 	};
+}
+
+/**
+ * Where a tool path really points: `~` and a leading `@` expanded as pi does, relative to `cwd`, symlinks
+ * resolved. A path that does not exist yet resolves through its nearest existing parent. Undefined when a
+ * link on the way points nowhere (it could be created anywhere).
+ */
+function resolveGuardedPath(target: string, cwd: string): string | undefined {
+	let path = target.startsWith("@") ? target.slice(1) : target;
+	if (path === "~" || path.startsWith("~/") || path.startsWith("~\\")) path = join(homedir(), path.slice(1));
+	let current = resolve(cwd, path);
+	const missing: string[] = [];
+	while (!lstatSync(current, { throwIfNoEntry: false })) {
+		const parent = dirname(current);
+		if (parent === current) return undefined;
+		missing.unshift(basename(current));
+		current = parent;
+	}
+	try {
+		return join(realpathSync(current), ...missing);
+	} catch {
+		return undefined;
+	}
 }
 
 export interface ChannelDeliverPayload {
@@ -276,7 +387,8 @@ export async function runChannelTurn(session: AgentSession, turn: ChannelTurn): 
 			const message = event.message as AssistantLike;
 			lastAssistant = message;
 			const text = assistantText(message);
-			if (text) {
+			// A message that failed or was stopped is not an answer: pi may retry it, and the final reports the error.
+			if (text && message.stopReason !== "error" && message.stopReason !== "aborted") {
 				partials?.flush(text);
 				// The partial lane must have caught up before the block is judged, as OpenClaw's serial dispatcher did.
 				const flushed = partials?.idle();
@@ -341,6 +453,7 @@ export async function runIsolatedPrompt(options: IsolatedPromptOptions): Promise
 	const services = await createAgentSessionServices({
 		cwd: options.cwd,
 		agentDir: options.agentDir,
+		settingsManager: SettingsManager.create(options.cwd, options.agentDir, { projectTrusted: false }),
 		modelRuntimeSignal: AbortSignal.timeout(15_000),
 		resourceLoaderOptions: {
 			noExtensions: true,

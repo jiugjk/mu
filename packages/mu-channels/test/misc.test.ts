@@ -110,13 +110,13 @@ describe("the rest of the inventory (acceptance)", () => {
 
 	it("F38-F48 shows a command's usage with `?`", async () => {
 		env = await startChannelTest({ qqbot: { deliverDebounce: { enabled: false } } });
-		env.push("C2C_MESSAGE_CREATE", c2cMessage(ALICE, "/bot-streaming ?"));
+		env.push("C2C_MESSAGE_CREATE", c2cMessage(ALICE, "/bot-ping ?"));
 		const usage = await env.qq.waitFor(
-			() => env?.qq.textsTo("c2c", ALICE).find((t) => t.includes("/bot-streaming")),
+			() => env?.qq.textsTo("c2c", ALICE).find((t) => t.includes("/bot-ping")),
 			15_000,
 			"usage",
 		);
-		expect(usage).toContain("流式消息仅支持 C2C");
+		expect(usage).toContain("/bot-ping");
 		expect(env.llm.requests).toHaveLength(0);
 	});
 

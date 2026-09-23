@@ -109,13 +109,13 @@
 | M2 目录按会话隔离（workspace、下载、会话记录；私聊与群分开） | 通过 | `media.test.ts`（群与私聊下载分开、会话记录分开、白名单外路径被拒） | 补充要求 3 |
 | M3 限流默认档位 | 通过 | 见 F16 | 补充要求 2，属偏离 |
 | M4 `/bot-approve off` 限制与二次确认 | 通过 | `approvals.test.ts` | 补充要求 4 |
-| M5 mu 命令只对 allowFrom 中明确列出的用户生效 | 通过 | `approvals.test.ts`（加载 kyrn-judge：明确列出的用户能执行 `/permissions`；仅凭 `"*"` 进来的用户，命令作为文字交给模型）；`commands-basic.test.ts` | Q5a |
+| M5 mu 命令只对 allowFrom 中明确列出的用户生效 | 通过 | `approvals.test.ts`（加载 kyrn-judge：`/permissions` 在 QQ 中不执行、提示改用 `/bot-approve`；仅凭 `"*"` 进来的用户，命令作为文字交给模型）；`commands-basic.test.ts` | Q5a |
 | M6 权限模式（默认 jev，按账号配置，打开的会话立即生效） | 通过 | `approvals.test.ts` | Q2a |
 | M7 按钮问答桥（select / confirm / input → QQ 按钮或文字） | 通过 | `approvals.test.ts`；`host.test.ts` | 通用组件，放在 `src/host/chat-ui.ts` |
 | M8 QQ 会话默认中文（`MU_LANG=zh-CN`）；会话打开时扩展的提示只写日志 | 通过 | `approvals.test.ts`（中文按钮）；`host.test.ts`（静默提示） | |
 | M9 事件监控（原 reply-options） | 通过 | `agent-events.test.ts`；`streaming-and-delivery.test.ts`（日志里有工具名、没有参数） | 原版测试针对 OpenClaw 专有选项，改为测试 mu 的事件映射 |
 | M10 npm 打包 | 通过 | `node kyrn/npm/build.mjs`：`channels/dist/qqbot.js`、`silk.wasm`、技能、许可证；打包产物实际运行 `mu qqbot start` 并回答私聊；`kyrn/npm/smoke.mjs` 增加 `mu qqbot help/status` | qrcode-terminal 作为 mu-agent 的固定版本依赖 |
-| M11 敏感命令（`/bot-logs`、`/bot-clear-storage`、`/bot-approve`、`/bot-group-always`）只允许 allowFrom 中明确列出的用户，`"*"` 与 `dmPolicy: open` 不算 | 通过 | `commands-more.test.ts`（open 模式下普通命令照常、四条敏感命令被拒并提示用 `/bot-me` 加入 allowFrom、明确列出的管理员可用；只配 `"*"` 时所有人都不能执行）；`approvals.test.ts` | 偏离（第 6 组后确认的方案 b）：原版这四条在 open / `"*"` 时所有人可执行 |
+| M11 敏感命令（`/bot-logs`、`/bot-clear-storage`、`/bot-approve`、`/bot-group-always`；审计后加入 `/bot-streaming`、`/bot-pairing`）只允许 allowFrom 中明确列出的用户，`"*"` 与 `dmPolicy: open` 不算 | 通过 | `commands-more.test.ts`（open 模式下普通命令照常、四条敏感命令被拒并提示用 `/bot-me` 加入 allowFrom、明确列出的管理员可用；只配 `"*"` 时所有人都不能执行）；`approvals.test.ts` | 偏离（第 6 组后确认的方案 b）：原版这四条在 open / `"*"` 时所有人可执行 |
 
 ### 未移植的原版内容（非功能）
 
@@ -223,7 +223,7 @@ MU_QQBOT_LOG_LEVEL=debug mu qqbot start
 - 预期：提醒被删除。
 
 **11. 扫码绑定（真实 q.qq.com）**
-- 操作：用一个新的 `MU_QQBOT_HOME` 与 `PI_CODING_AGENT_DIR`，执行 `mu qqbot login`。
+- 操作：用一个新的 `MU_QQBOT_HOME` 与 `MU_AGENT_DIR`，执行 `mu qqbot login`。
 - 预期：
   - 终端显示二维码，手机 QQ 扫码后显示绑定或创建页面；确认后终端提示"绑定成功"。
   - mu.json 中写入了 appId 与 clientSecret（文件权限为 0600），`allowFrom` 为扫码人的 openid，终端没有打印 AppSecret。

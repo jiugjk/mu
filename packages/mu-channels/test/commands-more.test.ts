@@ -10,7 +10,10 @@ const OTHER = "0EE10EE10EE10EE10EE10EE10EE10006";
 describe("remaining commands and the platform API tool (group 6)", () => {
 	let env: ChannelTestEnv;
 	beforeAll(async () => {
-		env = await startChannelTest({ qqbot: { allowFrom: [ADMIN], deliverDebounce: { enabled: false } } });
+		// No permission gate is loaded here; "full" says none is wanted (otherwise the channel fails closed).
+		env = await startChannelTest({
+			qqbot: { allowFrom: [ADMIN], permissions: "full", deliverDebounce: { enabled: false } },
+		});
 	});
 	afterAll(async () => {
 		await env.stop();
@@ -101,14 +104,14 @@ describe("remaining commands and the platform API tool (group 6)", () => {
 });
 
 describe("who may run /bot-* commands", () => {
-	it("dmPolicy open: anyone may run the ordinary ones (the original's rule), not the four sensitive ones", async () => {
+	it("dmPolicy open: anyone may run the ordinary ones (the original's rule), not the sensitive ones", async () => {
 		const env = await startChannelTest({
 			qqbot: { allowFrom: [ADMIN], dmPolicy: "open", deliverDebounce: { enabled: false } },
 		});
 		try {
-			env.push("C2C_MESSAGE_CREATE", c2cMessage(OTHER, "/bot-streaming"));
+			env.push("C2C_MESSAGE_CREATE", c2cMessage(OTHER, "/bot-ping"));
 			await env.qq.waitFor(
-				() => env.qq.textsTo("c2c", OTHER).find((t) => t.includes("流式消息状态")),
+				() => env.qq.textsTo("c2c", OTHER).find((t) => t.includes("pong")),
 				15_000,
 				"ordinary command",
 			);
@@ -117,6 +120,8 @@ describe("who may run /bot-* commands", () => {
 				"/bot-clear-storage --force",
 				"/bot-approve off",
 				"/bot-group-always on",
+				"/bot-streaming on",
+				"/bot-pairing approve ABCDEFGH",
 			]) {
 				const name = command.split(" ")[0];
 				env.push("C2C_MESSAGE_CREATE", c2cMessage(OTHER, command));

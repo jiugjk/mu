@@ -39,26 +39,37 @@ function group(_title: string) {}
 // ======================================================================
 //  Part 1: isApprovalAuthorized
 // ======================================================================
-group("1. isApprovalAuthorized — allowFrom 为空（开放模式）");
+// mu 修正：原版 allowFrom 为空或含 "*" 时任何人都能审批 —— 在 mu 中等于让发起请求的人批准自己的命令。
+// 下面 1、2 两组的期望值因此与原版相反：只有明确列出的人能审批。
+group("1. isApprovalAuthorized — allowFrom 为空");
 
-test("allowFrom 为空 → 任意用户可审批", () => {
+test("allowFrom 为空 → 没有人能审批", () => {
 	const account: MockAccount = { accountId: "default" };
-	assert.strictEqual(isApprovalAuthorized(account, "user123"), true);
+	assert.strictEqual(isApprovalAuthorized(account, "user123"), false);
 });
 
-test("allowFrom 为空 → 不同用户也可审批", () => {
+test("allowFrom 为空 → 不同用户也不能审批", () => {
 	const account: MockAccount = { accountId: "default" };
-	assert.strictEqual(isApprovalAuthorized(account, "anyone"), true);
+	assert.strictEqual(isApprovalAuthorized(account, "anyone"), false);
 });
 
 group("2. isApprovalAuthorized — allowFrom 含 *");
 
-test("allowFrom: ['*'] → 任意用户可审批", () => {
+test("allowFrom: ['*'] → \"*\" 不算明确列出，不能审批", () => {
 	const account: MockAccount = {
 		accountId: "default",
 		config: { allowFrom: ["*"] },
 	};
-	assert.strictEqual(isApprovalAuthorized(account, "user123"), true);
+	assert.strictEqual(isApprovalAuthorized(account, "user123"), false);
+});
+
+test("allowFrom: ['*', 'alice123'] → 明确列出的人仍可审批", () => {
+	const account: MockAccount = {
+		accountId: "default",
+		config: { allowFrom: ["*", "alice123"] },
+	};
+	assert.strictEqual(isApprovalAuthorized(account, "alice123"), true);
+	assert.strictEqual(isApprovalAuthorized(account, "user123"), false);
 });
 
 group("3. isApprovalAuthorized — allowFrom 白名单模式");
@@ -103,9 +114,9 @@ test("operatorId 为空字符串 → 拒绝", () => {
 
 group("5. isApprovalAuthorized — 无 config");
 
-test("无 config → 按开放模式处理", () => {
+test("无 config → 没有人能审批（mu 修正，原版按开放模式处理）", () => {
 	const account: MockAccount = { accountId: "default" };
-	assert.strictEqual(isApprovalAuthorized(account, "anyone"), true);
+	assert.strictEqual(isApprovalAuthorized(account, "anyone"), false);
 });
 
 // ======================================================================

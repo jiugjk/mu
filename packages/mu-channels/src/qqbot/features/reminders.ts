@@ -9,6 +9,10 @@
  *   - 到点先让模型写提醒语（隔离会话，不进入任何对话），失败时直接发「⏰ 内容」，提醒不会丢；
  *   - 与原版 announce 投递一样走出站发送：该会话近期有用户消息时借用其 msg_id 作被动回复，否则为主动消息；
  *   - 停机期间错过的一次性提醒在启动后补发一次，错过的周期提醒不补发，直接排到下一次。
+ *
+ * mu 修正：reminders.json 是唯一的真相 —— 每次读写都先读文件再改（原先各进程启动时读一次、之后整份覆盖，
+ * 按账户分开运行的进程会互相抹掉对方的提醒）；算不出下一次时间的周期提醒（如 2 月 29 日）删除并记录，
+ * 原先会在紧循环里反复投递或让进程崩溃。
  */
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
@@ -41,6 +45,11 @@ export interface ReminderSchedulerOptions {
 	deliver(job: ReminderJob, text: string): Promise<void>;
 	log?: PluginLogger;
 	now?: () => number;
+	/**
+	 * 这个进程负责的账户（mu 修正：原先每个 `mu qqbot start` 都触发所有账户的提醒，停用的账户也照发，
+	 * 按账户分开运行的多个进程会重复投递）。默认：全部。
+	 */
+	owns?: (accountId: string) => boolean;
 }
 
 const MAX_TIMER_MS = 60 * 60_000;
@@ -49,18 +58,20 @@ const MAX_FAILURES = 3;
 
 export class ReminderScheduler {
 	private readonly options: ReminderSchedulerOptions;
-	private jobs: ReminderJob[] = [];
 	private timer: ReturnType<typeof setTimeout> | undefined;
 	private running: Promise<void> | undefined;
 	private started = false;
 
 	constructor(options: ReminderSchedulerOptions) {
 		this.options = options;
-		this.jobs = this.load();
 	}
 
 	private now(): number {
 		return this.options.now?.() ?? Date.now();
+	}
+
+	private owns(job: ReminderJob): boolean {
+		return this.options.owns?.(job.accountId) ?? true;
 	}
 
 	private load(): ReminderJob[] {
@@ -75,11 +86,26 @@ export class ReminderScheduler {
 		}
 	}
 
-	private save(): void {
+	/** 读文件 → 修改 → 原子写回；返回 change 的结果 */
+	private mutate<T>(change: (jobs: ReminderJob[]) => T): T {
+		const jobs = this.load();
+		const result = change(jobs);
 		fs.mkdirSync(path.dirname(this.options.file), { recursive: true });
 		const tmp = `${this.options.file}.${process.pid}.tmp`;
-		fs.writeFileSync(tmp, `${JSON.stringify({ jobs: this.jobs }, null, 2)}\n`, { mode: 0o600 });
+		fs.writeFileSync(tmp, `${JSON.stringify({ jobs }, null, 2)}\n`, { mode: 0o600 });
 		fs.renameSync(tmp, this.options.file);
+		return result;
+	}
+
+	/** 周期任务的下一次；算不出时 undefined（调用方删除任务） */
+	private nextRun(job: ReminderJob): number | undefined {
+		if (job.schedule.kind !== "cron") return undefined;
+		try {
+			return nextCronTime(parseCron(job.schedule.expr), this.now(), job.schedule.tz);
+		} catch (err) {
+			this.options.log?.error(`reminders: ${job.id} has no next run, removed: ${String(err)}`);
+			return undefined;
+		}
 	}
 
 	/** 校验并计算第一次触发时间 */
@@ -106,14 +132,14 @@ export class ReminderScheduler {
 			createdAt: this.now(),
 			nextRunAt: this.firstRun(input.schedule),
 		};
-		this.jobs.push(job);
-		this.save();
+		if (!Number.isFinite(job.nextRunAt)) throw new Error("无效的提醒时间");
+		this.mutate((jobs) => jobs.push(job));
 		this.arm();
 		return job;
 	}
 
 	list(filter: { accountId?: string; to?: string } = {}): ReminderJob[] {
-		return this.jobs
+		return this.load()
 			.filter(
 				(job) => (!filter.accountId || job.accountId === filter.accountId) && (!filter.to || job.to === filter.to),
 			)
@@ -122,34 +148,34 @@ export class ReminderScheduler {
 
 	/** 删除任务；filter 限定只能删自己会话的 */
 	remove(id: string, filter: { accountId?: string; to?: string } = {}): boolean {
-		const index = this.jobs.findIndex(
-			(job) =>
-				job.id === id &&
-				(!filter.accountId || job.accountId === filter.accountId) &&
-				(!filter.to || job.to === filter.to),
-		);
-		if (index < 0) return false;
-		this.jobs.splice(index, 1);
-		this.save();
+		const removed = this.mutate((jobs) => {
+			const index = jobs.findIndex(
+				(job) =>
+					job.id === id &&
+					(!filter.accountId || job.accountId === filter.accountId) &&
+					(!filter.to || job.to === filter.to),
+			);
+			if (index >= 0) jobs.splice(index, 1);
+			return index >= 0;
+		});
 		this.arm();
-		return true;
+		return removed;
 	}
 
 	start(): void {
 		this.started = true;
 		// 停机期间错过的周期提醒不补发：排到下一次
-		let changed = false;
-		for (const job of this.jobs) {
-			if (job.schedule.kind === "cron" && job.nextRunAt <= this.now()) {
-				try {
-					job.nextRunAt = nextCronTime(parseCron(job.schedule.expr), this.now(), job.schedule.tz);
-					changed = true;
-				} catch (err) {
-					this.options.log?.error(`reminders: ${job.id} cannot be scheduled: ${String(err)}`);
+		const now = this.now();
+		if (this.load().some((job) => this.owns(job) && job.schedule.kind === "cron" && job.nextRunAt <= now)) {
+			this.mutate((jobs) => {
+				for (const [i, job] of [...jobs.entries()].reverse()) {
+					if (!this.owns(job) || job.schedule.kind !== "cron" || job.nextRunAt > now) continue;
+					const next = this.nextRun(job);
+					if (next === undefined) jobs.splice(i, 1);
+					else job.nextRunAt = next;
 				}
-			}
+			});
 		}
-		if (changed) this.save();
 		this.arm();
 	}
 
@@ -164,8 +190,9 @@ export class ReminderScheduler {
 		if (!this.started) return;
 		if (this.timer) clearTimeout(this.timer);
 		this.timer = undefined;
-		if (this.jobs.length === 0) return;
-		const next = Math.min(...this.jobs.map((job) => job.nextRunAt));
+		const owned = this.load().filter((job) => this.owns(job));
+		// 没有自己的任务时也定期看一眼文件：其他进程（或 CLI）可能加了任务
+		const next = owned.length > 0 ? Math.min(...owned.map((job) => job.nextRunAt)) : this.now() + MAX_TIMER_MS;
 		const delay = Math.max(0, Math.min(next - this.now(), MAX_TIMER_MS));
 		this.timer = setTimeout(() => {
 			this.timer = undefined;
@@ -179,7 +206,8 @@ export class ReminderScheduler {
 		if (this.running) return this.running;
 		this.running = (async () => {
 			try {
-				const due = this.jobs.filter((job) => job.nextRunAt <= this.now());
+				const now = this.now();
+				const due = this.load().filter((job) => this.owns(job) && job.nextRunAt <= now);
 				for (const job of due) await this.fire(job);
 			} finally {
 				this.running = undefined;
@@ -200,29 +228,31 @@ export class ReminderScheduler {
 			);
 			text = `⏰ ${job.content}`;
 		}
+		let delivered = false;
 		try {
 			await this.options.deliver(job, text);
+			delivered = true;
 			log?.info(`reminders: ${job.id} delivered to ${job.to}`);
-			job.failures = 0;
-			job.lastRunAt = this.now();
-			if (job.schedule.kind === "at") {
-				this.jobs = this.jobs.filter((each) => each !== job);
-			} else {
-				job.nextRunAt = nextCronTime(parseCron(job.schedule.expr), this.now(), job.schedule.tz);
-			}
 		} catch (err) {
-			job.failures = (job.failures ?? 0) + 1;
 			log?.error(
-				`reminders: ${job.id} delivery failed (${job.failures}): ${err instanceof Error ? err.message : String(err)}`,
+				`reminders: ${job.id} delivery failed (${(job.failures ?? 0) + 1}): ${err instanceof Error ? err.message : String(err)}`,
 			);
-			if (job.schedule.kind === "at" && job.failures >= MAX_FAILURES) {
-				this.jobs = this.jobs.filter((each) => each !== job);
-			} else if (job.schedule.kind === "at") {
-				job.nextRunAt = this.now() + RETRY_MS;
-			} else {
-				job.nextRunAt = nextCronTime(parseCron(job.schedule.expr), this.now(), job.schedule.tz);
-			}
 		}
-		this.save();
+		this.mutate((jobs) => {
+			const index = jobs.findIndex((each) => each.id === job.id);
+			// 期间被删除（本进程或其他进程）：不再改动
+			if (index < 0) return;
+			const current = jobs[index] as ReminderJob;
+			current.failures = delivered ? 0 : (current.failures ?? 0) + 1;
+			if (delivered) current.lastRunAt = this.now();
+			if (current.schedule.kind === "at") {
+				if (delivered || current.failures >= MAX_FAILURES) jobs.splice(index, 1);
+				else current.nextRunAt = this.now() + RETRY_MS;
+				return;
+			}
+			const next = this.nextRun(current);
+			if (next === undefined) jobs.splice(index, 1);
+			else current.nextRunAt = next;
+		});
 	}
 }

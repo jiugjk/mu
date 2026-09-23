@@ -27,6 +27,11 @@ export interface ChatUIOptions {
 	surface: ChatSurface;
 	/** Who may answer. Called with the id of the person who clicked or replied. Default: anyone. */
 	authorize?: (operatorId: string | undefined) => boolean;
+	/**
+	 * False when nobody `authorize` accepts can see the chat (e.g. a private chat with someone else): a question then
+	 * gets its default at once instead of after the timeout. Default: true.
+	 */
+	answerable?: () => boolean;
 	/** An unanswered question gets its default (no, nothing chosen) after this long. Default 10 minutes. */
 	timeoutMs?: number;
 	/** The context the session had before (pi's no-op one): theme and the terminal-only calls come from it. */
@@ -63,6 +68,8 @@ export class ChatUIBridge {
 	 * opens (welcome lines, what was loaded) is for a terminal, not for the people in a chat.
 	 */
 	muted = false;
+	/** How many questions someone answered (not timed out or cancelled): lets a later check see that one was just answered. */
+	answeredCount = 0;
 
 	constructor(options: ChatUIOptions) {
 		this.options = options;
@@ -133,6 +140,7 @@ export class ChatUIBridge {
 		dialog: ExtensionUIDialogOptions | undefined,
 	): Promise<string | undefined> {
 		if (dialog?.signal?.aborted) return Promise.resolve(undefined);
+		if (this.options.answerable && !this.options.answerable()) return Promise.resolve(undefined);
 		const prompt: ChatPrompt = { id: randomBytes(4).toString("hex"), kind, title, message, options };
 		return new Promise((resolve) => {
 			let timer: ReturnType<typeof setTimeout> | undefined;
@@ -140,6 +148,7 @@ export class ChatUIBridge {
 			const finish = (answer: string | undefined, by: string | undefined) => {
 				if (!this.pending.delete(prompt.id)) return;
 				if (timer) clearTimeout(timer);
+				if (answer !== undefined && by !== undefined) this.answeredCount++;
 				dialog?.signal?.removeEventListener("abort", onAbort);
 				try {
 					this.options.surface.settled?.(prompt, answer, by);

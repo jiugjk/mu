@@ -35,14 +35,24 @@ export function dynamicAccessControl(params: { accountId: string; getRuntime: ()
 		}
 
 		// allowlist / pairing：c2c 用 allowFrom，group 用 groupAllowFrom
-		const allowList = isGroup ? ((p?.groupAllowFrom as string[]) ?? []) : ((p?.allowFrom as string[]) ?? []);
-		if (!allowList.length || allowList.includes("*")) {
+		const allowList = (isGroup ? ((p?.groupAllowFrom as string[]) ?? []) : ((p?.allowFrom as string[]) ?? [])).map(
+			(entry) => (isGroup ? String(entry).trim().toUpperCase() : String(entry)),
+		);
+		// mu 修正：原版对空列表或 "*" 一律放行，排在 pairing 之前 —— dmPolicy 为 pairing 时陌生人不经配对直接进入；
+		// groupPolicy 为 allowlist 而 groupAllowFrom 为空时放行所有群（config.ts 的 isGroupAllowed 判为拒绝）。
+		// 现在：私聊 allowlist 保留「空或 "*" = 所有人」；pairing 只认明确列出的人；群 allowlist 为空则不放行。
+		if (!isGroup && mode === "allowlist" && (!allowList.length || allowList.includes("*"))) {
+			await next();
+			return;
+		}
+		if (isGroup && allowList.includes("*")) {
 			await next();
 			return;
 		}
 
-		const id = isGroup ? (ctx.message.groupOpenid ?? "") : (ctx.message.senderId as string);
-		if (allowList.includes(id)) {
+		const rawId = isGroup ? (ctx.message.groupOpenid ?? "") : (ctx.message.senderId as string);
+		const id = isGroup ? rawId.toUpperCase() : rawId;
+		if (id && allowList.includes(id)) {
 			await next();
 			return;
 		}

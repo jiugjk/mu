@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { RecordedCall } from "./support/fake-qq.ts";
@@ -101,21 +102,27 @@ describe("button approvals (group 5)", () => {
 		expect(env.llm.requests).toHaveLength(2);
 	});
 
-	it("refuses a text answer from a group member outside allowFrom, and waits for someone allowed", async () => {
-		env = await start({ groups: { [GROUP]: { toolPolicy: "full", requireMention: false } }, permissions: "ask" });
-		env.llm.reply({ toolCalls: [{ name: "bash", args: { command: "touch x.txt" } }] }, { text: "好了。" });
+	it("takes a text answer only from someone in allowFrom who @s the bot; others' messages go on as messages", async () => {
+		env = await start({ groups: { [GROUP]: { toolPolicy: "full" } }, permissions: "ask" });
+		env.llm.reply(
+			{ toolCalls: [{ name: "bash", args: { command: "touch x.txt" } }] },
+			{ text: "好了。" },
+			{ text: "你好，陌生人。" },
+		);
 		env.push("GROUP_AT_MESSAGE_CREATE", groupMessage(GROUP, ADMIN, "跑", { atBot: true }));
 		await env.qq.waitFor(() => promptTo("group", GROUP), 20_000, "approval prompt");
-		env.push("GROUP_MESSAGE_CREATE", groupMessage(GROUP, STRANGER, "1"));
-		await env.qq.waitFor(
-			() => env?.qq.textsTo("group", GROUP).includes("⚠️ 你没有权限回答这个问题。"),
-			15_000,
-			"unauthorized notice",
-		);
+		// Chatter without @bot never reaches the pending question (it used to approve it).
+		env.push("GROUP_MESSAGE_CREATE", groupMessage(GROUP, ADMIN, "好"));
+		// A member outside allowFrom answering is not an answer: no "no permission" reply, the message queues.
+		env.push("GROUP_AT_MESSAGE_CREATE", groupMessage(GROUP, STRANGER, "1", { atBot: true }));
+		await new Promise((resolve) => setTimeout(resolve, 1000));
+		expect(env.qq.textsTo("group", GROUP).some((t) => t.includes("没有权限回答"))).toBe(false);
 		expect(env.llm.requests).toHaveLength(1);
-		env.push("GROUP_MESSAGE_CREATE", groupMessage(GROUP, ADMIN, "1"));
+		env.push("GROUP_AT_MESSAGE_CREATE", groupMessage(GROUP, ADMIN, "1", { atBot: true }));
 		await env.qq.waitFor(() => env?.qq.textsTo("group", GROUP).includes("好了。"), 20_000, "final answer");
-		expect(env.llm.requests).toHaveLength(2);
+		// Then the stranger's message runs as its own turn.
+		await env.qq.waitFor(() => env?.qq.textsTo("group", GROUP).includes("你好，陌生人。"), 20_000, "queued turn");
+		expect(env.llm.requests).toHaveLength(3);
 	});
 
 	it("approves in a group by the member who clicked (group_member_openid)", async () => {
@@ -225,7 +232,7 @@ describe("mu's own commands from QQ (Q5a), with mu's extensions loaded", () => {
 		env = undefined;
 	});
 
-	it('runs /permissions for a user listed in allowFrom, and hands it to the model as text for one let in by "*"', async () => {
+	it('refuses /permissions from QQ (use /bot-approve), and hands it to the model as text for one let in by "*"', async () => {
 		env = await startChannelTest({
 			qqbot: { deliverDebounce: { enabled: false }, allowFrom: [ADMIN, "*"], permissions: "ask" },
 			extensions: [KYRN_JUDGE],
@@ -236,19 +243,24 @@ describe("mu's own commands from QQ (Q5a), with mu's extensions loaded", () => {
 		await env.qq.waitFor(() => env?.qq.textsTo("c2c", STRANGER).includes("这只是文字。"), 20_000, "model reply");
 		expect(env.llm.userTexts(0).join("\n")).toContain("/permissions full");
 
-		// The admin's command runs in the admin's conversation: nothing goes to the model, and commands no longer ask.
+		// mu's /permissions would skip /bot-approve off's safeguards and, without --here, rewrite the terminal's
+		// default mode: from QQ it is refused, nothing reaches the model, and the mode stays as configured.
 		const requests = env.llm.requests.length;
-		env.push("C2C_MESSAGE_CREATE", c2cMessage(ADMIN, "/permissions full --here"));
-		await new Promise((resolve) => setTimeout(resolve, 1500));
-		expect(env.llm.requests.length).toBe(requests);
-		env.llm.reply(
-			{ toolCalls: [{ name: "bash", args: { command: "touch free.txt && echo no-question" } }] },
-			{ text: "直接做了。" },
+		env.push("C2C_MESSAGE_CREATE", c2cMessage(ADMIN, "/permissions full"));
+		await env.qq.waitFor(
+			() => env?.qq.textsTo("c2c", ADMIN).find((t) => t.includes("/bot-approve")),
+			20_000,
+			"refusal",
 		);
+		expect(env.llm.requests.length).toBe(requests);
+		expect(existsSync(join(env.agentDir, "mu", "permissions.json"))).toBe(false);
+		env.llm.reply({ toolCalls: [{ name: "bash", args: { command: "touch asked.txt" } }] }, { text: "问过了。" });
 		env.push("C2C_MESSAGE_CREATE", c2cMessage(ADMIN, "跑一下"));
-		await env.qq.waitFor(() => env?.qq.textsTo("c2c", ADMIN).includes("直接做了。"), 20_000, "final");
-		expect(env.qq.sentTo("c2c", ADMIN).some((call) => call.body.keyboard !== undefined)).toBe(false);
-		expect(JSON.stringify(env.llm.requests.at(-1)?.messages)).toContain("no-question");
+		await env.qq.waitFor(
+			() => env?.qq.sentTo("c2c", ADMIN).some((call) => call.body.keyboard !== undefined),
+			20_000,
+			"approval prompt",
+		);
 	});
 });
 
@@ -289,19 +301,28 @@ describe("claw_cfg interactions (group 5)", () => {
 		expect((ack.body.data as { claw_cfg: { claw_type: string } }).claw_cfg.claw_type).toBe("openclaw");
 	});
 
-	it("applies a 2002 update of a group's mention setting to mu.json and reports it back", async () => {
-		env = await startChannelTest({});
-		env.push("INTERACTION_CREATE", {
-			id: "cfg-3",
-			type: 11,
-			version: 1,
-			group_openid: GROUP,
-			data: { type: 2002, resolved: { claw_cfg: { require_mention: "always" } } },
-		});
+	it("applies a 2002 update of a group's mention setting by an operator to mu.json and reports it back", async () => {
+		env = await startChannelTest({ qqbot: { allowFrom: [ADMIN] } });
+		const groups = () =>
+			(env?.config().channels as { qqbot: { groups?: Record<string, { requireMention?: boolean }> } }).qqbot.groups;
+		const update = (id: string, member: string) =>
+			env?.push("INTERACTION_CREATE", {
+				id,
+				type: 11,
+				version: 1,
+				group_openid: GROUP,
+				group_member_openid: member,
+				data: { type: 2002, resolved: { claw_cfg: { require_mention: "always" } } },
+			});
+		// Anyone else operating the panel does not change it (as /bot-group-always, operators only).
+		update("cfg-2", STRANGER);
+		await env.qq.waitFor(() => ackOf("cfg-2"), 15_000, "ack");
+		expect(groups()?.[GROUP]?.requireMention).toBeUndefined();
+
+		update("cfg-3", ADMIN);
 		const ack = await env.qq.waitFor(() => ackOf("cfg-3"), 15_000, "ack");
-		const groups = (env.config().channels as { qqbot: { groups?: Record<string, { requireMention?: boolean }> } })
-			.qqbot.groups;
-		expect(groups?.[GROUP]?.requireMention).toBe(false);
-		expect((ack.body.data as { claw_cfg: { require_mention: string } }).claw_cfg.require_mention).toBeDefined();
+		expect(groups()?.[GROUP]?.requireMention).toBe(false);
+		// The reply reports the value just saved, not the one from before.
+		expect((ack.body.data as { claw_cfg: { require_mention: string } }).claw_cfg.require_mention).toBe("always");
 	});
 });

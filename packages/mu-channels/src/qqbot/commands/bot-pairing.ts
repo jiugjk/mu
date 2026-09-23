@@ -1,7 +1,7 @@
 import type { SlashCommand } from "@tencent-connect/qqbot-nodejs";
 import { getPairingApi } from "../adapter/pairing.ts";
 import type { QQBotRuntime } from "../runtime.ts";
-import { checkCommandAuth } from "./config-util.ts";
+import { checkAdminCommandAuth } from "./config-util.ts";
 
 /** /bot-pairing — DM 配对审批管理 */
 export function botPairing(_getRuntime: () => QQBotRuntime): SlashCommand {
@@ -14,7 +14,8 @@ export function botPairing(_getRuntime: () => QQBotRuntime): SlashCommand {
 
 批准指定配对码，允许对应用户私聊机器人。
 配对码由用户首次私聊时自动生成。`,
-		authorized: checkCommandAuth,
+		// mu 修正：批准谁能私聊是运维者的决定（原版 "*" 或 open 时任何人都能批准），且只批准本账户的配对码
+		authorized: checkAdminCommandAuth,
 		handler: async (ctx) => {
 			const args = (
 				Array.isArray(ctx.command.args) ? ctx.command.args.join(" ") : String(ctx.command.args ?? "")
@@ -36,6 +37,7 @@ export function botPairing(_getRuntime: () => QQBotRuntime): SlashCommand {
 				const result = await api.approveCode({
 					channel: "qqbot",
 					code,
+					accountId: String((ctx.state.policy as { accountId?: unknown } | undefined)?.accountId ?? ""),
 				});
 
 				if (!result?.id) {

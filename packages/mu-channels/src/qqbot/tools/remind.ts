@@ -76,42 +76,37 @@ function json(data: unknown) {
 	};
 }
 
+/** 一次性提醒最远一年后（mu 修正：原先过大的数值会存成 null / Infinity，list 抛 RangeError 或立即触发） */
+const MAX_RELATIVE_MS = 366 * 86_400_000;
+const UNIT_MS: Record<string, number> = { d: 86_400_000, h: 3_600_000, min: 60_000, m: 60_000, s: 1_000 };
+
 /**
  * 解析相对时间字符串为毫秒数
  * 支持格式：5m, 1h, 1h30m, 2d, 30s, 1d2h30m 等
+ *
+ * mu 修正：原先只挑出能匹配的片段，其余忽略 ——「2 months」当作 2 分钟、「10ms」当作 10 分钟、「1h30」当作
+ * 1 小时、「-5m」当作 5 分钟后。现在整个字符串必须由「数字 + 单位」组成，否则返回 null。
  */
 export function parseRelativeTime(timeStr: string): number | null {
 	const s = timeStr.trim().toLowerCase();
 
 	// 纯数字 → 视为分钟
 	if (/^\d+$/.test(s)) {
-		return parseInt(s, 10) * 60_000;
+		const ms = parseInt(s, 10) * 60_000;
+		return ms <= MAX_RELATIVE_MS ? ms : null;
 	}
 
+	const token = /\s*(\d+(?:\.\d+)?)\s*(min|d|h|m|s)(?![a-z])/y;
 	let totalMs = 0;
 	let matched = false;
-	const regex = /(\d+(?:\.\d+)?)\s*(d|h|m|s)/g;
-	for (const match of s.matchAll(regex)) {
+	while (token.lastIndex < s.length) {
+		const match = token.exec(s);
+		if (!match) return null;
 		matched = true;
-		const value = parseFloat(match[1] as string);
-		const unit = match[2];
-		switch (unit) {
-			case "d":
-				totalMs += value * 86_400_000;
-				break;
-			case "h":
-				totalMs += value * 3_600_000;
-				break;
-			case "m":
-				totalMs += value * 60_000;
-				break;
-			case "s":
-				totalMs += value * 1_000;
-				break;
-		}
+		totalMs += parseFloat(match[1] as string) * (UNIT_MS[match[2] as string] ?? 0);
 	}
-
-	return matched ? Math.round(totalMs) : null;
+	if (!matched || totalMs > MAX_RELATIVE_MS) return null;
+	return Math.round(totalMs);
 }
 
 /**
@@ -169,9 +164,20 @@ function describeJob(job: ReminderJob) {
 
 // ========== 工具 ==========
 
+/** 每个会话最多同时存在的提醒（mu 修正：原先不限，任何人都能排下成百上千个每分钟的提醒） */
+export const MAX_REMINDERS_PER_TARGET = 20;
+
+/** 间隔不到 5 分钟的 cron（第一段为 * 或 *\/N，N < 5）：每次触发都要调一次模型，不允许 */
+function firesTooOften(expr: string): boolean {
+	const match = /^\*(?:\/(\d+))?$/.exec(expr.trim().split(/\s+/)[0] ?? "");
+	return match !== null && Number(match[1] ?? 1) < 5;
+}
+
 export function createRemindTool(
 	ref: ConversationRef,
 	getScheduler: () => ReminderScheduler | undefined,
+	/** 当前回合是否来自运维者：只有运维者能把提醒发到别的会话 */
+	isTrusted: () => boolean = () => false,
 ): ToolDefinition {
 	const here = conversationTarget(ref);
 	const tool: ToolDefinition<typeof RemindSchema> = {
@@ -217,6 +223,13 @@ export function createRemindTool(
 					error: `无法识别的目标地址 "${p.to}"。私聊 qqbot:c2c:openid，群聊 qqbot:group:group_openid。`,
 				});
 			}
+			// mu 修正：原先任何会话（含只读群）都能往任意私聊或群排提醒，创建方还看不到、删不掉
+			if (resolvedTo !== here && !isTrusted()) {
+				return json({ error: "只能给当前会话设置提醒；发到其他会话需要机器人运维者本人要求。" });
+			}
+			if (scheduler.list({ accountId: ref.accountId, to: resolvedTo }).length >= MAX_REMINDERS_PER_TARGET) {
+				return json({ error: `这个会话已有 ${MAX_REMINDERS_PER_TARGET} 个提醒，请先删除一些（action=remove）。` });
+			}
 			if (!p.time) {
 				return json({ error: 'action=add 时 time（时间）为必填参数。示例："5m"、"1h30m"、"0 8 * * *"' });
 			}
@@ -224,6 +237,7 @@ export function createRemindTool(
 
 			// 判断是 cron 表达式还是相对时间
 			if (isCronExpression(p.time)) {
+				if (firesTooOften(p.time)) return json({ error: "提醒最频繁每 5 分钟一次（cron 的分钟段至少 */5）。" });
 				const tz = p.timezone || "Asia/Shanghai";
 				try {
 					const job = scheduler.add({

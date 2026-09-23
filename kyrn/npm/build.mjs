@@ -298,6 +298,8 @@ async function buildJudge(out) {
 async function buildChannels(out) {
 	const { build } = await import("esbuild");
 	const root = join(out, "channels");
+	const channelsRequire = createRequire(join(channelsSource, "package.json"));
+	const silkDir = dirname(channelsRequire.resolve("silk-wasm"));
 	const result = await build({
 		absWorkingDir: repo,
 		bundle: true,
@@ -314,6 +316,9 @@ async function buildChannels(out) {
 		entryPoints: { qqbot: join(channelsSource, "src/qqbot/cli.ts") },
 		outdir: join(root, "dist"),
 		external: [...CHANNEL_OPTIONAL, ...CHANNEL_DEPENDENCIES],
+		// silk-wasm's CommonJS build (its `main`) reads __filename, which an ES module bundle does not have: loading it
+		// throws and SILK voice is never converted. Its ES module build finds silk.wasm beside import.meta.url.
+		alias: { "silk-wasm": join(silkDir, "index.mjs") },
 		plugins: [
 			{
 				name: "pi-bundle",
@@ -335,9 +340,8 @@ async function buildChannels(out) {
 			throw new Error(`mu qqbot leaves ${imported.path} (${imported.kind}) to be found at run time, and nothing provides it`);
 		}
 	}
-	const channelsRequire = createRequire(join(channelsSource, "package.json"));
-	const silkDir = dirname(channelsRequire.resolve("silk-wasm"));
 	cpSync(join(silkDir, "silk.wasm"), join(root, "dist", "silk.wasm"));
+	writeFileSync(join(root, "THIRD_PARTY_NOTICES.txt"), thirdPartyNotices(Object.keys(result.metafile.inputs)));
 	cpSync(join(channelsSource, "skills"), join(root, "skills"), { recursive: true });
 	cpSync(join(channelsSource, "LICENSE.openclaw-qqbot"), join(root, "LICENSE.openclaw-qqbot"));
 	const channelsPackage = readJson(join(channelsSource, "package.json"));
@@ -349,6 +353,32 @@ async function buildChannels(out) {
 		CHANNEL_DEPENDENCIES.map((name) => [name, exactVersion(channelsPackage.dependencies[name])]),
 	);
 	return { version: channelsPackage.version, dependencies };
+}
+
+/**
+ * The license texts of the packages a bundle carries (legalComments are dropped from the bundle, and MIT and
+ * Apache-2.0 require the notice to travel with the code): one section per package found under node_modules in
+ * the bundle's inputs.
+ */
+function thirdPartyNotices(inputs) {
+	const packages = new Map();
+	for (const input of inputs) {
+		const match = /^(.*node_modules[\\/](?:@[^\\/]+[\\/])?[^\\/]+)[\\/]/.exec(input);
+		if (!match || packages.has(match[1])) continue;
+		const dir = resolve(repo, match[1]);
+		const manifest = readJson(join(dir, "package.json"));
+		const licenseFile = readdirSync(dir).find((name) => /^(licen[sc]e|copying|notice)(\.|$)/i.test(name));
+		packages.set(match[1], {
+			name: manifest.name,
+			version: manifest.version,
+			license: manifest.license ?? "see package",
+			text: licenseFile ? readFileSync(join(dir, licenseFile), "utf8").trim() : `License: ${manifest.license ?? "unknown"}`,
+		});
+	}
+	const sections = [...packages.values()]
+		.sort((a, b) => a.name.localeCompare(b.name))
+		.map((p) => `${p.name}@${p.version} (${p.license})\n\n${p.text}`);
+	return `mu qqbot (channels/dist/qqbot.js) includes the following third-party packages.\n\n${sections.join(`\n\n${"-".repeat(72)}\n\n`)}\n`;
 }
 
 /** pi's Node bundle, from `npm run build`: the package carries it, and the judgment layer takes pi's modules from it. */

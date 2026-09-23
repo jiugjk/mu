@@ -198,7 +198,8 @@ async function processVoiceAttachment(
 	try {
 		const wavUrl = normalizeUrl(att.voice_wav_url);
 		if (wavUrl) {
-			const downloaded = await downloadMediaFile(wavUrl, undefined, downloadDir, log);
+			// mu 修正：原先不带文件名，存成 download_*.bin，转写接口按扩展名判断格式时会拒收
+			const downloaded = await downloadMediaFile(wavUrl, "voice.wav", downloadDir, log);
 			if (downloaded) {
 				localPath = downloaded;
 				log?.debug?.(`Voice: downloaded WAV from voice_wav_url`);

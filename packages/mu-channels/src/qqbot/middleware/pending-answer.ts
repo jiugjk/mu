@@ -6,7 +6,8 @@
  * 该会话有问题在等、且这条消息是一个有效答案（序号 / 选项文字 / 是否 / 任意文字 for input）时，
  * 直接交给问题并结束处理链。按钮点击走 INTERACTION_CREATE，不经过这里。
  *
- * 只有 allowFrom 中的人能作答（与按钮一致）；无权者回复看起来像答案时提示无权限。
+ * 只有 allowFrom 中明确列出的人能作答（与按钮一致）。mu 修正：无权者的消息不再被回复「无权限」后丢弃，
+ * 而是照常交给会话；以 / 开头的消息（如 /stop）不当作答案。
  */
 import type { Middleware } from "@tencent-connect/qqbot-nodejs";
 import type { QQBotRuntime } from "../runtime.ts";
@@ -33,15 +34,14 @@ export function pendingAnswer(params: { account: ResolvedQQBotAccount; getRuntim
 			return;
 		}
 		const text = stripMentionText(msg.content ?? "", (msg as { mentions?: never }).mentions);
+		if (text.trim().startsWith("/")) {
+			await next();
+			return;
+		}
 		const outcome = runtime.host.answerText(ref, text, msg.senderId);
 		if (outcome === "answered") {
 			ctx.log?.info?.(`[answer] ${msg.senderId} answered a pending prompt`);
 			ctx.stop("ui:answered");
-			return;
-		}
-		if (outcome === "unauthorized") {
-			await ctx.bot.sendText(ctx.replyTarget, "⚠️ 你没有权限回答这个问题。").catch(() => {});
-			ctx.stop("ui:unauthorized");
 			return;
 		}
 		await next();

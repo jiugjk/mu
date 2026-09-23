@@ -64,7 +64,8 @@ export function parseCron(expr: string): CronSpec {
 	}
 	if (fields.length !== 5) throw new Error(`cron 表达式应为 5 段（分 时 日 月 周）: ${expr}`);
 	const [minute = "", hour = "", day = "", month = "", weekday = ""] = fields;
-	const weekdays = parseField(weekday, 0, 7, DAY_NAMES);
+	// mu 修正：Quartz 风格的 `?`（日或周不限）原先在 parseField 里就被拒绝
+	const weekdays = parseField(weekday === "?" ? "*" : weekday, 0, 7, DAY_NAMES);
 	if (weekdays.has(7)) {
 		weekdays.delete(7);
 		weekdays.add(0);
@@ -72,7 +73,7 @@ export function parseCron(expr: string): CronSpec {
 	return {
 		minutes: parseField(minute, 0, 59),
 		hours: parseField(hour, 0, 23),
-		days: parseField(day, 1, 31),
+		days: parseField(day === "?" ? "*" : day, 1, 31),
 		months: parseField(month, 1, 12, MONTH_NAMES, 1),
 		weekdays,
 		domAny: day === "*" || day === "?",
@@ -146,8 +147,9 @@ export function nextCronTime(spec: CronSpec, afterMs: number, tz: string): numbe
 						? spec.days.has(p.day)
 						: spec.days.has(p.day) || spec.weekdays.has(p.weekday);
 		if (!spec.months.has(p.month) || !dayMatches) {
-			// 跳到本地下一天 0 点（夏令时偏差由下一轮校正）
-			t += ((23 - p.hour) * 60 + (60 - p.minute)) * MINUTE;
+			// 跳到下一个整点。mu 修正：原先按 24 小时跳到「下一天 0 点」，夏令时开始那天只有 23 小时，
+			// 会跳过次日 0 点这一小时的触发
+			t += (60 - p.minute) * MINUTE;
 			continue;
 		}
 		if (!spec.hours.has(p.hour)) {
@@ -155,6 +157,12 @@ export function nextCronTime(spec: CronSpec, afterMs: number, tz: string): numbe
 			continue;
 		}
 		if (!spec.minutes.has(p.minute)) {
+			t += MINUTE;
+			continue;
+		}
+		// mu 修正：夏令时结束时同一本地时刻出现两次，只在第一次触发
+		const hourBefore = localParts(t - 60 * MINUTE, tz);
+		if (hourBefore.day === p.day && hourBefore.hour === p.hour && hourBefore.minute === p.minute) {
 			t += MINUTE;
 			continue;
 		}

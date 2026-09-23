@@ -26,7 +26,7 @@ mu qqbot login             # 手机 QQ 扫码，创建并绑定一个 QQ 机器�
 mu qqbot start             # 前台运行，Ctrl+C 停止
 ```
 
-扫码的人会自动加入 `allowFrom`（白名单），可以直接私聊机器人。`mu qqbot status` 查看账户与运行状态。
+扫码的人会自动加入 `allowFrom`（白名单），成为运维者（能审批、能执行管理命令），可以直接私聊机器人。用 `--token` / `--use-env` 绑定时没有扫码人：`dmPolicy` 默认 `pairing`，用自己的 QQ 私聊机器人拿到配对码，再在主机上运行 `mu qqbot pairing approve <配对码> --admin` 把自己加入 `allowFrom`。`mu qqbot status` 查看账户与运行状态。
 
 在仓库里开发时用 `./kyrn/bin/mu.mjs qqbot start`（启动器会用 tsx 直接跑源码）。
 
@@ -43,12 +43,14 @@ mu qqbot start             # 前台运行，Ctrl+C 停止
 
 - 凭据写在 `~/.mu/agent/mu.json` 的 `channels.qqbot` 下，文件以 0600 权限原子写入。
 - `--account <id>` 写入指定账户；不指定时，同一 AppID 刷新原账户，第一个账户记为 `default`，之后的以 AppID 为账户名（与原版相同）。
-- `mu qqbot logout [--account <id>]` 从配置中删除 AppSecret。
+- 登录只补写未设置的项（`streaming`、`dmPolicy` 等），不覆盖已有配置，也不会写入 `allowFrom: ["*"]`。
+- `mu qqbot logout [--account <id>]` 从配置中删除 AppSecret 与 `clientSecretFile`。
+- `clientSecretFile` 支持 `~`，相对路径按 `~/.mu/agent` 解析；文件读不到时 `mu qqbot status` 会显示原因。
 - 扫码链接的 `source` 参数取 `clawType`（默认 `mu`），可用 `--source <值>` 覆盖。
 
 ## 配置
 
-配置在 `~/.mu/agent/mu.json` 的 `channels.qqbot` 下，结构与原版在 OpenClaw 里的 `channels.qqbot` 相同。`mu qqbot start` 运行时修改文件会自动生效：策略类设置立即生效，凭据、传输方式、webhook、限流、超时、markdown 的变化会让该账户重新连接。
+配置在 `~/.mu/agent/mu.json` 的 `channels.qqbot` 下，结构与原版在 OpenClaw 里的 `channels.qqbot` 相同。`mu qqbot start` 运行时修改文件会自动生效：策略类设置立即生效，凭据、传输方式、webhook、限流、超时、markdown 的变化会让该账户重新连接；`permissions` 的变化作用于已打开的会话，`model`、群 `toolPolicy` 的变化会让已打开的会话在这一轮结束后关闭，下条消息按新配置重开（`systemPrompt` 等其余项在会话下次打开时生效）。文件改坏（JSON 解析失败）时沿用上一份有效配置并记日志。
 
 ```json
 {
@@ -72,7 +74,7 @@ mu qqbot start             # 前台运行，Ctrl+C 停止
 }
 ```
 
-顶层即 `default` 账户，`accounts.<id>` 为其他账户，账户里可以写下表的所有项。
+顶层即 `default` 账户，`accounts.<id>` 为其他账户，账户里可以写下表的所有项。其他账户继承顶层的设置（凭据 `appId` / `clientSecret` / `clientSecretFile` 与 `name` 除外），自己写的项覆盖顶层。
 
 ### 连接与账户
 
@@ -82,7 +84,7 @@ mu qqbot start             # 前台运行，Ctrl+C 停止
 | `appId` / `clientSecret` / `clientSecretFile` | — | 凭据，见上 |
 | `name` | — | 账户显示名 |
 | `transport` | `"websocket"` | `"webhook"` 见 [Webhook 模式](#webhook-模式) |
-| `webhook.host` / `webhook.port` / `webhook.path` | `0.0.0.0` / `8787` / `/qqbot/webhook` | webhook 监听地址 |
+| `webhook.host` / `webhook.port` / `webhook.path` | `127.0.0.1` / `8787` / `/qqbot/webhook` | webhook 监听地址 |
 | `markdownSupport` | `true` | 以 QQ Markdown 发送回复 |
 | `userAgentSuffix` | — | 追加在 User-Agent 末尾（私有化部署标识） |
 | `processingTimeoutMs` | `0`（不限） | 单条消息最长处理时间，超时中止这一轮 |
@@ -93,13 +95,13 @@ mu qqbot start             # 前台运行，Ctrl+C 停止
 
 | 配置项 | 默认 | 说明 |
 | --- | --- | --- |
-| `allowFrom` | `[]` | 私聊白名单（openid）。为空或含 `"*"` 时所有人都能私聊；审批按钮也只有这里的人能点 |
-| `dmPolicy` | `"allowlist"` | `open` 所有人 / `allowlist` 按 allowFrom / `pairing` 陌生人获得配对码，由 allowFrom 中的人批准 / `disabled` 不响应私聊 |
-| `groupPolicy` | `"open"` | `open` / `allowlist`（按 `groupAllowFrom`）/ `disabled` |
-| `groupAllowFrom` | `[]` | 群白名单（group_openid） |
+| `allowFrom` | `[]` | 私聊白名单（openid）。在 `allowlist` 下为空或含 `"*"` 时所有人都能私聊。**明确列出的 openid 是运维者**：只有他们能审批、执行管理命令和 mu 自己的命令，他们发起的对话才按账户的权限模式运行（`"*"` 不算） |
+| `dmPolicy` | `"allowlist"` | `open` 所有人 / `allowlist` 按 allowFrom / `pairing` 不在 allowFrom 中的人获得配对码，由运维者批准（`allowFrom` 为空或含 `"*"` 时仍要配对）/ `disabled` 不响应私聊 |
+| `groupPolicy` | `"open"` | `open` / `allowlist`（按 `groupAllowFrom`，为空时不接受任何群）/ `disabled` |
+| `groupAllowFrom` | `[]` | 群白名单（group_openid，大小写不敏感） |
 | `rateLimit` | 见下 | 入站限流，`false` 关闭 |
 
-`rateLimit` 默认 `{ "perSender": { "max": 20, "windowMs": 60000 }, "perGroup": { "max": 60, "windowMs": 60000 }, "global": { "max": 300, "windowMs": 60000 } }`：同一发送者每分钟 20 条、同一群每分钟 60 条、全局每分钟 300 条，超出的消息丢弃并记日志。每档可以单独改或设为 `false` 关闭。
+`rateLimit` 默认 `{ "perSender": { "max": 20, "windowMs": 60000 }, "perGroup": { "max": 60, "windowMs": 60000 }, "global": { "max": 300, "windowMs": 60000 } }`：同一发送者每分钟 20 条、同一群每分钟 60 条、全局每分钟 300 条，超出的消息丢弃并记日志。每档可以单独改或设为 `false` 关闭；只写一档（或一档里只写 `max`）时其余沿用默认。三档都通过才计数，所以一个人刷屏被挡下的消息不占群和全局的额度。
 
 ### 群
 
@@ -137,7 +139,7 @@ mu qqbot start             # 前台运行，Ctrl+C 停止
 
 ## 会话、目录与会话池
 
-每个私聊（按用户 openid）和每个群（按 group_openid）是一个独立的 mu 会话，各自的目录互不相通：
+每个私聊（按用户 openid）和每个群（按 group_openid）是一个独立的 mu 会话，各自的目录互不相通。同一个私聊或群里的消息按顺序处理，上一轮结束才开始下一轮。
 
 ```
 ~/.mu/qqbot/
@@ -149,7 +151,13 @@ mu qqbot start             # 前台运行，Ctrl+C 停止
   logs/qqbot.log   日志（已脱敏）
 ```
 
-AI 用 `qqbot_send_media` 发本地文件时，只允许本会话的 workspace、下载目录和系统临时目录里的文件；其他私聊或群的目录不在其中。
+隔离的执行方式：
+
+- 非运维者的私聊、`toolPolicy: "restricted"` 的群，以及不是运维者发起的群消息：文件工具（read、grep、find、ls、edit、write）只能访问本会话的 workspace 与下载目录（符号链接按实际位置判断）；其他工具（如 bash）在群里要运维者在 QQ 里确认，在私聊里直接拒绝。
+- 运维者私聊、`toolPolicy: "full"` 的群里由运维者发起的消息：按权限模式运行，不限目录。
+- 会话目录按不受信任的项目处理：其中的项目级设置、扩展、技能与 MCP 配置不会加载，防止聊天里的人写入文件后在下次打开会话时生效。
+
+AI 用 `qqbot_send_media` 发本地文件时，只允许本会话的 workspace 与下载目录里的文件（按实际路径判断，不能用 `..` 或符号链接跳出去）；其他私聊或群的目录、系统临时目录都不在其中。
 
 ## 权限与审批
 
@@ -168,10 +176,12 @@ npm install
 ```
 
 - 点按钮或回复序号都可以（机器人没开通按钮权限时回复序号）。
-- 只有 `allowFrom` 里的人能作答（`allowFrom` 为空或含 `"*"` 时所有人都能）；群里按点击者本人判断，别人点会收到「你没有权限处理这个审批」。
+- 只有 `allowFrom` 中明确列出的运维者能作答（`"*"` 和空列表都不算）；群里按点击者本人判断，别人点会收到「你没有权限处理这个审批」。群里用文字回复序号时要 @ 机器人。
+- 私聊的对方不是运维者时，没人能作答，需要审批的操作直接按拒绝处理，不等超时。
 - 超过 `approvalTimeoutSeconds` 没人回答按拒绝处理。
+- 非运维者发起的回合不会自动放行（见上面的隔离规则）；即使是 `full` 模式，群里非运维者让 mu 执行命令也要运维者确认。
 
-`/bot-approve` 在 QQ 里切换权限模式（写入 `channels.qqbot.permissions`，并立即作用于已打开的会话）。整个命令只允许 `allowFrom` 中明确列出的用户执行（`"*"` 不算）：
+`/bot-approve` 在 QQ 里切换权限模式（写入 `channels.qqbot.permissions`，并立即作用于已打开的会话，包括正在回答的会话）。整个命令只允许 `allowFrom` 中明确列出的用户执行（`"*"` 不算）：
 
 | 命令 | mu 模式 | 含义 |
 | --- | --- | --- |
@@ -181,7 +191,7 @@ npm install
 | `/bot-approve reset` | — | 删除配置，回到默认 `jev` |
 | `/bot-approve status` | — | 查看当前模式 |
 
-群的 `toolPolicy` 与权限模式叠加：`restricted` 的群只有只读工具，所以默认情况下群里的人无法让 mu 改动主机。
+群的 `toolPolicy` 与权限模式叠加：`restricted` 的群只有只读工具，并且只能读本群自己的目录，所以默认情况下群里的人既不能让 mu 改动主机，也读不到 mu.json、其他会话的记录等文件。
 
 ## QQ 里的命令
 
@@ -189,7 +199,7 @@ npm install
 
 谁能执行：
 - 一般命令需要 `allowFrom` 授权；`allowFrom` 为空、含 `"*"` 或 `dmPolicy` 为 `open` 时所有人都能用（与原版相同）。
-- **`/bot-logs`、`/bot-clear-storage`、`/bot-approve`、`/bot-group-always` 只允许 `allowFrom` 中明确列出 openid 的用户执行，`"*"` 不算**（导出的日志含其他人的对话，其余几条会删文件、改审批、改变所有群的 @ 行为）。只配了 `"*"` 时，这四条在 QQ 里不可用：先私聊发 `/bot-me` 查看自己的 openid，把它加入 `allowFrom`（可以与 `"*"` 并存）。任何命令后加 ` ?` 查看用法，例如 `/bot-streaming ?`。
+- **`/bot-logs`、`/bot-clear-storage`、`/bot-approve`、`/bot-group-always`、`/bot-streaming`、`/bot-pairing` 只允许 `allowFrom` 中明确列出 openid 的用户执行，`"*"` 不算**（导出的日志含其他人的对话，其余几条会删文件、改审批、改配置、批准他人）。只配了 `"*"` 时，这几条在 QQ 里不可用：先私聊发 `/bot-me` 查看自己的 openid，把它加入 `allowFrom`（可以与 `"*"` 并存）。任何命令后加 ` ?` 查看用法，例如 `/bot-streaming ?`。
 
 | 命令 | 作用 |
 | --- | --- |
@@ -199,21 +209,21 @@ npm install
 | `/bot-me` | 你的 openid（填 `allowFrom` 用） |
 | `/bot-upgrade` | 检查更新，给出升级命令 `npm i -g mu-agent@latest` |
 | `/bot-logs` | 把最近的通道日志以文件发给你（已脱敏）。仅明确列出的用户 |
-| `/bot-streaming [on\|off]` | 私聊流式开关 |
+| `/bot-streaming [on\|off]` | 私聊流式开关。仅明确列出的用户 |
 | `/bot-clear-storage [--force]` | 列出 / 删除本账户下载的文件。仅明确列出的用户 |
 | `/bot-approve …` | 权限模式，见上。仅明确列出的用户 |
 | `/bot-group-always [on\|off]` | 所有群是否不用 @ 也回答（`defaultRequireMention`）。仅明确列出的用户 |
-| `/bot-pairing approve <配对码>` | 批准私聊配对（也可在主机上 `mu qqbot pairing approve <码>`） |
-| `/stop` | 中止当前正在进行的回答（插队处理） |
+| `/bot-pairing approve <配对码>` | 批准私聊配对（也可在主机上 `mu qqbot pairing approve <码>`，加 `--admin` 同时加入 `allowFrom`）。仅明确列出的用户 |
+| `/stop` | 中止当前正在进行和排队中的回答（插队处理）。群里只有运维者或这一轮的发起人能停 |
 
-mu 自己的命令（`/permissions`、`/status`、`/review` 等）只对 `allowFrom` 中明确列出的用户生效；其他人发的 `/xxx` 当作普通文字交给模型。
+mu 自己的命令（`/status`、`/review` 等）只对 `allowFrom` 中明确列出的用户生效；其他人发的 `/xxx` 当作普通文字交给模型。`/permissions` 在 QQ 里不执行（它会绕过 `/bot-approve off` 的私聊与二次确认限制，还可能改写终端里 mu 的默认模式），请用 `/bot-approve`。
 
 ## AI 可用的 QQ 工具
 
 | 工具 | 作用 |
 | --- | --- |
 | `qqbot_send_media` | 把图片、语音、视频、文件发到当前会话。来源可以是公网 URL、本会话目录里的文件或 data URL；语音被 QQ 拒收时改发文件；失败时通知用户 |
-| `qqbot_remind` | 定时提醒：`time` 为相对时间（`5m`、`1h30m`、`2d`，至少 30 秒）或 cron 表达式（`0 8 * * *`，默认时区 `Asia/Shanghai`）。提醒保存在 `~/.mu/qqbot/data/reminders.json`，`mu qqbot start` 重启后继续；到点由模型写一句提醒语发出（失败时直接发「⏰ 内容」）。只在 `mu qqbot start` 运行时触发 |
+| `qqbot_remind` | 定时提醒：`time` 为相对时间（`5m`、`1h30m`、`2d`，至少 30 秒）或 cron 表达式（`0 8 * * *`，默认时区 `Asia/Shanghai`）。提醒保存在 `~/.mu/qqbot/data/reminders.json`，`mu qqbot start` 重启后继续；到点由模型写一句提醒语发出（失败时直接发「⏰ 内容」）。只在 `mu qqbot start` 运行时触发。相对时间最长 1 年；cron 至少每 5 分钟一次；每个会话最多 20 条；非运维者只能给当前会话设提醒 |
 | `qqbot_platform_api` | 调用 QQ 开放平台 HTTP 接口（自动带机器人 token），配合 `qqbot-channel` 技能查询频道、群信息等 |
 
 主机上也可以直接发消息，不需要机器人在运行：
@@ -240,10 +250,16 @@ mu qqbot send qqbot:group:<group_openid> "日报" --media ./report.pdf
 
 ```json
 "transport": "webhook",
-"webhook": { "host": "0.0.0.0", "port": 8787, "path": "/qqbot/webhook" }
+"webhook": { "host": "127.0.0.1", "port": 8787, "path": "/qqbot/webhook" }
 ```
 
-在 QQ 开放平台把回调地址设为 `https://你的域名/qqbot/webhook`（前面放一个 HTTPS 反向代理）。请求用 Ed25519 验签，只收 JSON，body 上限 1MB，每路径每分钟 600 次、同时处理 8 个；多个账户可以共用一个端口和路径（按签名区分）。
+默认只监听本机，在 QQ 开放平台把回调地址设为 `https://你的域名/qqbot/webhook`，前面放一个 HTTPS 反向代理转发到这里（代理在另一台机器上时把 `host` 改成对应地址）。
+
+- 请求用 Ed25519 验签，只收 JSON，body 上限 1MB。
+- 事件的时间戳须在 ±5 分钟内，同一签名的重放会被拒绝。
+- 回调地址校验（op 13）只对格式正确的 `plain_token` / `event_ts` 签名，每分钟最多 30 次。
+- 每路径每分钟 600 次、同时处理 8 个，只计验签通过的请求（伪造请求挤不掉正常事件）。
+- 多个账户可以共用一个端口和路径（按 `X-Bot-Appid` 与签名区分）。
 
 ## 本地调试
 
@@ -251,8 +267,8 @@ mu qqbot send qqbot:group:<group_openid> "日报" --media ./report.pdf
 - **单独的 home**：`MU_QQBOT_HOME=/tmp/qq mu qqbot start`，不碰 `~/.mu/qqbot`。
 - **沙箱 / 私有化**：`QQBOT_BASE_URL`、`QQBOT_TOKEN_BASE_URL` 改 QQ 开放平台地址（如沙箱 `https://sandbox.api.sgroup.qq.com`）。
 - **只看某个账户**：`mu qqbot start --account work`。
-- **测试**：`cd packages/mu-channels && npx vitest --run`。测试在本进程里起一个假的 QQ 开放平台（HTTP + WebSocket，`test/support/fake-qq.ts`）和一个 OpenAI 兼容的假模型（`test/support/fake-llm.ts`），跑真实的 `mu qqbot start` 流程，不需要网络和密钥。
-- **不经过 QQ 试 mu 的行为**：QQ 会话就是普通的 mu 会话，cwd 为 `~/.mu/qqbot/workspace/<账户>/<c2c|group>/<openid>`，可以在那里 `mu -c` 接着看。
+- **测试**：`cd packages/mu-channels && node ../../node_modules/vitest/dist/cli.js --run`。测试在本进程里起一个假的 QQ 开放平台（HTTP + WebSocket，`test/support/fake-qq.ts`）和一个 OpenAI 兼容的假模型（`test/support/fake-llm.ts`），跑真实的 `mu qqbot start` 流程，不需要网络和密钥。
+- **不经过 QQ 试 mu 的行为**：QQ 会话就是普通的 mu 会话，cwd 为 `~/.mu/qqbot/workspace/<账户>/<c2c|group>/<openid>`，记录在 `~/.mu/qqbot/sessions/` 下，所以要指定记录目录：在 cwd 里运行 `mu -c --session-dir ~/.mu/qqbot/sessions/<账户>/<c2c|group>/<openid>` 接着看。
 
 ## 环境变量
 
@@ -265,9 +281,9 @@ mu qqbot send qqbot:group:<group_openid> "日报" --media ./report.pdf
 | `MU_QQBOT_PROCESSING_TIMEOUT_MS` | 全局默认的 `processingTimeoutMs` |
 | `MU_QQBOT_OUTBOUND_TIMEOUT_MS` / `MU_QQBOT_OUTBOUND_MEDIA_TIMEOUT_MS` | 发送文本 / 媒体的超时（默认 30s / 300s） |
 | `MU_QQBOT_CONNECT_URL` | 扫码绑定接口地址（调试用，默认 `https://q.qq.com`） |
-| `MU_PERMISSIONS` | QQ 会话的初始权限模式，`mu qqbot start` 未设置时为 `jev`（账户的 `permissions` 优先） |
+| `MU_PERMISSIONS` | 对 QQ 会话不起作用：会话按账户的 `permissions`（默认 `jev`）运行 |
 | `MU_LANG` | mu 提示与按钮的语言，`mu qqbot start` 未设置时为 `zh-CN` |
-| `PI_CODING_AGENT_DIR` | mu 的 home（默认 `~/.mu/agent`），mu.json 在其中 |
+| `MU_AGENT_DIR`（或 `MU_CODING_AGENT_DIR`） | mu 的 home（默认 `~/.mu/agent`），mu.json 在其中 |
 
 ## 与原版的差异
 
@@ -282,9 +298,14 @@ mu qqbot send qqbot:group:<group_openid> "日报" --media ./report.pdf
 - 不移植凭据备份（原版把明文 AppSecret 另存一份用于恢复）。
 - mu 自己的斜杠命令只对 `allowFrom` 中明确列出的用户生效。
 - `/bot-approve off` 只能在私聊中由明确列出的用户执行，并需二次确认。
-- `/bot-logs`、`/bot-clear-storage`、`/bot-approve`、`/bot-group-always` 只允许 `allowFrom` 中明确列出的用户执行（`"*"` 与 `dmPolicy: open` 都不算）。原版这四条与其他命令一样，`dmPolicy` 为 open 或 `allowFrom` 含 `"*"` 时所有人都能执行，包括导出含他人对话的日志。
-- 会话池：闲置 30 分钟回收，最多 32 个会话，超出先回收最久未用的。
-- 媒体下载目录与工作目录按会话隔离；AI 可发送的本地文件范围缩小到本会话的目录与临时目录（原版为 OpenClaw 的媒体目录与 agent 工作区）。
+- `/bot-logs`、`/bot-clear-storage`、`/bot-approve`、`/bot-group-always`、`/bot-streaming`、`/bot-pairing` 只允许 `allowFrom` 中明确列出的用户执行（`"*"` 与 `dmPolicy: open` 都不算）。原版这几条与其他命令一样，`dmPolicy` 为 open 或 `allowFrom` 含 `"*"` 时所有人都能执行，包括导出含他人对话的日志。
+- 审批只认 `allowFrom` 中明确列出的用户（原版 `"*"` 时所有人都能审批，等于请求者自己批准自己）。
+- 登录不再写入 `allowFrom: ["*"]`、不覆盖已有的 `dmPolicy` 等设置；没有运维者时默认 `pairing`。
+- 非运维者的回合与只读群：文件工具限定在本会话目录，其他工具需运维者确认；会话目录按不受信任的项目加载。
+- 会话池：闲置 30 分钟回收，最多 32 个会话，超出先回收最久未用的。同一会话的消息逐轮处理；关闭会话时发出 `session_shutdown`，扩展可以收尾。
+- 媒体下载目录与工作目录按会话隔离；AI 可发送的本地文件范围缩小到本会话的目录（原版为 OpenClaw 的媒体目录与 agent 工作区）。
+- 下载 QQ 附件时拒绝指向内网 / 本机地址的 URL（每次跳转都检查），按字节上限流式写盘。
+- Webhook 默认只监听 127.0.0.1，并检查时间戳、拒绝重放，限流只计验签通过的请求。
 
 **mu 没有对应能力而做的替换**
 
@@ -315,3 +336,12 @@ mu qqbot send qqbot:group:<group_openid> "日报" --media ./report.pdf
 - 配对请求达到上限时原版回复空的配对码。
 - `/bot-streaming`：原版在未配置 streaming 时显示「已启用」（实际不流式），且无法用 `on` 打开。
 - `/指令名 ?`：原版 `/bot-help` 写着可以查看用法，但没有实现。
+
+**其他加固**
+
+- 被动回复窗口：群消息按 5 分钟、私聊按 60 分钟计，过期后改发主动消息。
+- 入站限流三档都通过才计数，一个人刷屏不会耗尽整个群和全局的额度。
+- `pairing` 在 `allowFrom` 为空或含 `"*"` 时仍要配对；`groupPolicy: "allowlist"` 配空列表时不接受任何群。
+- 流式发送中途失败时，剩余内容改用普通消息补发。
+- 超长的单段文字（无空白的长串、代码块）按上限硬切，并补齐代码块围栏。
+- 群配置面板（事件 2002）只有运维者能改 @ 设置。

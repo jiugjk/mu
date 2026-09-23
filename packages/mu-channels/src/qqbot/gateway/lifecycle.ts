@@ -118,18 +118,25 @@ export async function logoutAndClearCredentials(params: {
 
 	if (nextQQBot) {
 		const qqbot = nextQQBot;
-		if (accountId === DEFAULT_ACCOUNT_ID && qqbot.clientSecret) {
-			delete qqbot.clientSecret;
-			cleared = true;
-			changed = true;
+		// mu 修正：clientSecretFile 也是凭据来源（移植后才真正读取），登出时一并去掉；文件本身不删
+		if (accountId === DEFAULT_ACCOUNT_ID) {
+			for (const key of ["clientSecret", "clientSecretFile"]) {
+				if (qqbot[key]) {
+					delete qqbot[key];
+					cleared = true;
+					changed = true;
+				}
+			}
 		}
 		const accounts = qqbot.accounts as Record<string, Record<string, unknown>> | undefined;
 		if (accounts && accountId in accounts) {
 			const entry = accounts[accountId];
-			if (entry && "clientSecret" in entry) {
-				delete entry.clientSecret;
-				cleared = true;
-				changed = true;
+			for (const key of ["clientSecret", "clientSecretFile"]) {
+				if (entry && key in entry) {
+					delete entry[key];
+					cleared = true;
+					changed = true;
+				}
 			}
 			if (entry && Object.keys(entry).length === 0) {
 				delete accounts[accountId];

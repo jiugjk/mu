@@ -25,6 +25,8 @@ interface Entry<T> {
 	value: T;
 	lastUsed: number;
 	holders: number;
+	/** Opened under settings that changed since: closed as soon as it is free, and never handed out again. */
+	retired?: boolean;
 }
 
 export interface Lease<T> {
@@ -44,6 +46,7 @@ export class SessionPool<T> {
 	readonly maxSessions: number;
 	private readonly options: SessionPoolOptions<T>;
 	private timer: ReturnType<typeof setInterval> | undefined;
+	private closed = false;
 
 	constructor(options: SessionPoolOptions<T>) {
 		this.options = options;
@@ -69,7 +72,12 @@ export class SessionPool<T> {
 	}
 
 	async acquire(key: string): Promise<Lease<T>> {
+		if (this.closed) throw new Error("session pool is closed");
 		let entry = this.entries.get(key);
+		if (entry?.retired && this.closable(entry)) {
+			await this.close(key);
+			entry = this.entries.get(key);
+		}
 		if (!entry) {
 			let pending = this.opening.get(key);
 			if (!pending) {
@@ -93,8 +101,20 @@ export class SessionPool<T> {
 				released = true;
 				held.holders--;
 				held.lastUsed = this.now();
+				if (held.retired && this.entries.get(key) === held && this.closable(held)) void this.close(key);
 			},
 		};
+	}
+
+	/**
+	 * The session for `key` was opened under settings that changed (tools, model): it closes now if free, else when
+	 * its turn ends, and the conversation's next message opens it again under the new settings.
+	 */
+	async retire(key: string): Promise<void> {
+		const entry = this.entries.get(key);
+		if (!entry) return;
+		entry.retired = true;
+		if (this.closable(entry)) await this.close(key);
 	}
 
 	private async open(key: string): Promise<Entry<T>> {
@@ -105,6 +125,11 @@ export class SessionPool<T> {
 			await this.close(victim);
 		}
 		const value = await this.options.create(key);
+		if (this.closed) {
+			// closeAll ran while this session was opening: nobody would ever close it
+			await this.options.dispose(value, key);
+			throw new Error("session pool is closed");
+		}
 		const entry: Entry<T> = { value, lastUsed: this.now(), holders: 0 };
 		this.entries.set(key, entry);
 		return entry;
@@ -142,7 +167,10 @@ export class SessionPool<T> {
 		if (this.idleMs <= 0) return [];
 		const cutoff = this.now() - this.idleMs;
 		const idle = [...this.entries].filter(([, entry]) => entry.lastUsed <= cutoff && this.closable(entry));
-		for (const [key] of idle) await this.close(key);
+		// Closing awaits each session's shutdown: one may have been taken again meanwhile.
+		for (const [key, entry] of idle) {
+			if (this.entries.get(key) === entry && this.closable(entry) && entry.lastUsed <= cutoff) await this.close(key);
+		}
 		if (idle.length > 0) this.options.log?.info(`closed ${idle.length} idle session(s)`);
 		return idle.map(([key]) => key);
 	}
@@ -154,8 +182,10 @@ export class SessionPool<T> {
 	}
 
 	async closeAll(): Promise<void> {
+		this.closed = true;
 		if (this.timer) clearInterval(this.timer);
 		this.timer = undefined;
+		await Promise.allSettled([...this.opening.values()]);
 		for (const key of [...this.entries.keys()]) await this.close(key);
 	}
 }

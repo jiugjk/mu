@@ -23,6 +23,8 @@ export interface FakeQQOptions {
 	}>;
 	/** Emit READY on identify. Default true. */
 	autoReady?: boolean;
+	/** Answer the first this many token requests with 503 (the platform briefly unreachable). */
+	tokenFailures?: number;
 }
 
 /**
@@ -39,6 +41,8 @@ export class FakeQQ {
 	private messageCounter = 0;
 	private readyWaiters: Array<() => void> = [];
 	private readyCount = 0;
+	/** Token requests so far. */
+	tokenRequests = 0;
 	private options: FakeQQOptions;
 	baseUrl = "";
 
@@ -133,6 +137,11 @@ export class FakeQQ {
 		};
 
 		if (path === "/app/getAppAccessToken") {
+			this.tokenRequests++;
+			if (this.tokenRequests <= (this.options.tokenFailures ?? 0)) {
+				send(503, { message: "busy" });
+				return;
+			}
 			send(200, { access_token: "fake-access-token-0123456789", expires_in: 7200 });
 			return;
 		}

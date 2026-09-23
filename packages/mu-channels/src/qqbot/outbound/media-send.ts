@@ -12,7 +12,6 @@
  */
 
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import type { ReplyTarget } from "@tencent-connect/qqbot-nodejs";
 import type { QQBotGateway } from "../gateway/index.ts";
@@ -69,32 +68,12 @@ export interface SendMediaResult {
 
 // ── 安全常量 ──
 
-/** 收集临时目录根路径：os.tmpdir + Unix /tmp（处理 macOS /tmp→/private/tmp 符号链接） */
-function resolveTempRoots(): string[] {
-	const roots = new Set<string>();
-	try {
-		const tmp = os.tmpdir();
-		roots.add(fs.existsSync(tmp) ? fs.realpathSync(tmp) : tmp);
-	} catch {
-		/* skip */
-	}
-	// Unix: 解析 /tmp 真实路径，覆盖 macOS 符号链接场景
-	if (process.platform !== "win32") {
-		try {
-			roots.add(fs.realpathSync("/tmp"));
-		} catch {
-			/* skip */
-		}
-	}
-	return [...roots];
-}
-
 /**
  * 构建动态白名单目录列表。
  *
  * mu 适配（按会话隔离）：原版允许 ~/.openclaw 下的 media / workspace / outbound 以及当前 agent 工作区；
- * 移植后只允许本会话自己的 workspace 与下载目录，以及系统临时目录（与原版一致）。
- * 其他私聊 / 群的目录不在白名单内。
+ * 移植后只允许本会话自己的 workspace 与下载目录。其他私聊 / 群的目录不在白名单内。
+ * mu 修正：原版还允许整个系统临时目录（/tmp），任何人都能让 AI 把 /tmp 下的任意文件发到 QQ；已去掉。
  */
 function buildDynamicAllowedRoots(dirs?: { workspace: string; media: string }): string[] {
 	const roots: string[] = [];
@@ -116,9 +95,6 @@ function buildDynamicAllowedRoots(dirs?: { workspace: string; media: string }): 
 		addRoot(dirs.workspace);
 		addRoot(dirs.media);
 	}
-
-	// 临时目录
-	for (const t of resolveTempRoots()) addRoot(t);
 
 	return roots;
 }
@@ -218,20 +194,13 @@ async function resolveMediaPath(
 		return { ok: true, path: normalized, isLocal: false };
 	}
 
-	// 纯文件名→工作区兜底查找
-	if (!isLocalFilePath(normalized)) {
-		const resolved = resolveWorkingFile(normalized, workspaceDir);
-		if (resolved) {
-			return { ok: true, path: resolved, isLocal: true };
-		}
-		return { ok: true, path: normalized, isLocal: false };
-	}
-
-	// 本地路径 → 安全校验
+	// 本地路径（含纯文件名）→ 安全校验
 	// mu 适配：相对路径按会话工作区（模型的 cwd）解析，而不是宿主进程的 cwd
+	// mu 修正：原版对纯文件名（如 "x/../../etc/passwd"、工作区里的符号链接）只要存在就直接放行，不做下面的
+	// 真实路径与白名单检查，可以把主机上任何文件发出去；不存在的纯文件名也不再当作 base64 发出。
 	const resolved = workspaceDir ? path.resolve(workspaceDir, normalized) : path.resolve(normalized);
 	if (!fs.existsSync(resolved)) {
-		return { ok: false, error: `File not found: ${resolved}` };
+		return { ok: false, error: `File not found: ${isLocalFilePath(normalized) ? resolved : normalized}` };
 	}
 
 	let real: string;
@@ -260,14 +229,6 @@ function resolveConversationDirs(conversation?: ConversationRef): { workspace: s
 	if (!conversation) return undefined;
 	const rt = tryGetQQBotRuntime();
 	return rt?.host.dirsFor(conversation);
-}
-
-/** 纯文件名在工作区兜底查找（mu 适配：原版先查进程 cwd；按会话隔离后只查本会话工作区） */
-function resolveWorkingFile(name: string, workspaceDir?: string): string | null {
-	for (const p of [workspaceDir ? path.join(workspaceDir, name) : null]) {
-		if (p && fs.existsSync(p)) return p;
-	}
-	return null;
 }
 
 // ── 各类型 sender ──

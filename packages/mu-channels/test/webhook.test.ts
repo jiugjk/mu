@@ -22,10 +22,10 @@ async function freePort(): Promise<number> {
 async function post(
 	port: number,
 	payload: unknown,
-	options: { secret?: string; contentType?: string; signature?: string } = {},
+	options: { secret?: string; contentType?: string; signature?: string; timestamp?: string; raw?: Buffer } = {},
 ): Promise<Response> {
-	const body = Buffer.from(JSON.stringify(payload));
-	const timestamp = String(Math.floor(Date.now() / 1000));
+	const body = options.raw ?? Buffer.from(JSON.stringify(payload));
+	const timestamp = options.timestamp ?? String(Math.floor(Date.now() / 1000));
 	const signature =
 		options.signature ?? ed25519Sign(options.secret ?? APP_SECRET, Buffer.concat([Buffer.from(timestamp), body]));
 	return fetch(`http://127.0.0.1:${port}${PATH}`, {
@@ -105,6 +105,53 @@ describe("webhook transport (group 6)", () => {
 		await new Promise((resolve) => setTimeout(resolve, 500));
 		expect(env?.llm.requests).toHaveLength(0);
 		expect(env?.qq.sentTo("c2c", ALICE)).toHaveLength(0);
+	});
+
+	it("does not sign what a caller asks it to: an event cannot be forged through the op 13 validation", async () => {
+		await start();
+		// The validation reply is a signature over event_ts + plain_token, the same shape an event is signed with.
+		const forged = Buffer.from(
+			JSON.stringify({ op: 0, s: 3, t: "C2C_MESSAGE_CREATE", id: "evt-3", d: c2cMessage(ALICE, "/bot-ping") }),
+		);
+		const eventTs = String(Math.floor(Date.now() / 1000));
+		const oracle = await post(port, { op: 13, d: { plain_token: forged.toString("utf8"), event_ts: eventTs } });
+		// Answering would hand out a valid signature for `eventTs + forged`, i.e. for the forged event.
+		expect(oracle.status).toBe(400);
+		expect(JSON.stringify(await oracle.json())).not.toContain("signature");
+	});
+
+	it("rejects stale timestamps and replays of a signed event", async () => {
+		await start();
+		env?.llm.reply({ text: "只回一次。" });
+		const stale = String(Math.floor(Date.now() / 1000) - 3600);
+		const old = await post(
+			port,
+			{ op: 0, s: 4, t: "C2C_MESSAGE_CREATE", id: "evt-4", d: c2cMessage(ALICE, "旧的") },
+			{ timestamp: stale },
+		);
+		expect(old.status).toBe(401);
+
+		const body = Buffer.from(
+			JSON.stringify({ op: 0, s: 5, t: "C2C_MESSAGE_CREATE", id: "evt-5", d: c2cMessage(ALICE, "一次") }),
+		);
+		const timestamp = String(Math.floor(Date.now() / 1000));
+		const signature = ed25519Sign(APP_SECRET, Buffer.concat([Buffer.from(timestamp), body]));
+		expect((await post(port, undefined, { raw: body, timestamp, signature })).status).toBe(200);
+		expect((await post(port, undefined, { raw: body, timestamp, signature })).status).toBe(401);
+		await env?.qq.waitFor(() => env?.qq.textsTo("c2c", ALICE).includes("只回一次。"), 15_000, "reply");
+		expect(env?.llm.requests).toHaveLength(1);
+	});
+
+	it("does not let unsigned requests use up the budget for QQ's real callbacks", async () => {
+		await start();
+		env?.llm.reply({ text: "还能收到。" });
+		const junk = await Promise.all(
+			Array.from({ length: 700 }, () => post(port, { op: 0 }, { signature: "00".repeat(64) })),
+		);
+		expect(junk.every((res) => res.status === 401)).toBe(true);
+		const res = await post(port, { op: 0, s: 6, t: "C2C_MESSAGE_CREATE", id: "evt-6", d: c2cMessage(ALICE, "真的") });
+		expect(res.status).toBe(200);
+		await env?.qq.waitFor(() => env?.qq.textsTo("c2c", ALICE).includes("还能收到。"), 15_000, "reply");
 	});
 });
 

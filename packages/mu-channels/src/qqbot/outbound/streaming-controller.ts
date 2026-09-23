@@ -76,6 +76,19 @@ export class StreamingController {
 		return this.isTerminal && this.sentChunkCount === 0;
 	}
 
+	/**
+	 * mu 修正：流在已发出部分内容后更新失败（failed 且 sentChunkCount > 0）。原版此时既不回退静态发送也不收尾，
+	 * 余下的回答被静默丢弃；现在投递车道据此把余下的文本走静态发送（去掉已在流里显示的部分）。
+	 */
+	get failedMidway(): boolean {
+		return this.phase === "failed" && this.sentChunkCount > 0;
+	}
+
+	/** 当前这条流里 QQ 已接受的文本 */
+	get acceptedText(): string {
+		return this.lastAcceptedFull;
+	}
+
 	// ── 入口 ──
 
 	onPartialReply(text: string): Promise<void> {
@@ -85,6 +98,23 @@ export class StreamingController {
 			.catch((err) => {
 				this.deps.log?.error(`onPartialReply error: ${err instanceof Error ? err.message : String(err)}`);
 				this.transition("failed", "chunk_error");
+			});
+		return this.chain as Promise<void>;
+	}
+
+	/**
+	 * 一条助手消息写完了（mu 修正）：结束当前这条流，下一条消息（如工具调用之后的回答）另开一条。
+	 * 原版靠「文本变短」判断新回复，下一条消息更长时会被拼进上一条流，出现重复或错乱的文字。
+	 */
+	endMessage(): Promise<void> {
+		this.chain = this.chain
+			.then(async () => {
+				if (this.isTerminal || !this.session) return;
+				await this.completeSession("message_end");
+				this.lastAcceptedFull = "";
+			})
+			.catch((err) => {
+				this.deps.log?.error(`endMessage error: ${err instanceof Error ? err.message : String(err)}`);
 			});
 		return this.chain as Promise<void>;
 	}

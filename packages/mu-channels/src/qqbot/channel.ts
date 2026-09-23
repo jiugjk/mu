@@ -81,6 +81,44 @@ export function chunkText(text: string, limit: number): string[] {
 	return chunks.length > 0 ? chunks : [text];
 }
 
+/** Room kept in each piece for the fence lines fitChunks may add. */
+const FENCE_ROOM = 32;
+
+/**
+ * mu 修正：原版的降级切分只在换行处切，超过上限的单行或表格原样发出（QQ 拒收），切在代码块中间时两段都失去
+ * 代码格式。这里对切分结果补一道：仍超限的段按上限硬切（尽量在换行处、不拆 UTF-16 代理对），被切开的
+ * 代码块在前一段末尾闭合、在后一段开头按原语言重新打开。
+ */
+export function fitChunks(chunks: readonly string[], limit: number): string[] {
+	const pieces: string[] = [];
+	for (const chunk of chunks) {
+		let rest = chunk;
+		const max = Math.max(1, limit - FENCE_ROOM);
+		while (rest.length > max) {
+			let cut = rest.lastIndexOf("\n", max);
+			if (cut < max / 2) cut = max;
+			const code = rest.charCodeAt(cut);
+			if (code >= 0xdc00 && code <= 0xdfff) cut--;
+			pieces.push(rest.slice(0, cut));
+			rest = rest.slice(cut).replace(/^\n/, "");
+		}
+		if (rest) pieces.push(rest);
+	}
+	const out: string[] = [];
+	let openFence: string | undefined;
+	for (const piece of pieces) {
+		let text = openFence !== undefined ? `${openFence}\n${piece}` : piece;
+		for (const line of piece.split("\n")) {
+			const fence = /^\s*(```+|~~~+)(.*)$/.exec(line);
+			if (!fence) continue;
+			openFence = openFence === undefined ? `${fence[1]}${fence[2]?.trim() ?? ""}` : undefined;
+		}
+		if (openFence !== undefined) text += `\n${openFence.replace(/[^`~].*$/, "")}`;
+		out.push(text);
+	}
+	return out;
+}
+
 function tryRuntime() {
 	try {
 		return getQQBotRuntime();
@@ -102,7 +140,7 @@ export async function sendChunkedText(params: {
 	const clean = sanitizeQQBotText(params.text);
 	if (!clean) return {};
 	let last: SendResult = {};
-	for (const chunk of chunkText(clean, TEXT_CHUNK_LIMIT)) {
+	for (const chunk of fitChunks(chunkText(clean, TEXT_CHUNK_LIMIT), TEXT_CHUNK_LIMIT)) {
 		last = await sendText({ to: params.to, text: chunk, replyToId: params.replyToId, account: params.account });
 		if (last.error) return last;
 	}

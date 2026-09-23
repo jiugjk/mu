@@ -80,6 +80,26 @@ describe("streaming and delivery lanes (group 3)", () => {
 		expect(env.qq.textsTo("c2c", ALICE)).toEqual([]);
 	});
 
+	it("streams each assistant message on its own, even when the next is longer, and never streams reasoning", async () => {
+		env = await startChannelTest({ qqbot: { streaming: true, deliverDebounce: { enabled: false } } });
+		env.llm.reply(
+			{ text: "<thinking>内部推理 secret plan</thinking>先看看。", toolCalls: [{ name: "ls", args: {} }] },
+			{ text: "看完了，这个目录里一共有三个文件，下面逐个说明它们的用途。" },
+		);
+		env.push("C2C_MESSAGE_CREATE", c2cMessage(ALICE, "目录"));
+		await env.qq.waitFor(
+			() => (env?.qq.streamCalls(ALICE).filter((call) => call.body.input_state === 10).length ?? 0) >= 2,
+			20_000,
+			"two DONE frames",
+		);
+		const finals = env.qq
+			.streamCalls(ALICE)
+			.filter((call) => call.body.input_state === 10)
+			.map((call) => call.body.content_raw);
+		expect(finals).toEqual(["先看看。", "看完了，这个目录里一共有三个文件，下面逐个说明它们的用途。"]);
+		expect(JSON.stringify(env.qq.streamCalls(ALICE))).not.toContain("secret plan");
+	});
+
 	it("without streaming, sends each assistant message as it finishes and the final answer once", async () => {
 		env = await startChannelTest({ qqbot: { deliverDebounce: { enabled: false } } });
 		env.llm.reply(

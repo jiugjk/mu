@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync }
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { commandLogin, main, parseArgs } from "../src/qqbot/cli.ts";
 import { buildConnectUrl, decryptSecret, generateBindKey } from "../src/qqbot/setup/qr-connect.ts";
@@ -160,10 +160,49 @@ describe("mu qqbot login / send (group 6)", () => {
 		expect(await login("--token", "1001:secret-b")).toBe(0);
 		expect(await login("--token", "2002:secret-c")).toBe(0);
 		const cfg = qqbotConfig();
-		expect(cfg).toMatchObject({ appId: "1001", clientSecret: "secret-b", allowFrom: ["*"], dmPolicy: "allowlist" });
+		// No "*" any more (anyone could DM and approve their own commands): strangers pair, and the output says how
+		// to become the operator.
+		expect(cfg).toMatchObject({ appId: "1001", clientSecret: "secret-b", dmPolicy: "pairing" });
+		expect(cfg?.allowFrom).toBeUndefined();
 		expect(cfg?.accounts?.["2002"]).toMatchObject({ appId: "2002", clientSecret: "secret-c" });
+		expect(out.join("\n")).toContain("pairing approve");
 		expect(out.join("\n")).not.toMatch(/secret-[abc]/);
 		expect(await login("--token", "no-colon")).toBe(1);
+	});
+
+	it("the first login carries a legacy kyrn.json's judge settings into mu.json", async () => {
+		rmSync(muJson);
+		writeFileSync(join(dirname(muJson), "kyrn.json"), JSON.stringify({ modes: { default: "active" } }));
+		expect(await login("--token", "1001:secret")).toBe(0);
+		const written = JSON.parse(readFileSync(muJson, "utf8")) as { modes?: unknown; channels?: unknown };
+		expect(written.modes).toEqual({ default: "active" });
+		expect(written.channels).toBeDefined();
+	});
+
+	it("logging in again keeps what the owner set (dmPolicy, allowFrom, streaming, mediaMaxMb)", async () => {
+		writeFileSync(
+			muJson,
+			JSON.stringify({
+				channels: {
+					qqbot: {
+						appId: "1001",
+						clientSecret: "old",
+						dmPolicy: "disabled",
+						allowFrom: ["OWNER"],
+						streaming: { mode: "off" },
+						mediaMaxMb: 10,
+					},
+				},
+			}),
+		);
+		expect(await login("--token", "1001:new")).toBe(0);
+		expect(qqbotConfig()).toMatchObject({
+			clientSecret: "new",
+			dmPolicy: "disabled",
+			allowFrom: ["OWNER"],
+			streaming: { mode: "off" },
+			mediaMaxMb: 10,
+		});
 	});
 
 	it("--use-env leaves the secret in the environment", async () => {
@@ -172,8 +211,20 @@ describe("mu qqbot login / send (group 6)", () => {
 		setEnv("QQBOT_APP_ID", "3003");
 		setEnv("QQBOT_CLIENT_SECRET", "env-secret");
 		expect(await login("--use-env")).toBe(0);
-		expect(qqbotConfig()).toMatchObject({ enabled: true, dmPolicy: "allowlist" });
+		expect(qqbotConfig()).toMatchObject({ enabled: true, dmPolicy: "pairing" });
+		expect(qqbotConfig()?.allowFrom).toBeUndefined();
 		expect(JSON.stringify(qqbotConfig())).not.toContain("env-secret");
+		// The env-only default account is found (status and start used to say nothing was configured).
+		const log = vi.spyOn(console, "log").mockImplementation(() => {});
+		expect(await main(["status"])).toBe(0);
+		expect(log.mock.calls.flat().join("\n")).toContain("AppID: 3003");
+	});
+
+	it("rejects unknown and misspelled flags, and reads --flag=value", async () => {
+		const error = vi.spyOn(console, "error").mockImplementation(() => {});
+		expect(await main(["logout", "--acount", "work"])).toBe(1);
+		expect(error.mock.calls.flat().join("\n")).toContain("--acount");
+		expect(parseArgs(["logout", "--account=work"]).flags.account).toBe("work");
 	});
 
 	it("mu qqbot logout removes the AppSecret from mu.json and keeps the rest", async () => {

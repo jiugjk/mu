@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -240,7 +240,10 @@ describe("qqbot_remind end to end (group 6)", () => {
 
 		// Due now: the reminder is written in a session of its own and sent to the chat.
 		env.llm.reply({ text: "💧 该喝水啦，照顾好自己～" });
-		if (job) job.nextRunAt = Date.now();
+		const file = join(env.qqHome, "data", "reminders.json");
+		const stored = JSON.parse(readFileSync(file, "utf8")) as { jobs: Array<{ nextRunAt: number }> };
+		for (const each of stored.jobs) each.nextRunAt = Date.now();
+		writeFileSync(file, JSON.stringify(stored));
 		const before = env.llm.requests.length;
 		await reminders?.runDue();
 		await env.qq.waitFor(
@@ -254,5 +257,104 @@ describe("qqbot_remind end to end (group 6)", () => {
 		expect(JSON.stringify(composed?.messages)).not.toContain("10分钟后提醒我喝水");
 		expect(composed?.tools ?? []).toEqual([]);
 		expect(reminders?.list()).toEqual([]);
+	});
+});
+
+describe("reminder scheduler across processes (mu 修正)", () => {
+	it("keeps what another process wrote, fires only the accounts it serves, and drops a cron with no next run", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "mu-reminders-"));
+		try {
+			const file = join(dir, "reminders.json");
+			const sent: string[] = [];
+			const make = (accountId: string) =>
+				new ReminderScheduler({
+					file,
+					owns: (id) => id === accountId,
+					compose: async (job) => job.content,
+					deliver: async (job, text) => {
+						sent.push(`${job.accountId} ${text}`);
+					},
+				});
+			const a = make("a");
+			const b = make("b");
+			a.add({
+				accountId: "a",
+				to: "qqbot:c2c:X",
+				content: "A",
+				name: "A",
+				schedule: { kind: "at", atMs: Date.now() + 60_000 },
+			});
+			b.add({
+				accountId: "b",
+				to: "qqbot:c2c:Y",
+				content: "B",
+				name: "B",
+				schedule: { kind: "at", atMs: Date.now() + 60_000 },
+			});
+			expect(
+				a
+					.list()
+					.map((job) => job.content)
+					.sort(),
+			).toEqual(["A", "B"]);
+
+			const stored = JSON.parse(readFileSync(file, "utf8")) as { jobs: Array<{ nextRunAt: number }> };
+			for (const each of stored.jobs) each.nextRunAt = Date.now() - 1;
+			writeFileSync(file, JSON.stringify(stored));
+			await a.runDue();
+			expect(sent).toEqual(["a A"]);
+			expect(b.list().map((job) => job.content)).toEqual(["B"]);
+
+			// A leap-day cron fires, then has no next run within a year: it is removed, not re-sent in a loop.
+			const leap = { kind: "cron" as const, expr: "0 9 29 2 *", tz: "UTC" };
+			writeFileSync(
+				file,
+				JSON.stringify({
+					jobs: [
+						{
+							id: "rem_leap",
+							name: "L",
+							accountId: "a",
+							to: "qqbot:c2c:X",
+							content: "L",
+							schedule: leap,
+							createdAt: 0,
+							nextRunAt: Date.now() - 1,
+						},
+					],
+				}),
+			);
+			await a.runDue();
+			await a.runDue();
+			expect(sent.filter((line) => line === "a L").length).toBeLessThanOrEqual(1);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("relative reminder times (mu 修正)", () => {
+	it("reads the whole string or nothing, and at most a year ahead", () => {
+		expect(parseRelativeTime("1h30m")).toBe(90 * 60_000);
+		expect(parseRelativeTime("5 min")).toBe(5 * 60_000);
+		expect(parseRelativeTime("2d 3h")).toBe((2 * 24 + 3) * 3_600_000);
+		for (const wrong of ["2 months", "10ms", "1h30", "-5m", "soon", "999999999d"]) {
+			expect(parseRelativeTime(wrong), wrong).toBeNull();
+		}
+	});
+});
+
+describe("cron times across daylight saving (mu 修正)", () => {
+	it("keeps the 00:30 run after spring forward, fires once on fall back, and accepts ?", () => {
+		const tz = "America/New_York";
+		// 2026-03-08: clocks go 02:00 → 03:00. The next 00:30 after 2026-03-08 12:00 is 2026-03-09 00:30 (04:30Z).
+		const spring = nextCronTime(parseCron("30 0 * * *"), Date.parse("2026-03-08T16:00:00Z"), tz);
+		expect(new Date(spring).toISOString()).toBe("2026-03-09T04:30:00.000Z");
+		// 2026-11-01: 01:30 happens twice (05:30Z and 06:30Z); only the first counts.
+		const first = nextCronTime(parseCron("30 1 * * *"), Date.parse("2026-11-01T04:00:00Z"), tz);
+		expect(new Date(first).toISOString()).toBe("2026-11-01T05:30:00.000Z");
+		const second = nextCronTime(parseCron("30 1 * * *"), first, tz);
+		expect(new Date(second).toISOString()).toBe("2026-11-02T06:30:00.000Z");
+		expect(() => parseCron("0 9 ? * 1")).not.toThrow();
 	});
 });

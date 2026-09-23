@@ -32,10 +32,18 @@ function getLimiter(accountId: string): ReplyLimiter {
  * mu 修正：原版超限时返回 undefined，而网关的 attachMsgId 会在 msgId 为空时从 msgid 缓存补回同一个
  * msgId，结果超限后仍按被动回复发送，降级从未生效。现在超限返回 null，网关据此跳过缓存。
  */
-function resolveMsgId(replyToId: string | undefined, accountId: string): string | null | undefined {
+/** 被动回复窗口：群 5 分钟，私聊 60 分钟（mu 修正：原版群也按 1 小时计） */
+const PASSIVE_WINDOW_MS = { group: 5 * 60_000, c2c: 60 * 60_000 } as const;
+
+/** 收到一条可被动回复的消息：窗口从此刻算起 */
+export function noteInboundMessage(accountId: string, messageId: string): void {
+	if (messageId) getLimiter(accountId).noteReceived(messageId);
+}
+
+function resolveMsgId(replyToId: string | undefined, accountId: string, scope?: string): string | null | undefined {
 	if (!replyToId) return undefined;
 	const limiter = getLimiter(accountId);
-	const result = limiter.checkLimit(replyToId);
+	const result = limiter.checkLimit(replyToId, scope === "group" ? PASSIVE_WINDOW_MS.group : PASSIVE_WINDOW_MS.c2c);
 	if (!result.allowed) return null;
 	limiter.record(replyToId);
 	return replyToId;
@@ -95,7 +103,7 @@ export async function sendText(params: {
 	const gw = getOrCreateGateway(params.account);
 	try {
 		const target = parseTarget(params.to);
-		const msgId = resolveMsgId(params.replyToId, accountId);
+		const msgId = resolveMsgId(params.replyToId, accountId, target.scope);
 		const result = await gw.sendText(target, params.text, { msgId });
 		return { messageId: result.id };
 	} catch (err: unknown) {
@@ -116,12 +124,15 @@ export async function sendTextWithKeyboard(params: {
 }): Promise<SendResult> {
 	const accountId = params.account.accountId;
 	const gw = getOrCreateGateway(params.account);
+	let msgId: string | null | undefined;
 	try {
 		const target = parseTarget(params.to);
-		const msgId = resolveMsgId(params.replyToId, accountId);
+		msgId = resolveMsgId(params.replyToId, accountId, target.scope);
 		const result = await gw.sendTextWithKeyboard(target, params.text, params.keyboard, { msgId });
 		return { messageId: result.id };
 	} catch (err: unknown) {
+		// mu 修正：键盘发不出去时（调用方随后改发纯文本），这次不算用掉被动回复次数
+		if (msgId) getLimiter(accountId).unrecord(msgId);
 		return formatError(err);
 	}
 }
@@ -140,7 +151,7 @@ export async function sendMedia(params: {
 	try {
 		const target = parseTarget(params.to);
 		const kind = params.mediaKind ?? "image";
-		const msgId = resolveMsgId(params.replyToId, accountId);
+		const msgId = resolveMsgId(params.replyToId, accountId, target.scope);
 		if (kind === "voice") {
 			const source = resolveVoiceSource(params.mediaUrl);
 			const result = await gw.sendVoice(target, source, { text: params.text, msgId });
@@ -173,7 +184,7 @@ export async function sendVoice(params: {
 	const gw = getOrCreateGateway(params.account);
 	try {
 		const target = parseTarget(params.to);
-		const msgId = resolveMsgId(params.replyToId, accountId);
+		const msgId = resolveMsgId(params.replyToId, accountId, target.scope);
 		const result = await gw.sendVoice(target, params.source, { msgId });
 		return { messageId: result.id };
 	} catch (err: unknown) {
@@ -192,7 +203,7 @@ export async function sendVideo(params: {
 	const gw = getOrCreateGateway(params.account);
 	try {
 		const target = parseTarget(params.to);
-		const msgId = resolveMsgId(params.replyToId, accountId);
+		const msgId = resolveMsgId(params.replyToId, accountId, target.scope);
 		const result = await gw.sendVideo(target, params.videoUrl, { msgId });
 		return { messageId: result.id };
 	} catch (err: unknown) {
@@ -214,7 +225,7 @@ export class OutboundService {
 	async sendText(to: string, text: string, msgId?: string): Promise<SendResult> {
 		try {
 			const target = parseTarget(to);
-			const resolvedMsgId = resolveMsgId(msgId, this.accountId);
+			const resolvedMsgId = resolveMsgId(msgId, this.accountId, target.scope);
 			const result = await this.gw.sendText(target, text, { msgId: resolvedMsgId });
 			return { messageId: result.id };
 		} catch (err: unknown) {
@@ -230,7 +241,7 @@ export class OutboundService {
 		try {
 			const target = parseTarget(to);
 			const kind = opts?.mediaKind ?? "image";
-			const resolvedMsgId = resolveMsgId(opts?.msgId, this.accountId);
+			const resolvedMsgId = resolveMsgId(opts?.msgId, this.accountId, target.scope);
 			if (kind === "voice") {
 				const voiceSource = resolveVoiceSource(source);
 				const result = await this.gw.sendVoice(target, voiceSource, { text: opts?.text, msgId: resolvedMsgId });

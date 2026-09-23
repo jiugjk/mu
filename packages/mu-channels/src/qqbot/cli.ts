@@ -14,8 +14,9 @@
  * 启动器（kyrn/bin/mu.mjs）设置 PI_CODING_AGENT_DIR（~/.mu/agent）、MU_VERSION，
  * 以及 MU_QQBOT_EXTENSIONS（mu 判断层扩展路径，QQ 会话与 `mu` 一样加载它）。
  */
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import qrcode from "qrcode-terminal";
 import { MuConfigFile } from "../host/config-store.ts";
@@ -55,7 +56,7 @@ export const USAGE = [
 	"  mu qqbot logout [--account <id>]       清除配置中的 AppSecret",
 	"  mu qqbot send <qqbot:c2c:openid|qqbot:group:openid> <文本> [--media <路径或URL>] [--account <id>]",
 	"  mu qqbot pairing list                  待批准的私聊配对",
-	"  mu qqbot pairing approve <配对码>       批准配对",
+	"  mu qqbot pairing approve <配对码> [--admin]   批准配对（--admin 同时加入 allowFrom，成为运维者）",
 	"",
 	"配置在 ~/.mu/agent/mu.json 的 channels.qqbot 下，说明见 docs/qqbot.md。",
 ].join("\n");
@@ -66,23 +67,46 @@ export interface ParsedArgs {
 	flags: Record<string, string | boolean>;
 }
 
+/** Each command's flags: true takes a value, false is a switch. */
+const COMMAND_FLAGS: Record<string, Record<string, boolean>> = {
+	start: { account: true },
+	status: {},
+	login: { account: true, token: true, "use-env": false, source: true },
+	logout: { account: true },
+	send: { account: true, media: true },
+	pairing: { account: true, admin: false },
+};
+
+export class UsageError extends Error {}
+
+/**
+ * mu 修正：原先不认 `--flag=value`、也不拒绝拼错的参数 —— `logout --account=work` 会清掉 default 账户的 AppSecret。
+ */
 export function parseArgs(argv: readonly string[]): ParsedArgs {
 	const [command = "help", ...rest] = argv;
+	const known = COMMAND_FLAGS[command];
 	const positional: string[] = [];
 	const flags: Record<string, string | boolean> = {};
 	for (let i = 0; i < rest.length; i++) {
 		const arg = rest[i] as string;
-		if (arg.startsWith("--")) {
-			const name = arg.slice(2);
-			const next = rest[i + 1];
-			if (next !== undefined && !next.startsWith("--") && name !== "use-env") {
-				flags[name] = next;
-				i++;
-			} else {
-				flags[name] = true;
-			}
-		} else {
+		if (!arg.startsWith("--")) {
 			positional.push(arg);
+			continue;
+		}
+		const eq = arg.indexOf("=");
+		const name = eq > 0 ? arg.slice(2, eq) : arg.slice(2);
+		const takesValue = known?.[name];
+		if (known && takesValue === undefined) throw new UsageError(`mu qqbot ${command} 不认识参数 --${name}`);
+		if (eq > 0) {
+			if (takesValue === false) throw new UsageError(`--${name} 不带值`);
+			flags[name] = arg.slice(eq + 1);
+		} else if (takesValue) {
+			const next = rest[i + 1];
+			if (next === undefined || next.startsWith("--")) throw new UsageError(`--${name} 需要一个值`);
+			flags[name] = next;
+			i++;
+		} else {
+			flags[name] = true;
 		}
 	}
 	return { command, positional, flags };
@@ -126,7 +150,11 @@ export function createRuntime(options: { console?: boolean } = {}): { runtime: Q
 		createTools: (ref) => [
 			createSendMediaTool(ref, getAccount),
 			createPlatformTool(ref.accountId),
-			createRemindTool(ref, () => runtimeRef.current?.reminders),
+			createRemindTool(
+				ref,
+				() => runtimeRef.current?.reminders,
+				() => host.turnTrusted(ref),
+			),
 		],
 		createSurface: (ref) =>
 			createQQChatSurface({
@@ -153,10 +181,29 @@ export function createRuntime(options: { console?: boolean } = {}): { runtime: Q
 		if (apiKey) redactor.add(apiKey);
 		return { apiKey, baseUrl: auth?.auth.baseUrl ?? registry.getModels(provider)[0]?.baseUrl };
 	};
+	// mu 修正：运行中 mu.json 写坏（语法错误）时 read() 抛错，原先每条消息都在分发阶段失败、被静默丢弃。
+	// 现在继续使用上一份有效配置，并记一次警告；写入仍然失败（不覆盖用户正在编辑的文件）。
+	let lastGood: MuConfig | undefined;
+	let brokenWarned = false;
+	const getConfig = (): MuConfig => {
+		try {
+			lastGood = config.read() as MuConfig;
+			brokenWarned = false;
+		} catch (err) {
+			if (!lastGood) throw err;
+			if (!brokenWarned) {
+				logger.warn(
+					`${config.path} cannot be read (${err instanceof Error ? err.message : String(err)}); using the last good copy`,
+				);
+				brokenWarned = true;
+			}
+		}
+		return lastGood;
+	};
 	const runtime: QQBotRuntime = {
 		version: process.env.MU_VERSION || "unknown",
 		providerAuth,
-		getConfig: () => config.read() as MuConfig,
+		getConfig,
 		persistConfig: (mutator) => config.update((cfg) => mutator(cfg as MuConfig)),
 		host,
 		logger,
@@ -247,6 +294,7 @@ export async function startQQBot(options: { only?: string; console?: boolean } =
 			getStatus: () => status[account.accountId] ?? {},
 			setStatus: (next) => {
 				status[account.accountId] = next;
+				if (next.connected) failures.delete(account.accountId);
 				writeStatus();
 			},
 		})
@@ -258,12 +306,35 @@ export async function startQQBot(options: { only?: string; console?: boolean } =
 					...status[account.accountId],
 					lastError: err instanceof Error ? err.message : String(err),
 				};
+				// mu 修正：启动失败（如开机时网络未就绪，取 token 失败）的账户原先再也不会重试，而进程照常运行、收不到消息
+				if (!abort.signal.aborted) scheduleRelaunch(account.accountId);
 			})
 			.finally(() => {
 				status[account.accountId] = { ...status[account.accountId], running: false, connected: false };
 				writeStatus();
 			});
 		running.set(account.accountId, { abort, done });
+	};
+
+	const failures = new Map<string, number>();
+	const retryTimers = new Set<ReturnType<typeof setTimeout>>();
+	let stopping = false;
+	const scheduleRelaunch = (accountId: string) => {
+		if (stopping) return;
+		const attempt = (failures.get(accountId) ?? 0) + 1;
+		failures.set(accountId, attempt);
+		const delayMs = Math.min(5 * 60_000, 5_000 * 2 ** (attempt - 1));
+		log.info(`[${accountId}] retrying in ${Math.round(delayMs / 1000)}s`);
+		const timer = setTimeout(() => {
+			retryTimers.delete(timer);
+			if (stopping) return;
+			const account = accounts.get(accountId);
+			if (!account || !running.has(accountId)) return;
+			running.delete(accountId);
+			launch(account);
+		}, delayMs);
+		timer.unref?.();
+		retryTimers.add(timer);
 	};
 
 	const stopAccount = async (accountId: string) => {
@@ -286,6 +357,7 @@ export async function startQQBot(options: { only?: string; console?: boolean } =
 					return false;
 				}
 				if (!account.appId || !account.clientSecret) {
+					if (account.secretError) log.error(`[${account.accountId}] ${account.secretError}`);
 					log.warn(`[${account.accountId}] missing AppID or AppSecret, skipped (mu qqbot login)`);
 					return false;
 				}
@@ -332,7 +404,10 @@ export async function startQQBot(options: { only?: string; console?: boolean } =
 				launch(fresh);
 			} else {
 				// 就地更新：中间件、命令、会话宿主都持有同一个对象
+				const previous = { ...current, config: { ...current.config } };
 				Object.assign(current, fresh);
+				// 已打开的会话也要跟上：权限模式立即切换，工具范围或模型变了的会话空闲时重开
+				await runtime.host.refreshAccount(accountId, previous);
 			}
 		}
 	};
@@ -345,6 +420,8 @@ export async function startQQBot(options: { only?: string; console?: boolean } =
 	const reminders = new ReminderScheduler({
 		file: path.join(getQQBotDataDir("data"), "reminders.json"),
 		log: reminderLog,
+		// 只触发本进程运行的账户（`start --account`、停用的账户）
+		owns: (accountId) => running.has(accountId),
 		compose: (job) =>
 			runIsolatedPrompt({
 				cwd: path.join(getQQBotHome(), "workspace", safeSegment(job.accountId), "reminders"),
@@ -370,6 +447,8 @@ export async function startQQBot(options: { only?: string; console?: boolean } =
 		runtime,
 		accountIds: () => [...running.keys()],
 		stop: async () => {
+			stopping = true;
+			for (const timer of retryTimers) clearTimeout(timer);
 			unwatch();
 			await reminders.stop();
 			await reloading;
@@ -425,7 +504,7 @@ function commandStatus(): number {
 		console.log(
 			[
 				`${id}${account.name ? ` (${account.name})` : ""}`,
-				`  AppID: ${account.appId || "-"}   AppSecret: ${account.clientSecret ? `已配置（来源 ${account.secretSource}）` : "未配置"}`,
+				`  AppID: ${account.appId || "-"}   AppSecret: ${account.clientSecret ? `已配置（来源 ${account.secretSource}）` : account.secretError ? `读取失败（${account.secretError}）` : "未配置"}`,
 				`  启用: ${account.enabled ? "是" : "否"}   传输: ${account.config.transport ?? "websocket"}   流式: ${account.config.streaming ? JSON.stringify(account.config.streaming) : "关"}`,
 				`  运行: ${s.running && alive ? `是（pid ${s.pid}）` : "否"}   已连接: ${s.connected && alive ? "是" : "否"}${s.lastError ? `   最近错误: ${String(s.lastError)}` : ""}`,
 			].join("\n"),
@@ -456,7 +535,7 @@ async function commandLogout(args: ParsedArgs): Promise<number> {
 	return 0;
 }
 
-function commandPairing(args: ParsedArgs): number {
+async function commandPairing(args: ParsedArgs): Promise<number> {
 	const [sub, code] = args.positional;
 	const store = getPairingStore();
 	if (sub === "list") {
@@ -474,11 +553,37 @@ function commandPairing(args: ParsedArgs): number {
 			return 1;
 		}
 		console.log(`已批准账户 ${result.accountId} 的用户 ${result.id}。`);
+		if (args.flags.admin) {
+			await new MuConfigFile(muConfigPath()).update((current) =>
+				addOperator(current as MuConfig, result.accountId, result.id),
+			);
+			console.log(`已把 ${result.id} 加入 allowFrom：TA 现在是这个机器人的运维者（可以审批、执行管理命令）。`);
+		}
 		return 0;
 	}
-	console.error("用法: mu qqbot pairing list | approve <配对码>");
+	console.error("用法: mu qqbot pairing list | approve <配对码> [--admin]");
 	return 1;
 }
+
+/** 把 openid 加入账户的 allowFrom（运维者） */
+function addOperator(cfg: MuConfig, accountId: string, openid: string): MuConfig {
+	const next = { ...cfg, channels: { ...cfg.channels } };
+	const qqbot = { ...((next.channels.qqbot as Record<string, unknown>) ?? {}) };
+	const accounts = (qqbot.accounts as Record<string, Record<string, unknown>> | undefined) ?? {};
+	const target: Record<string, unknown> = accountId === "default" ? qqbot : { ...accounts[accountId] };
+	const allowFrom = Array.isArray(target.allowFrom) ? target.allowFrom.map(String) : [];
+	if (!allowFrom.includes(openid)) target.allowFrom = [...allowFrom, openid];
+	if (accountId !== "default") qqbot.accounts = { ...accounts, [accountId]: target };
+	next.channels.qqbot = qqbot;
+	return next;
+}
+
+/** 登录后没有运维者时的说明 */
+const NO_OPERATOR_HINT = [
+	"还没有运维者（allowFrom 为空）：私聊默认需要配对。",
+	"用自己的 QQ 私聊机器人，拿到配对码后在这台机器上运行 `mu qqbot pairing approve <配对码> --admin`，",
+	"你就成为运维者（能审批、能让 mu 使用会话目录以外的文件和命令）。",
+];
 
 // ── login ──
 
@@ -523,6 +628,7 @@ export async function commandLogin(args: ParsedArgs, options: LoginOptions = {})
 		}
 		const [key] = await persist([{ appId: parsed.appId, appSecret: parsed.clientSecret }]);
 		out(`QQ 机器人已配置：账户 ${key}，AppID ${parsed.appId}。运行 \`mu qqbot start\` 启动。`);
+		if (!hasOperator(config.read() as MuConfig, key)) for (const line of NO_OPERATOR_HINT) out(line);
 		return 0;
 	}
 
@@ -533,14 +639,15 @@ export async function commandLogin(args: ParsedArgs, options: LoginOptions = {})
 			return 1;
 		}
 		// 凭据留在环境变量中（只适用于 default 账户），配置里只写默认值
+		// mu 修正：原先写入 allowFrom ["*"]，任何人都能私聊并批准自己的命令
 		await config.update((current) => {
 			const next = applyAccountDefaults(current as MuConfig, "default");
 			const qqbot = (next.channels?.qqbot ?? {}) as Record<string, unknown>;
 			qqbot.enabled = true;
-			qqbot.allowFrom ??= ["*"];
 			return next;
 		});
 		out(`将使用环境变量中的凭据（AppID ${appId}），AppSecret 不写入配置。运行 \`mu qqbot start\` 启动。`);
+		if (!hasOperator(config.read() as MuConfig, "default")) for (const line of NO_OPERATOR_HINT) out(line);
 		return 0;
 	}
 
@@ -574,6 +681,10 @@ export async function commandLogin(args: ParsedArgs, options: LoginOptions = {})
 	} finally {
 		process.off("SIGINT", onSignal);
 	}
+}
+
+function hasOperator(cfg: MuConfig, accountId: string): boolean {
+	return (resolveQQBotAccount(cfg, accountId).config.allowFrom ?? []).some((id) => String(id) !== "*");
 }
 
 // ── send ──
@@ -636,7 +747,14 @@ export async function commandSend(args: ParsedArgs): Promise<number> {
 }
 
 export async function main(argv: readonly string[]): Promise<number> {
-	const args = parseArgs(argv);
+	let args: ParsedArgs;
+	try {
+		args = parseArgs(argv);
+	} catch (err) {
+		if (!(err instanceof UsageError)) throw err;
+		console.error(`${err.message}\n\n${USAGE}`);
+		return 1;
+	}
 	switch (args.command) {
 		case "start":
 			return commandStart(args);
@@ -661,11 +779,20 @@ export async function main(argv: readonly string[]): Promise<number> {
 	}
 }
 
+/**
+ * mu 修正：原先比较 argv[1] 与 URL 的 pathname —— pathname 是百分号编码的（空格、中文），Windows 上还是
+ * `/C:/…`，打包后的 `mu qqbot` 在这些路径下从不执行 main()，所有子命令静默退出 0。现在比较真实路径。
+ */
 function invokedDirectly(): boolean {
 	const entry = process.argv[1];
 	if (!entry) return false;
-	const self = new URL(import.meta.url).pathname;
-	return path.resolve(entry) === path.resolve(self) || /qqbot[\\/]cli\.(ts|js)$/.test(entry);
+	try {
+		const a = realpathSync(path.resolve(entry));
+		const b = realpathSync(fileURLToPath(import.meta.url));
+		return process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
+	} catch {
+		return false;
+	}
 }
 
 if (invokedDirectly()) {
