@@ -32,7 +32,7 @@ import {
 	type SwarmSnapshot,
 } from "../../swarm/run.ts";
 import { type BeeEvent, codedError } from "../../swarm/state.ts";
-import { renderSwarm } from "../../swarm/view.ts";
+import { renderSwarm, swarmText } from "../../swarm/view.ts";
 import { type AgentDefinition, type AgentThinking, loadAgents, THINKING_LEVELS } from "../agents.ts";
 import { clip, type KyrnRuntime } from "../runtime.ts";
 import { Isolation, type IsolationOutcome, type Placement, patchesOf } from "./swarm-isolation.ts";
@@ -372,7 +372,7 @@ export function streamUpdates(
 		last = Date.now();
 		const snapshot = run.snapshot();
 		onUpdate({
-			content: [{ type: "text", text: renderSwarm(snapshot, { expanded: false, width: 120 }, PLAIN).join("\n") }],
+			content: [{ type: "text", text: swarmText(snapshot, { expanded: false, width: 120 }) }],
 			details: { snapshot },
 		});
 	};
@@ -386,8 +386,6 @@ export function streamUpdates(
 		else pending ??= setTimeout(send, wait);
 	};
 }
-
-const PLAIN = { fg: (_color: unknown, text: string) => text, bold: (text: string) => text };
 
 /** The terminal's view of a swarm tool call: live while it runs, a summary with the reports behind ctrl+o when it is over. */
 export function renderSwarmResult(
@@ -723,9 +721,8 @@ export function controlSwarm(runtime: KyrnRuntime, args: string, ctx: SwarmComma
 		);
 		return;
 	}
-	const theme = PLAIN;
 	ctx.ui.notify(
-		[...runs.map((run) => renderSwarm(run.snapshot(), { expanded: true, width: 110 }, theme).join("\n")), patchList]
+		[...runs.map((run) => swarmText(run.snapshot(), { expanded: true, width: 110 })), patchList]
 			.filter(Boolean)
 			.join("\n\n"),
 		"info",

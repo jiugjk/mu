@@ -642,6 +642,68 @@ describe("hive in a session", () => {
 		);
 	});
 
+	it("the queen: the live picture it streams is plain text, even where a long line is cut", async () => {
+		// Seen in a live run's JSON stream: every cut line ended in "[0m...[0m", a quote in "[0m...[0m …".
+		const long = `FOUND: ${"the retry loop re-reads the token file on every attempt, so a stale token wins; ".repeat(4)}`;
+		let release: () => void = () => {};
+		const shown = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const runner: SwarmRunner = async (task, _assignment, _signal, env, observer) => {
+			if (env?.KYRN_HIVE_BEE === "repro") new Board(env.KYRN_HIVE_DIR ?? "").post(note({ id: "r1", text: long }));
+			observer?.event({ type: "agent_start" });
+			observer?.event({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: long } });
+			await Promise.race([shown, new Promise((resolve) => setTimeout(resolve, 5000))]);
+			return `${task.title}: done`;
+		};
+		const harness = await createHarness({
+			extensionFactories: [
+				createKyrnJudgeExtension({
+					provider: new MockJudgeProvider(() => ({})),
+					mode: "active",
+					config: parseConfig({ features: { memory: false, permissions: { mode: "full" } } }),
+					swarmRunner: runner,
+				}),
+			],
+		});
+		harnesses.push(harness);
+		harness.setResponses([
+			fauxAssistantMessage(
+				[
+					fauxToolCall("hive", {
+						goal: "Login is flaky in CI only.",
+						bees: [
+							{ name: "repro", focus: "Reproduce the failure locally" },
+							{ name: "history", focus: "Find the commit that introduced it" },
+						],
+					}),
+				],
+				{ stopReason: "toolUse" },
+			),
+			fauxAssistantMessage("It is the token file."),
+		]);
+		const updates = () =>
+			harness
+				.eventsOfType("tool_execution_update")
+				.map((event) => String((event.partialResult as { content: { text: string }[] }).content[0]?.text));
+
+		const answered = harness.session.prompt("Why is login flaky?");
+		await vi.waitFor(() => expect(updates().some((text) => text.includes("repro finding 0.90"))).toBe(true));
+		release();
+		await answered;
+
+		const views = updates();
+		expect(views.filter((text) => text.includes("\x1b"))).toEqual([]);
+		const lines = (views.filter((text) => text.includes("repro finding 0.90")).at(-1) ?? "").split("\n");
+		const posted = lines.find((line) => line.includes("repro finding 0.90")) ?? "";
+		expect(posted).toContain("repro finding 0.90  FOUND: the retry loop re-reads the token file");
+		expect(posted.endsWith("…")).toBe(true);
+		// What a bee said, cut to one line, ends in one ellipsis, not two.
+		const said = lines.find((line) => line.trim().startsWith("FOUND:")) ?? "";
+		expect(said.endsWith(" …")).toBe(true);
+		expect(lines.join("\n")).not.toContain("...");
+	});
+
 	it("the queen: a dispute nobody settles gets a verifier while the hive still runs", async () => {
 		const calls: { name: string; instructions: string }[] = [];
 		let release: () => void = () => {};
