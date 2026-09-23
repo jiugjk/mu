@@ -109,6 +109,14 @@ const TWO_WORD =
 	/^(?:git|npm|pnpm|yarn|bun|npx|cargo|go|docker|kubectl|pip|pip3|uv|poetry|make|dotnet|gh|brew|apt|apt-get)$/;
 /** Chaining, redirection, substitution: a grant for the first word would cover whatever comes after it. */
 const COMPOUND = /[<>;&|`\n\r]|\$\(|\$\{/;
+/**
+ * Programs that run the command given to them: the first word says nothing about what runs. "Allow `timeout` for
+ * this conversation" would allow `timeout 60 <anything>`.
+ */
+const WRAPPER =
+	/^(?:sudo|doas|pkexec|su|runas|env|xargs|eval|exec|command|builtin|nohup|timeout|nice|ionice|time|stdbuf|setsid|chroot|taskset|flock|watch|unbuffer|caffeinate|script|busybox|start|sh|bash|zsh|dash|ksh|fish|pwsh|powershell|cmd)$/i;
+/** What makes `find` run a program on, or delete, every file it finds. */
+const FIND_ACTS = /^-(?:exec|execdir|ok|okdir|delete|fprint0?|fprintf|fls)$/;
 
 /** "npm test", "git commit", "python": what "allow for this conversation" allows for a command. */
 export function commandPrefix(command: string): string | undefined {
@@ -116,8 +124,8 @@ export function commandPrefix(command: string): string | undefined {
 	if (!text || COMPOUND.test(text)) return undefined;
 	const words = text.split(/\s+/);
 	// A leading `VAR=value` or `sudo` changes what runs: such a command is allowed once or not at all.
-	if (/=/.test(words[0]) || /^(?:sudo|doas|env|xargs|eval|exec|sh|bash|zsh|pwsh|powershell|cmd)$/i.test(words[0]))
-		return undefined;
+	if (/=/.test(words[0]) || WRAPPER.test(words[0])) return undefined;
+	if (/^find$/i.test(words[0]) && words.some((word) => FIND_ACTS.test(word))) return undefined;
 	const [first, second] = words;
 	return TWO_WORD.test(first) && second && !second.startsWith("-") ? `${first} ${second}` : first;
 }

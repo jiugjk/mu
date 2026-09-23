@@ -5,11 +5,21 @@ import { SHELL_TOOLS } from "../shell-tools.ts";
 
 const RULES: readonly (readonly [RegExp, string])[] = [
 	[/\brm\s+(-[a-zA-Z]+\s+)*-[a-zA-Z]*[rf]/, "recursive or forced delete"],
+	// find deletes what it finds with -delete, or with rm run on each.
+	[/\bfind\b[^|;&\n]*\s-(?:delete\b|(?:exec|execdir|ok|okdir)\s+(?:\S*\/)?rm\b)/, "recursive or forced delete"],
 	[
 		/\bgit\s+(reset\s+--hard|clean\s+-[a-zA-Z]*f|checkout\s+--\s|branch\s+-D|stash\s+(drop|clear))/,
 		"discards git work",
 	],
+	// The same deeds spelled otherwise: clean forced by a later option, a checkout of everything or by force, a
+	// restore of the working tree, a branch deleted by force.
+	[
+		/\bgit\s+(?:clean\b[^|;&\n]*\s(?:-[a-zA-Z]*f|--force)\b|checkout\s+(?:\.(?:\s|$)|-f\b|--force\b)|restore\b(?:(?![^|;&\n]*--staged)|(?=[^|;&\n]*(?:--worktree|\s-W\b)))|branch\b[^|;&\n]*(?:--delete\s+--force|--force\s+--delete|\s-(?:D|df|fd)\b))/,
+		"discards git work",
+	],
 	[/\bgit\s+push\b.*(--force|\s-f\b)/, "force push"],
+	// A `+` refspec forces as well; --mirror, --delete and `:branch` remove what is on the remote.
+	[/\bgit\s+push\b[^|;&\n]*\s(?:\+\S|--mirror\b|--delete\b|-d\b|:\S)/, "force push"],
 	[/\b(drop|truncate)\s+(table|database|schema)\b/i, "drops database objects"],
 	[/\bmkfs\b|\bdd\b.*\bof=\/dev\//, "overwrites a device"],
 	[/\bchmod\s+-R\s+0?777\b/, "opens permissions recursively"],
@@ -24,9 +34,19 @@ const RULES: readonly (readonly [RegExp, string])[] = [
 	],
 	[/\bStart-Process\b[^|;\n]*-Verb\s+RunAs\b|\brunas\b/i, "runs as administrator"],
 	[/\bformat\s+[a-z]:|\bFormat-Volume\b|\bClear-Disk\b/i, "overwrites a device"],
-	[/\b(curl|wget)\b[^|;&]*\|\s*(sudo\s+)?(ba|z)?sh\b/, "runs a downloaded script"],
-	[/\bsudo\b/, "runs as root"],
+	[/\b(curl|wget)\b[^|;&]*\|\s*(sudo\s+)?(?:(?:ba|z|da|k)?sh|python\d*|perl|ruby|node)\b/, "runs a downloaded script"],
+	// Without a pipe: a download read as a file (`bash <(curl …)`) or as the text of `sh -c "$(curl …)"`.
+	[/<\(\s*(?:curl|wget)\b|\b(?:ba|z|da|k)?sh\s+-c\s+["']?\$\(\s*(?:curl|wget)\b/, "runs a downloaded script"],
+	[/\b(?:sudo|doas|pkexec)\b/, "runs as root"],
 ];
+
+/**
+ * The command as the shell reads its words: `r\m` is `rm`, and so are `"rm"` and `r''m`. Only for matching the rules,
+ * which also see the command as it was written.
+ */
+function unquoted(command: string): string {
+	return command.replace(/\\(?=[A-Za-z])/g, "").replace(/(["'])([^"'\s]*)\1/g, "$2");
+}
 
 /** What each flag says to a person reading Chinese. The judge and the model read the English. */
 export const FLAG_ZH: Readonly<Record<string, string>> = {
@@ -59,7 +79,8 @@ const COMMAND_TOOLS: ReadonlySet<string> = new Set([...SHELL_TOOLS, "bg_start"])
 
 /** Why a shell command deserves a second look, or undefined when no rule matches. */
 export function riskFlag(command: string): string | undefined {
-	return RULES.find(([pattern]) => pattern.test(command))?.[1];
+	const plain = unquoted(command);
+	return RULES.find(([pattern]) => pattern.test(command) || pattern.test(plain))?.[1];
 }
 
 /**
