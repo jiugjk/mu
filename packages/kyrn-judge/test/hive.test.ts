@@ -203,6 +203,34 @@ describe("hive gates", () => {
 		expect((await relate(relation("none"))).relation).toBeNull();
 		expect((await relate(relation("supersedes", 0.4))).relation).toBeNull();
 	});
+
+	it("takes another investigator's note off the board only on a near-certain reading, and a bee's own on the common bar", async () => {
+		// Calibration on real hives: across bees every "supersedes" at 0.6-0.87 was wrong, typically a later note
+		// that agreed and added. Seen live: "a bee is killed 90 s after its wrap-up" read as replacing "the
+		// defaults are 10 min and 90 s" (0.76), and the bee that had it right was told it no longer held.
+		const reading = (choice: string, probability: number): Answer => ({
+			type: "choice",
+			choice,
+			probabilities: { [choice]: probability },
+		});
+		const earlier = { bee: "configuration", kind: "finding" as const, text: "defaults are 10 min and 90 s" };
+		const later = { bee: "implementation", kind: "finding" as const, text: "a bee is killed 90 s after its wrap-up" };
+		const relate = (answer: Answer, own = false) =>
+			engineWith(() => ({ relation: answer }))
+				.decide(hiveRelate, {
+					goal: "how long can a hive take",
+					earlier,
+					later: own ? { ...later, bee: earlier.bee } : later,
+				})
+				.then((decision) => decision.outcome);
+
+		expect(await relate(reading("supersedes", 0.87))).toEqual({ relation: null, score: 0.87 });
+		expect((await relate(reading("supersedes", 0.95))).relation).toBe("supersedes");
+		expect((await relate(reading("supersedes", 0.7), true)).relation).toBe("supersedes");
+		// The bar is for replacing, not for agreeing or disputing.
+		expect((await relate(reading("supports", 0.7))).relation).toBe("supports");
+		expect((await relate(reading("contradicts", 0.7))).relation).toBe("contradicts");
+	});
 });
 
 describe("hive in a session", () => {
