@@ -95,7 +95,7 @@ describe("group chat and access control (group 2)", () => {
 			((env?.llm.requests[i]?.tools ?? []) as Array<{ function: { name: string } }>)
 				.map((t) => t.function.name)
 				.sort();
-		expect(toolNames(0)).toEqual(["find", "grep", "ls", "qqbot_send_media", "read"]);
+		expect(toolNames(0)).toEqual(["find", "grep", "ls", "qqbot_remind", "qqbot_send_media", "read"]);
 		expect(toolNames(1)).toEqual(
 			expect.arrayContaining(["bash", "edit", "write", "qqbot_platform_api", "qqbot_send_media"]),
 		);

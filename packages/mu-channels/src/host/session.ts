@@ -320,3 +320,68 @@ export async function runChannelTurn(session: AgentSession, turn: ChannelTurn): 
 	}
 	await chain;
 }
+
+export interface IsolatedPromptOptions {
+	cwd: string;
+	agentDir: string;
+	prompt: string;
+	/** "provider/model-id"; default: mu's own default model. */
+	model?: string;
+	timeoutMs?: number;
+	log?: ChannelLogger;
+}
+
+/**
+ * One prompt in a session of its own: nothing loaded (no extensions, skills, context files or tools), nothing
+ * kept (in memory only). For work a channel does on its own, such as writing a reminder, that must not appear in
+ * any conversation. Returns the assistant's text; throws when the model fails or says nothing.
+ */
+export async function runIsolatedPrompt(options: IsolatedPromptOptions): Promise<string> {
+	mkdirSync(options.cwd, { recursive: true });
+	const services = await createAgentSessionServices({
+		cwd: options.cwd,
+		agentDir: options.agentDir,
+		modelRuntimeSignal: AbortSignal.timeout(15_000),
+		resourceLoaderOptions: {
+			noExtensions: true,
+			noSkills: true,
+			noPromptTemplates: true,
+			noContextFiles: true,
+			noThemes: true,
+		},
+	});
+	let model: ReturnType<typeof services.modelRuntime.getModel>;
+	if (options.model) {
+		const slash = options.model.indexOf("/");
+		if (slash > 0)
+			model = services.modelRuntime.getModel(options.model.slice(0, slash), options.model.slice(slash + 1));
+		if (!model) options.log?.warn(`model ${options.model} not found; using mu's default model`);
+	}
+	const { session } = await createAgentSessionFromServices({
+		services,
+		sessionManager: SessionManager.inMemory(options.cwd),
+		model,
+		tools: [],
+	});
+	const timer = setTimeout(() => void session.abort(), options.timeoutMs ?? 60_000);
+	let last: AssistantLike | undefined;
+	const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
+		if (event.type === "message_end" && (event.message as AssistantLike).role === "assistant") {
+			last = event.message as AssistantLike;
+		}
+	});
+	try {
+		await session.prompt(options.prompt, { expandPromptTemplates: false, source: "rpc" });
+		await session.waitForIdle();
+	} finally {
+		clearTimeout(timer);
+		unsubscribe();
+		session.dispose();
+	}
+	if (!last || last.stopReason === "error" || last.stopReason === "aborted") {
+		throw new Error(last?.errorMessage ?? "the model gave no answer");
+	}
+	const text = assistantText(last).trim();
+	if (!text) throw new Error("the model gave no answer");
+	return text;
+}

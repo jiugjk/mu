@@ -20,12 +20,14 @@ import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import qrcode from "qrcode-terminal";
 import { MuConfigFile } from "../host/config-store.ts";
 import { createChannelLogger, type LogLevel, Redactor } from "../host/logger.ts";
-import { muAgentDir, muConfigPath } from "../host/paths.ts";
+import { muAgentDir, muConfigPath, safeSegment } from "../host/paths.ts";
+import { runIsolatedPrompt } from "../host/session.ts";
 import { getPairingStore } from "./adapter/pairing.ts";
 import { sendChunkedText } from "./channel.ts";
 import { listQQBotAccountIds, resolveQQBotAccount } from "./config.ts";
 import { createQQChatSurface } from "./features/chat-surface.ts";
 import { flushAllRefIndexStores } from "./features/ref-index-store.ts";
+import { ReminderScheduler } from "./features/reminders.ts";
 import { logoutAndClearCredentials, startAccount, stopAccountGracefully } from "./gateway/lifecycle.ts";
 import { QQBotHost } from "./host.ts";
 import { sendMedia } from "./outbound/media-send.ts";
@@ -36,6 +38,7 @@ import { applyAccountDefaults } from "./setup/finalize.ts";
 import { applyLoginCredentials, type BoundCredentials, parseChannelInput } from "./setup/login.ts";
 import { qrConnect } from "./setup/qr-connect.ts";
 import { createPlatformTool } from "./tools/platform.ts";
+import { buildReminderPrompt, createRemindTool } from "./tools/remind.ts";
 import { createSendMediaTool } from "./tools/send-media.ts";
 import type { MuConfig, ResolvedQQBotAccount } from "./types.ts";
 import { getQQBotDataDir, getQQBotHome } from "./utils/platform.ts";
@@ -110,6 +113,7 @@ export function createRuntime(options: { console?: boolean } = {}): { runtime: Q
 		}
 		return account;
 	};
+	const runtimeRef: { current?: QQBotRuntime } = {};
 	const extensionPaths = (process.env.MU_QQBOT_EXTENSIONS ?? "").split(path.delimiter).filter(Boolean);
 	const skillsDir = process.env.MU_QQBOT_SKILLS;
 	const host = new QQBotHost({
@@ -119,7 +123,11 @@ export function createRuntime(options: { console?: boolean } = {}): { runtime: Q
 		skillPaths: skillsDir ? [skillsDir] : [],
 		log: logger.child("host"),
 		getAccount,
-		createTools: (ref) => [createSendMediaTool(ref, getAccount), createPlatformTool(ref.accountId)],
+		createTools: (ref) => [
+			createSendMediaTool(ref, getAccount),
+			createPlatformTool(ref.accountId),
+			createRemindTool(ref, () => runtimeRef.current?.reminders),
+		],
 		createSurface: (ref) =>
 			createQQChatSurface({
 				ref,
@@ -154,6 +162,7 @@ export function createRuntime(options: { console?: boolean } = {}): { runtime: Q
 		logger,
 		redactor,
 	};
+	runtimeRef.current = runtime;
 	runtimeAccounts.set(runtime, accounts);
 	return { runtime, config };
 }
@@ -331,6 +340,30 @@ export async function startQQBot(options: { only?: string; console?: boolean } =
 		reloading = reloading.then(reload);
 	});
 
+	// 定时提醒（原版由 OpenClaw cron 调度）：到点在隔离会话里写提醒语，再发到 QQ
+	const reminderLog = createPluginLogger({ prefix: "[reminders]" });
+	const reminders = new ReminderScheduler({
+		file: path.join(getQQBotDataDir("data"), "reminders.json"),
+		log: reminderLog,
+		compose: (job) =>
+			runIsolatedPrompt({
+				cwd: path.join(getQQBotHome(), "workspace", safeSegment(job.accountId), "reminders"),
+				agentDir: muAgentDir(),
+				prompt: buildReminderPrompt(job.content),
+				model: (accounts.get(job.accountId) ?? resolveQQBotAccount(runtime.getConfig(), job.accountId)).config
+					.model,
+				log: runtime.logger.child("reminders"),
+			}),
+		deliver: async (job, text) => {
+			const account = accounts.get(job.accountId) ?? resolveQQBotAccount(runtime.getConfig(), job.accountId);
+			if (!account.appId || !account.clientSecret) throw new Error(`account ${job.accountId} has no credentials`);
+			const result = await sendChunkedText({ to: job.to, text, account });
+			if (result.error) throw new Error(result.error);
+		},
+	});
+	runtime.reminders = reminders;
+	reminders.start();
+
 	log.info(`started ${initial.length} account(s); logs in ${path.join(getQQBotHome(), "logs")}`);
 
 	return {
@@ -338,6 +371,7 @@ export async function startQQBot(options: { only?: string; console?: boolean } =
 		accountIds: () => [...running.keys()],
 		stop: async () => {
 			unwatch();
+			await reminders.stop();
 			await reloading;
 			for (const accountId of [...running.keys()]) await stopAccount(accountId);
 			await runtime.host.closeAll();

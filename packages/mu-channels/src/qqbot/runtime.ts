@@ -7,6 +7,7 @@
  */
 import type { ChannelLogger, Redactor } from "../host/logger.ts";
 import { setOpenClawVersion } from "./bot-instance.ts";
+import type { ReminderScheduler } from "./features/reminders.ts";
 import type { QQBotHost } from "./host.ts";
 import type { MuConfig } from "./types.ts";
 
@@ -26,6 +27,8 @@ export interface QQBotRuntime {
 	 * mu 适配：替代原版从 OpenClaw 配置 models.providers 读取。
 	 */
 	providerAuth?: (provider: string) => Promise<{ apiKey?: string; baseUrl?: string } | undefined>;
+	/** 定时提醒调度器（`mu qqbot start` 运行时存在；原版由 OpenClaw cron 负责） */
+	reminders?: ReminderScheduler;
 }
 
 let runtime: QQBotRuntime | null = null;
