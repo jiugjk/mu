@@ -552,6 +552,27 @@ describe("board feature", () => {
 		expect(notes.at(-1)).toContain("Now: It finished and checked its work.");
 	});
 
+	it("tells the writer what the agent did, but not the credential it did it with", async () => {
+		const key = "sk-proj-AbCdEfGhIjKlMnOpQrStUvWx12345";
+		const { harness } = await start(
+			reading(() => ({ phase: choice("changing"), needs_user: no, changed: yes })),
+			{ everyTools: 1 },
+		);
+		await harness.session.prompt("/board on");
+		const asked: string[] = [];
+		const agent = [
+			work("bash", { command: `export OPENAI_API_KEY=${key} && npm run deploy` }),
+			fauxAssistantMessage(`Deployed with ${key}.`),
+		];
+		const writer = () => JSON.stringify({ progress: "Done.", now: "It deployed the app.", confirm: [] });
+		harness.setResponses(Array.from({ length: 6 }, () => router(agent, writer, asked)));
+		await harness.session.prompt("Deploy it.");
+		await vi.waitFor(() => expect(boards(harness).at(-1)?.ended).toBe(true), { timeout: 5000 });
+
+		expect(asked.join("\n")).toContain("npm run deploy");
+		expect(asked.join("\n")).not.toContain(key);
+	});
+
 	// The desktop's board switch sends `/board on` once the agent is idle: the run it sums up is over, so the first
 	// board says so (the app showed 「在收尾」 without 「已停下」 until the next turn).
 	it("switched on after the agent stopped, sums the run up as ended", async () => {
