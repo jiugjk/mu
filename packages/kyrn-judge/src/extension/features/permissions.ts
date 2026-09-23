@@ -22,6 +22,7 @@ import {
 	protectedSpellings,
 	toolPath,
 } from "../../permissions/modes.ts";
+import { threeZone } from "../../policy.ts";
 import { clip, type KyrnRuntime } from "../runtime.ts";
 import { isShellTool } from "../shell-tools.ts";
 import { describeCall } from "./constraints.ts";
@@ -183,8 +184,12 @@ export function registerPermissions(runtime: KyrnRuntime, roots: HarnessRoots | 
 				{ command: clip(describeCall(event.toolName, event.input), 400), userMessage, flag },
 				{ signal: ctx.signal },
 			);
-			// The user chose Jev to decide, so its verdict counts in shadow too; no verdict means asking.
-			return { approved: (decision.judged ?? decision.outcome) === "allow", reason: "flagged" };
+			// The user chose Jev to decide, so its verdict counts in shadow too; no verdict means asking. A rule flagged
+			// the call, so only Jev being sure the user asked for it runs it: "not destructive" is read from the command
+			// itself, which can say anything about itself.
+			const requested = decision.answers?.requested;
+			const asked = requested?.type === "boolean" && threeZone(requested) === "yes";
+			return { approved: asked && (decision.judged ?? decision.outcome) === "allow", reason: "flagged" };
 		}
 		const frame = runtime.frame;
 		const decision = await runtime.engine.decide(
