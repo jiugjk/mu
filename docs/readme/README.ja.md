@@ -177,6 +177,8 @@ Node 22.19 以降が必要です。`mu -p "prompt"` は 1 回だけ実行して�
 
 pi 自身のコマンド（`/model`、`/thinking`、`/login`、`/resume`、`/tree`、`/fork`、`/compact`、`/export` など）はそのままです。`MU_JUDGE=laya,jev mu` とすると、その 1 回の実行だけ判定器を上書きできます。
 
+**QQ ボット。** `mu qqbot login` でスマートフォンの QQ から QR コードを読み取って QQ ボットを登録し、`mu qqbot start` で動かします。個人チャットとグループごとに mu のセッションがあり、判定層もそのまま働きます。承認が必要な操作は QQ にボタンで届きます。設定とローカルでのデバッグは [docs/qqbot.md](../qqbot.md)（中国語）を参照してください。
+
 ## プライバシー
 
 キーはこのマシンから出ません。mu が自分からモデルやランタイムをダウンロードすることはなく、ダウンロードが必要なものは必ず先に確認します。判定器が見るのは、問いに必要なフィールドだけです。すべての判定はローカルに記録され、どれでも読み返せます。
@@ -193,7 +195,7 @@ npm run check                  # フォーマット、lint、型チェック
 
 ## クレジットとライセンス
 
-mu は [pi](https://github.com/earendil-works/pi)（コーディングエージェント、MIT。ルートの [LICENSE](../../LICENSE) が `packages/` と `kyrn/` に適用されます）と [AionUi](https://github.com/iOfficeAI/AionUi)（デスクトップアプリ、Apache 2.0。`desktop/` には AionUi の [LICENSE](../../desktop/LICENSE) を残しています）をもとに作られています。二つのプロジェクトに感謝します。判定カーネルで使っているサードパーティのコードは [THIRD_PARTY_NOTICES.md](../../packages/kyrn-judge/THIRD_PARTY_NOTICES.md) に記載しています。
+mu は [pi](https://github.com/earendil-works/pi)（コーディングエージェント、MIT。ルートの [LICENSE](../../LICENSE) が `packages/` と `kyrn/` に適用されます）と [AionUi](https://github.com/iOfficeAI/AionUi)（デスクトップアプリ、Apache 2.0。`desktop/` には AionUi の [LICENSE](../../desktop/LICENSE) を残しています）をもとに作られています。二つのプロジェクトに感謝します。判定カーネルで使っているサードパーティのコードは [THIRD_PARTY_NOTICES.md](../../packages/kyrn-judge/THIRD_PARTY_NOTICES.md) に記載しています。QQ ボットのチャネル（`packages/mu-channels`）は [tencent-connect/openclaw-qqbot](https://github.com/tencent-connect/openclaw-qqbot)（MIT。[LICENSE.openclaw-qqbot](../../packages/mu-channels/LICENSE.openclaw-qqbot)）を移植したものです。
 
 ## コミュニティ
 

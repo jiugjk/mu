@@ -103,6 +103,7 @@ export function usage(platform) {
 		"  mu judge <cmd>           the local judge (Laya): setup | start | stop | status | run",
 		"  mu ledger [n] [--json]   what the judge decided in the last n sessions",
 		"  mu import --list | <file>...   bring Claude Code and Codex conversations into mu (mu import --help)",
+		"  mu qqbot <cmd>           the QQ Bot channel: start | status | login | logout | send | pairing (mu qqbot help)",
 		"  mu doctor                check the installation",
 		"  mu auth <cmd>            subscription sign-in for the desktop app, as JSON lines:",
 		"                           status | login <provider> | logout <provider>",
@@ -324,6 +325,8 @@ export function packageEntries({ root, platform }) {
 		extension: path.join(root, "judge", "dist", "kyrn-judge.js"),
 		auth: path.join(root, "judge", "dist", "auth.js"),
 		import: path.join(root, "judge", "dist", "import.js"),
+		qqbot: path.join(root, "channels", "dist", "qqbot.js"),
+		qqbotSkills: path.join(root, "channels", "skills"),
 	};
 }
 
@@ -507,6 +510,62 @@ export function planLaunch({ platform, env, argv, root, home, execPath, fs, canE
 		startJudge,
 		notes,
 		preface: argv[0] === "-h" || argv[0] === "--help" ? `${usage(platform)}\n\nAgent flags:\n` : undefined,
+	};
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// mu qqbot
+// ---------------------------------------------------------------------------------------------------------
+
+/**
+ * `mu qqbot <cmd>`: the QQ Bot channel (packages/mu-channels). It runs mu sessions itself, one per QQ conversation,
+ * so it starts the way `mu` does (planLaunch: the .env read as data, mu's home, the app view, the judge sidecar) and
+ * is told three more things: where the judgment layer is (MU_QQBOT_EXTENSIONS, loaded into every QQ session like
+ * `-e`), where the channel's skills are (MU_QQBOT_SKILLS) and mu's version (MU_VERSION).
+ */
+export function planQqbot({ platform, env, argv, root, home, execPath, fs, canExec = false, wsl = false }) {
+	const base = planLaunch({ platform, env, argv: [], root, home, execPath, fs, canExec, wsl });
+	if (base.error) return base;
+	const path = pathFor(platform);
+	let entry;
+	let extension;
+	let skills;
+	let version;
+	if (base.layout === "package") {
+		const files = packageEntries({ root, platform });
+		if (!fs.exists(files.qqbot)) {
+			return { error: `This mu-agent package has no QQ channel (${files.qqbot} is missing). Update it: npm i -g mu-agent` };
+		}
+		entry = [files.qqbot];
+		extension = files.extension;
+		skills = files.qqbotSkills;
+		try {
+			version = JSON.parse(fs.readFile(path.join(root, "package.json"))).version;
+		} catch {}
+	} else {
+		const tsx = resolveTsx({ root, platform, exists: fs.exists, readFile: fs.readFile });
+		if (!tsx) return { error: installHint({ root, platform }) };
+		const source = path.join(root, "packages", "mu-channels", "src", "qqbot", "cli.ts");
+		if (!fs.exists(source)) return { error: `The QQ channel is missing from this checkout (${source})` };
+		entry = [tsx, "--tsconfig", path.join(root, "tsconfig.json"), source];
+		extension = path.join(root, "packages", "kyrn-judge", "src", "extension", "kyrn-judge.ts");
+		skills = path.join(root, "packages", "mu-channels", "skills");
+		try {
+			version = JSON.parse(fs.readFile(path.join(root, "kyrn", "npm", "package.template.json"))).version;
+		} catch {}
+	}
+	return {
+		...base,
+		args: [...entry, ...argv],
+		env: {
+			...base.env,
+			MU_QQBOT_EXTENSIONS: extension,
+			MU_QQBOT_SKILLS: skills,
+			MU_VERSION: version ?? base.env.MU_VERSION ?? "unknown",
+		},
+		// Only a running bot asks the judge; login, send and status do not need the sidecar.
+		startJudge: base.startJudge && argv[0] === "start",
+		preface: undefined,
 	};
 }
 
@@ -1123,6 +1182,33 @@ export async function main(argv = process.argv.slice(2)) {
 			return 1;
 		}
 		return handOver({ command: plan.command, args: plan.args, env: plan.env, strategy });
+	}
+	if (command === "qqbot") {
+		const plan = planQqbot({
+			platform,
+			env,
+			argv: rest,
+			root,
+			home,
+			execPath: process.execPath,
+			canExec,
+			wsl,
+			fs: { exists: existsSync, isDir, readFile: readText },
+		});
+		if (plan.error) {
+			err(plan.error);
+			return 1;
+		}
+		if (plan.layout === "repo") {
+			ensureAppView({ platform, app: plan.appDir, upstream: path.join(root, "packages", "coding-agent") });
+		}
+		mkdirSync(plan.agentDir, { recursive: true });
+		for (const note of plan.notes) err(note);
+		if (plan.startJudge) {
+			const started = spawnSync(path.join(bin, "kyrn-judge-local"), ["start"], { stdio: "ignore", env: plan.env });
+			if (started.status !== 0) err("mu: the local judge did not start (mu judge status); decisions fall back to pi's behaviour");
+		}
+		return handOver(plan);
 	}
 	if (command === "doctor") {
 		const link = linkPath({ platform, env, home });

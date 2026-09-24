@@ -177,6 +177,8 @@ Node 22.19 이상이 필요해요. `mu -p "prompt"`는 한 번 실행하고 결�
 
 pi의 자체 명령(`/model`, `/thinking`, `/login`, `/resume`, `/tree`, `/fork`, `/compact`, `/export` 등)은 그대로예요. `MU_JUDGE=laya,jev mu`로 실행하면 그 실행에서만 판정기를 바꿀 수 있어요.
 
+**QQ 봇.** `mu qqbot login`으로 휴대폰 QQ에서 QR 코드를 스캔해 QQ 봇을 연결하고, `mu qqbot start`로 실행해요. 개인 채팅과 그룹마다 mu 세션이 하나씩 있고 판정 레이어도 그대로 동작해요. 승인이 필요한 작업은 QQ에 버튼으로 와요. 설정과 로컬 디버깅은 [docs/qqbot.md](../qqbot.md)(중국어)를 보세요.
+
 ## 프라이버시
 
 키는 이 컴퓨터를 떠나지 않아요. mu는 모델이나 런타임을 스스로 내려받지 않고, 내려받아야 하는 것은 모두 먼저 물어봐요. 판정기는 질문에 필요한 필드만 봐요. 모든 판정은 로컬에 기록되고, 전부 읽어 볼 수 있어요.
@@ -193,7 +195,7 @@ npm run check                  # 포맷, 린트, 타입 검사
 
 ## 출처와 라이선스
 
-mu는 [pi](https://github.com/earendil-works/pi)(코딩 에이전트, MIT; 루트의 [LICENSE](../../LICENSE)가 `packages/`와 `kyrn/`에 적용)와 [AionUi](https://github.com/iOfficeAI/AionUi)(데스크톱 앱, Apache 2.0; `desktop/`에는 AionUi의 [LICENSE](../../desktop/LICENSE)를 그대로 둠)를 바탕으로 만들었어요. 두 프로젝트에 감사드려요. 판정 커널에 쓰인 서드파티 코드는 [THIRD_PARTY_NOTICES.md](../../packages/kyrn-judge/THIRD_PARTY_NOTICES.md)에 정리되어 있어요.
+mu는 [pi](https://github.com/earendil-works/pi)(코딩 에이전트, MIT; 루트의 [LICENSE](../../LICENSE)가 `packages/`와 `kyrn/`에 적용)와 [AionUi](https://github.com/iOfficeAI/AionUi)(데스크톱 앱, Apache 2.0; `desktop/`에는 AionUi의 [LICENSE](../../desktop/LICENSE)를 그대로 둠)를 바탕으로 만들었어요. 두 프로젝트에 감사드려요. 판정 커널에 쓰인 서드파티 코드는 [THIRD_PARTY_NOTICES.md](../../packages/kyrn-judge/THIRD_PARTY_NOTICES.md)에 정리되어 있어요. QQ 봇 채널(`packages/mu-channels`)은 [tencent-connect/openclaw-qqbot](https://github.com/tencent-connect/openclaw-qqbot)(MIT; [LICENSE.openclaw-qqbot](../../packages/mu-channels/LICENSE.openclaw-qqbot))을 옮겨 온 것이에요.
 
 ## 커뮤니티
 

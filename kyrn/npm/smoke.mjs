@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// After `npm i -g mu-agent`: does the installed `mu` run, does it load the judgment layer, do `mu auth` and
+// After `npm i -g mu-agent`: does the installed `mu` run, does it load the judgment layer, do `mu auth`, `mu qqbot` and
 // `mu import` answer?
 //
 //   node kyrn/npm/smoke.mjs [the mu command]
@@ -66,6 +66,12 @@ check(
 		status.signedIn.length === 0,
 	auth.stdout.trim() || auth.stderr.trim(),
 );
+
+// The QQ channel is built into the package: its command answers without a bot configured.
+const qqbot = spawnSync(mu, ["qqbot", "help"], options);
+check("mu qqbot help", qqbot.status === 0 && qqbot.stdout.includes("mu qqbot start"), qqbot.stderr.trim());
+const qqbotStatus = spawnSync(mu, ["qqbot", "status"], options);
+check("mu qqbot status", qqbotStatus.status === 0 && qqbotStatus.stdout.includes("mu qqbot login"), qqbotStatus.stderr.trim());
 
 // The importer runs on Node alone; the throwaway home has no Claude Code or Codex conversation to list.
 const imports = spawnSync(mu, ["import", "--list", "--json"], options);

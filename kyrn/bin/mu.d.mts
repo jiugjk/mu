@@ -44,6 +44,8 @@ export function packageEntries(input: { root: string; platform: Platform }): {
 	extension: string;
 	auth: string;
 	import: string;
+	qqbot: string;
+	qqbotSkills: string;
 };
 export function envFilePath(input: { layout: Layout; root: string; muDir: string; platform: Platform }): string;
 export function agentDirFor(input: { env: Env; muDir: string; platform: Platform }): string;
@@ -76,6 +78,19 @@ export interface LaunchPlan {
 	preface?: string;
 }
 export function planLaunch(input: {
+	platform: Platform;
+	env: Env;
+	argv: readonly string[];
+	root: string;
+	home: string;
+	execPath: string;
+	canExec?: boolean;
+	wsl?: boolean;
+	fs: { exists(path: string): boolean; isDir(path: string): boolean; readFile(path: string): string };
+}): LaunchPlan | { error: string };
+
+/** `mu qqbot <cmd>`: planLaunch's environment plus MU_QQBOT_EXTENSIONS, MU_QQBOT_SKILLS and MU_VERSION. */
+export function planQqbot(input: {
 	platform: Platform;
 	env: Env;
 	argv: readonly string[];

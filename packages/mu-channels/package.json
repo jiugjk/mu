@@ -1,0 +1,49 @@
+{
+	"name": "@kyrn/channels",
+	"version": "0.1.0",
+	"private": true,
+	"description": "mu's built-in chat channels: a channel host that gives each chat conversation its own mu session, and the QQ Bot channel ported from tencent-connect/openclaw-qqbot",
+	"type": "module",
+	"exports": {
+		"./qqbot/cli": {
+			"source": "./src/qqbot/cli.ts",
+			"import": "./dist/qqbot/cli.js"
+		},
+		"./package.json": "./package.json"
+	},
+	"sideEffects": false,
+	"files": [
+		"dist",
+		"src",
+		"README.md",
+		"LICENSE.openclaw-qqbot"
+	],
+	"scripts": {
+		"clean": "shx rm -rf dist",
+		"test": "vitest --run"
+	},
+	"license": "MIT",
+	"engines": {
+		"node": ">=22.19.0"
+	},
+	"dependencies": {
+		"@tencent-connect/qqbot-nodejs": "1.0.4",
+		"qrcode-terminal": "0.12.0",
+		"silk-wasm": "3.7.1",
+		"typebox": "1.3.27"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "^0.86.0"
+	},
+	"peerDependenciesMeta": {
+		"@earendil-works/pi-coding-agent": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
+		"@types/ws": "8.18.1",
+		"shx": "0.4.0",
+		"vitest": "4.1.9",
+		"ws": "8.21.0"
+	}
+}

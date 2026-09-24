@@ -177,6 +177,8 @@ mu doctor     # 检查安装、判定器和各项连接
 
 pi 自己的命令（`/model`、`/thinking`、`/login`、`/resume`、`/tree`、`/fork`、`/compact`、`/export` 等）原样保留。`MU_JUDGE=laya,jev mu` 只为这一次运行改判定器。
 
+**QQ 机器人。** `mu qqbot login` 用手机 QQ 扫码绑定一个 QQ 机器人，`mu qqbot start` 运行它。每个私聊、每个群各有一个 mu 会话，照常经过判断层；需要你批准的操作以按钮发到 QQ。绑定、配置与本地调试见 [docs/qqbot.md](../qqbot.md)。
+
 ## 隐私
 
 密钥只在本机。mu 不会自己下载任何模型或运行时；需要下载的东西都会先问你。判定器只看到一个问题所需的字段；每一次判定都记录在本机，你都能翻到。
@@ -193,7 +195,7 @@ npm run check                  # 格式、静态检查、类型
 
 ## 来源与协议
 
-mu 基于 [pi](https://github.com/earendil-works/pi)（编码代理，MIT；根目录的 [LICENSE](../../LICENSE) 覆盖 `packages/` 和 `kyrn/`）和 [AionUi](https://github.com/iOfficeAI/AionUi)（桌面端，Apache 2.0；`desktop/` 保留它的 [LICENSE](../../desktop/LICENSE)）改造，感谢两个项目。判定内核用到的第三方代码列在 [THIRD_PARTY_NOTICES.md](../../packages/kyrn-judge/THIRD_PARTY_NOTICES.md)。
+mu 基于 [pi](https://github.com/earendil-works/pi)（编码代理，MIT；根目录的 [LICENSE](../../LICENSE) 覆盖 `packages/` 和 `kyrn/`）和 [AionUi](https://github.com/iOfficeAI/AionUi)（桌面端，Apache 2.0；`desktop/` 保留它的 [LICENSE](../../desktop/LICENSE)）改造，感谢两个项目。判定内核用到的第三方代码列在 [THIRD_PARTY_NOTICES.md](../../packages/kyrn-judge/THIRD_PARTY_NOTICES.md)。QQ 机器人通道（`packages/mu-channels`）移植自 [tencent-connect/openclaw-qqbot](https://github.com/tencent-connect/openclaw-qqbot)（MIT；[LICENSE.openclaw-qqbot](../../packages/mu-channels/LICENSE.openclaw-qqbot)）。
 
 ## 社区支持
 
