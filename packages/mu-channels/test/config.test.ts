@@ -133,9 +133,9 @@ describe("QQ conversation policy (host.ts)", () => {
 		expect(toolAccessFor(a, { accountId: "default", scope: "group", peerId: "other" })).toBe("readonly");
 	});
 
-	it("authorizes answers like the original isApprovalAuthorized", () => {
-		expect(isOperatorAuthorized(account({}), "u")).toBe(true);
-		expect(isOperatorAuthorized(account({ allowFrom: ["*"] }), "u")).toBe(true);
+	it('authorizes answers only from explicitly listed users (not the original\'s empty / "*" = anyone)', () => {
+		expect(isOperatorAuthorized(account({}), "u")).toBe(false);
+		expect(isOperatorAuthorized(account({ allowFrom: ["*"] }), "u")).toBe(false);
 		expect(isOperatorAuthorized(account({ allowFrom: ["a"] }), "a")).toBe(true);
 		expect(isOperatorAuthorized(account({ allowFrom: ["a"] }), "b")).toBe(false);
 		expect(isOperatorAuthorized(account({}), undefined)).toBe(false);

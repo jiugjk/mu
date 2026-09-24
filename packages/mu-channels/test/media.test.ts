@@ -40,6 +40,11 @@ describe("rich media (group 4)", () => {
 		const realResolve4 = dns.promises.resolve4.bind(dns.promises);
 		vi.spyOn(dns.promises, "resolve4").mockImplementation((async (host: string) =>
 			host === new URL(CDN).hostname ? ["203.0.113.10"] : realResolve4(host)) as typeof dns.promises.resolve4);
+		const realLookup = dns.promises.lookup.bind(dns.promises);
+		vi.spyOn(dns.promises, "lookup").mockImplementation((async (host: string, options: dns.LookupAllOptions) =>
+			host === new URL(CDN).hostname
+				? [{ address: "203.0.113.10", family: 4 }]
+				: realLookup(host, options)) as typeof dns.promises.lookup);
 	});
 	afterAll(() => {
 		globalThis.fetch = realFetch;

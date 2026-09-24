@@ -35,7 +35,8 @@ export function applyLoginCredentials(
 	credentials: readonly BoundCredentials[],
 	accountId?: string | null,
 ): { cfg: MuConfig; accountIds: string[] } {
-	const resolvedId = accountId ? accountId.trim().toLowerCase() : null;
+	// mu 修正：原先转成小写，而 start / logout / send 按原样匹配，大小写混合的账户名因此启动不了也登出不了
+	const resolvedId = accountId ? accountId.trim() : null;
 	let next = cfg;
 	const accountIds: string[] = [];
 	for (const cred of credentials) {

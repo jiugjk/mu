@@ -24,6 +24,8 @@ export interface ReplyLimitResult {
 interface TrackedMessage {
 	count: number;
 	firstSeenAt: number;
+	/** mu 修正：过期后保持过期（原版过期即删除，下一次检查又当作新消息放行被动回复） */
+	expired?: boolean;
 }
 
 /**
@@ -56,7 +58,7 @@ export class ReplyLimiter {
 	/**
 	 * 检查是否允许对指定消息继续被动回复
 	 */
-	checkLimit(messageId: string): ReplyLimitResult {
+	checkLimit(messageId: string, ttlMs = this.ttlMs): ReplyLimitResult {
 		const now = Date.now();
 		const tracked = this.messages.get(messageId);
 
@@ -64,9 +66,9 @@ export class ReplyLimiter {
 			return { allowed: true, remaining: this.limit, shouldFallbackToProactive: false };
 		}
 
-		// TTL 过期
-		if (now - tracked.firstSeenAt > this.ttlMs) {
-			this.messages.delete(messageId);
+		// TTL 过期（mu 修正：窗口可按场景给出，群为 5 分钟；过期后一直按过期处理）
+		if (tracked.expired || now - tracked.firstSeenAt > ttlMs) {
+			tracked.expired = true;
 			return {
 				allowed: false,
 				remaining: 0,
@@ -90,6 +92,18 @@ export class ReplyLimiter {
 	}
 
 	/**
+	 * 收到一条消息（mu 修正）：被动回复窗口从收到消息时算起，而不是从第一次回复时算起
+	 */
+	noteReceived(messageId: string): void {
+		if (this.messages.has(messageId)) return;
+		if (this.messages.size >= this.maxTracked) {
+			const firstKey = this.messages.keys().next().value;
+			if (firstKey) this.messages.delete(firstKey);
+		}
+		this.messages.set(messageId, { count: 0, firstSeenAt: Date.now() });
+	}
+
+	/**
 	 * 记录一次被动回复
 	 */
 	record(messageId: string): void {
@@ -106,6 +120,12 @@ export class ReplyLimiter {
 			}
 			this.messages.set(messageId, { count: 1, firstSeenAt: now });
 		}
+	}
+
+	/** 撤回一次记录（mu 修正：发送失败的消息不占被动回复次数） */
+	unrecord(messageId: string): void {
+		const tracked = this.messages.get(messageId);
+		if (tracked && tracked.count > 0) tracked.count--;
 	}
 
 	/**

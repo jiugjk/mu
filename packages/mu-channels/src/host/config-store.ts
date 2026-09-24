@@ -1,5 +1,14 @@
-import { existsSync, readFileSync, renameSync, statSync, unwatchFile, watchFile, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import {
+	existsSync,
+	readFileSync,
+	realpathSync,
+	renameSync,
+	statSync,
+	unwatchFile,
+	watchFile,
+	writeFileSync,
+} from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { ensureDir } from "./paths.ts";
 
 export type ConfigObject = Record<string, unknown>;
@@ -19,9 +28,18 @@ export class MuConfigFile {
 		this.path = path;
 	}
 
-	/** The current file, parsed; `{}` when it does not exist. A file that does not parse is an error, not `{}`. */
+	/**
+	 * The current file, parsed; `{}` when it does not exist. A file that does not parse is an error, not `{}`.
+	 * With no mu.json yet, a legacy kyrn.json beside it is what mu's judge reads, so it is the starting point:
+	 * the first write then carries its settings over instead of hiding them behind a new mu.json.
+	 */
 	read(): ConfigObject {
-		if (!existsSync(this.path)) return {};
+		if (!existsSync(this.path)) {
+			const legacy = join(dirname(this.path), "kyrn.json");
+			if (basename(this.path) !== "mu.json" || !existsSync(legacy)) return {};
+			const parsed = JSON.parse(readFileSync(legacy, "utf8")) as unknown;
+			return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as ConfigObject) : {};
+		}
 		const mtime = statSync(this.path).mtimeMs;
 		if (this.cached && mtime === this.cachedMtime) return this.cached;
 		const parsed = JSON.parse(readFileSync(this.path, "utf8")) as unknown;
@@ -39,11 +57,13 @@ export class MuConfigFile {
 			const current = structuredClone(this.read());
 			const returned = mutator(current);
 			const next = returned && typeof returned === "object" ? (returned as ConfigObject) : current;
-			ensureDir(dirname(this.path));
-			const temporary = join(dirname(this.path), `.mu.json.${process.pid}.${Date.now()}.tmp`);
+			// A symlinked mu.json (e.g. kept in a dotfiles repo) is written where it points, not replaced by a copy.
+			const target = existsSync(this.path) ? realpathSync(this.path) : this.path;
+			ensureDir(dirname(target));
+			const temporary = join(dirname(target), `.mu.json.${process.pid}.${Date.now()}.tmp`);
 			// The file may hold an AppSecret: only its owner reads it.
 			writeFileSync(temporary, `${JSON.stringify(next, null, "\t")}\n`, { mode: 0o600 });
-			renameSync(temporary, this.path);
+			renameSync(temporary, target);
 			this.cached = undefined;
 		};
 		const result = this.writing.then(run, run);

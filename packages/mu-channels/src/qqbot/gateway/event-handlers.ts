@@ -17,7 +17,8 @@ import { dispatchToMu } from "../dispatch/index.ts";
 import { parseChatButtonData } from "../features/chat-surface.ts";
 import { cacheMsgId } from "../features/msgid-cache.ts";
 import { recordKnownUser } from "../features/proactive.ts";
-import { sendText } from "../outbound/outbound-service.ts";
+import { isExplicitAdmin } from "../host.ts";
+import { noteInboundMessage, sendText } from "../outbound/outbound-service.ts";
 import { runWithRequestContext } from "../request-context.ts";
 import type { QQBotRuntime } from "../runtime.ts";
 import type { ResolvedQQBotAccount } from "../types.ts";
@@ -45,6 +46,7 @@ export async function handleMessage(
 
 	try {
 		cacheMsgId(scope, msg.replyTarget.targetId, msg.messageId);
+		noteInboundMessage(account.accountId, msg.messageId);
 
 		recordKnownUser({
 			type: scope === "group" ? "group" : "c2c",
@@ -84,13 +86,14 @@ export async function handleInteraction(
 		return;
 	}
 	if (event.data?.type === INTERACTION_UPDATE) {
-		await handleConfigUpdate(event, account, runtime, log);
+		const applied = await handleConfigUpdate(event, account, runtime, log);
 		try {
 			const adapters = getAdapters(runtime);
 			const cfg = adapters.getConfig?.() ?? {};
 			const groupOpenid = (event as any).group_openid ?? "";
 			const updatedCfg = groupOpenid ? resolveGroupConfigFromAccount(account, groupOpenid) : null;
-			const requireMention = updatedCfg?.requireMention ?? true;
+			// mu 修正：原版回包读的是尚未热更新的内存配置，总是旧值；刚保存的值直接用
+			const requireMention = applied ?? updatedCfg?.requireMention ?? true;
 			const clawCfg = buildClawCfg(
 				requireMention,
 				[],
@@ -146,23 +149,34 @@ async function handleConfigQuery(
 	}
 }
 
+/** 返回保存后的 requireMention；未保存时 undefined */
 async function handleConfigUpdate(
 	event: InteractionEvent,
 	account: ResolvedQQBotAccount,
 	runtime: QQBotRuntime,
 	log: PluginLogger,
-): Promise<void> {
+): Promise<boolean | undefined> {
 	const resolved = (event.data as any)?.resolved;
 	const update = resolved?.claw_cfg;
 	const groupOpenid = (event as any).group_openid ?? "";
 
-	if (update?.require_mention !== undefined && groupOpenid) {
-		try {
-			await setGroupRequireMention(runtime, account.accountId, groupOpenid, update.require_mention === "mention");
-			log.info(`interaction: group=${groupOpenid} requireMention=${update.require_mention}`);
-		} catch (err) {
-			log.error(`interaction update failed: ${err}`);
-		}
+	if (update?.require_mention === undefined || !groupOpenid) return undefined;
+	// mu 修正：原版不看是谁操作的面板，任何群成员都能让机器人不 @ 也回答；与 /bot-group-always 一样只允许运维者
+	const operatorId = resolveOperatorId(event);
+	if (!isExplicitAdmin(account, operatorId)) {
+		log.warn(
+			`interaction: group=${groupOpenid} config change by ${operatorId ?? "unknown"} refused (not in allowFrom)`,
+		);
+		return undefined;
+	}
+	const requireMention = update.require_mention === "mention";
+	try {
+		await setGroupRequireMention(runtime, account.accountId, groupOpenid, requireMention);
+		log.info(`interaction: group=${groupOpenid} requireMention=${update.require_mention}`);
+		return requireMention;
+	} catch (err) {
+		log.error(`interaction update failed: ${err}`);
+		return undefined;
 	}
 }
 

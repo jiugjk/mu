@@ -5,7 +5,7 @@
  * 中间件负责过滤和上下文富化；concurrencyGuard 负责串行+合并，
  * 合并后的消息继续走完剩余中间件链，最终统一由 bot.on("message") 处理转发。
  */
-import type { Middleware, MiddlewareContext, QQBot, RateLimiterOptions } from "@tencent-connect/qqbot-nodejs";
+import type { Middleware, MiddlewareContext, QQBot } from "@tencent-connect/qqbot-nodejs";
 import {
 	concurrencyGuard,
 	contentSanitizer,
@@ -15,7 +15,6 @@ import {
 	mentionGate,
 	messageFilter,
 	quoteRef,
-	rateLimiter,
 	slashCommand,
 	typingIndicator,
 } from "@tencent-connect/qqbot-nodejs";
@@ -27,6 +26,7 @@ import { dynamicAccessControl } from "../middleware/access-control.ts";
 import { attachmentProcessor } from "../middleware/attachment.ts";
 import { pendingAnswer } from "../middleware/pending-answer.ts";
 import { createPolicyInjector } from "../middleware/policy-injector.ts";
+import { inboundRateLimit, type RateLimitOptions, type RateLimitTier } from "../middleware/rate-limit.ts";
 import type { QQBotRuntime } from "../runtime.ts";
 import type { RateLimitConfig, ResolvedQQBotAccount } from "../types.ts";
 import { stripMentionText } from "../utils/mention.ts";
@@ -46,12 +46,14 @@ export const DEFAULT_RATE_LIMIT = {
 	global: { max: 300, windowMs: 60_000 },
 } as const;
 
-export function resolveRateLimit(config: RateLimitConfig | false | undefined): RateLimiterOptions | null {
+export function resolveRateLimit(config: RateLimitConfig | false | undefined): RateLimitOptions | null {
 	if (config === false) return null;
-	const pick = (key: keyof RateLimitConfig) => {
+	// mu 修正：只写了一半的档位（如 {"max":5}）与默认值合并；原先缺 windowMs 时发送者会被永久限流
+	const pick = (key: keyof RateLimitConfig): RateLimitTier | undefined => {
 		const value = config?.[key];
 		if (value === false) return undefined;
-		return value ?? DEFAULT_RATE_LIMIT[key];
+		const tier = { ...DEFAULT_RATE_LIMIT[key], ...(value ?? {}) };
+		return Number(tier.max) > 0 && Number(tier.windowMs) > 0 ? tier : DEFAULT_RATE_LIMIT[key];
 	};
 	return { perSender: pick("perSender"), perGroup: pick("perGroup"), global: pick("global") };
 }
@@ -107,10 +109,6 @@ export function setupMiddlewares(bot: QQBot, account: ResolvedQQBotAccount, opts
 		}),
 	);
 
-	// 5.5 等待作答（mu 移植新增）：会话里有问题（审批/选择）在等人回答时，回复序号或文字即作答，
-	//     不再排队进入会话。放在 @ 门控之前：群里回复「1」无需 @ 机器人。
-	bot.use(pendingAnswer({ account, getRuntime: opts.getRuntime }));
-
 	// 6. 群聊 @bot 门控（从 ctx.state.policy.group 读取动态配置）
 	bot.use(mentionGate());
 	// 7. 内容清洗（去 @marker、表情标签、多余空白）
@@ -126,7 +124,7 @@ export function setupMiddlewares(bot: QQBot, account: ResolvedQQBotAccount, opts
 	const rateLimit = resolveRateLimit(account.config.rateLimit);
 	if (rateLimit) {
 		bot.use(
-			rateLimiter({
+			inboundRateLimit({
 				...rateLimit,
 				onLimit: (ctx, tier) => {
 					ctx.log?.info?.(`[rate-limit] dropped message from ${ctx.message.senderId} (${tier})`);
@@ -134,6 +132,11 @@ export function setupMiddlewares(bot: QQBot, account: ResolvedQQBotAccount, opts
 			}),
 		);
 	}
+
+	// 8.5 等待作答（mu 移植新增）：会话里有问题（审批/选择）在等人回答时，回复序号或文字即作答，
+	//     不再排队进入会话。mu 修正：放在 @ 门控与限流之后 —— 原先在门控之前，群里没 @ 机器人的闲聊
+	//     （「好」「1」）也会直接批准待定的审批，且绕过限流。
+	bot.use(pendingAnswer({ account, getRuntime: opts.getRuntime }));
 
 	// 9. 斜杠命令（在并发锁之前，命令匹配后直接 reply + stop，不排队）
 	//    依赖：ctx.state.policy（policyInjector, #3）、ctx.message.*（原始消息）

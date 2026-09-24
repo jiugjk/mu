@@ -14,6 +14,10 @@ export type StreamTextOwner = {
 	hasStarted: boolean;
 	shouldFallbackToStatic: boolean;
 	isTerminal: boolean;
+	/** mu 修正：流中途失败；余下文本走静态发送 */
+	failedMidway?: boolean;
+	/** 失败前这条流里已显示的文本 */
+	acceptedText?: string;
 	finalize(): Promise<void>;
 };
 
@@ -27,7 +31,13 @@ export type DispatchDeliverState = {
 };
 
 export function streamOwnsText(controller: StreamTextOwner | null): boolean {
-	return Boolean(controller?.hasStarted && !controller.shouldFallbackToStatic);
+	return Boolean(controller?.hasStarted && !controller.shouldFallbackToStatic && !controller.failedMidway);
+}
+
+/** 流中途失败后，去掉已在流里显示的开头，只发余下的部分 */
+function afterStreamed(text: string, controller: StreamTextOwner | null): string {
+	const shown = controller?.failedMidway ? (controller.acceptedText ?? "") : "";
+	return shown && text.startsWith(shown) ? text.slice(shown.length).trim() : text;
 }
 
 export async function deliverDispatchPayload(
@@ -58,7 +68,8 @@ export async function deliverDispatchPayload(
 		if (streamOwnsText(state.streamingController) || !text || state.deliveredTexts.has(text)) {
 			return;
 		}
-		await sendReply({ text }, info, state.ctx);
+		const rest = afterStreamed(text, state.streamingController);
+		if (rest) await sendReply({ text: rest }, info, state.ctx);
 		state.deliveredTexts.add(text);
 		return;
 	}
@@ -78,8 +89,13 @@ export async function deliverDispatchPayload(
 	}
 
 	const filteredPayload = filterDeliveredMedia(payload, state.deliveredMediaUrls);
+	const rest = text ? afterStreamed(text, state.streamingController) : "";
 	const payloadToSend =
-		text && state.deliveredTexts.has(text) ? { ...filteredPayload, text: undefined } : filteredPayload;
+		text && (state.deliveredTexts.has(text) || !rest)
+			? { ...filteredPayload, text: undefined }
+			: rest !== text
+				? { ...filteredPayload, text: rest }
+				: filteredPayload;
 	await sendReply(payloadToSend, info, state.ctx);
 	if (text) state.deliveredTexts.add(text);
 	for (const u of payloadToSend.mediaUrls ?? []) state.deliveredMediaUrls.add(u);

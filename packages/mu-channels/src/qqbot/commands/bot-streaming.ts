@@ -2,7 +2,7 @@ import type { SlashCommand } from "@tencent-connect/qqbot-nodejs";
 import { shouldUseStreaming } from "../outbound/streaming-controller.ts";
 import type { QQBotRuntime } from "../runtime.ts";
 import type { ResolvedQQBotAccount } from "../types.ts";
-import { checkCommandAuth, updateAccountConfig } from "./config-util.ts";
+import { checkAdminCommandAuth, updateAccountConfig } from "./config-util.ts";
 
 /** /bot-streaming — 一键开关流式消息 */
 export function botStreaming(account: ResolvedQQBotAccount, getRuntime: () => QQBotRuntime): SlashCommand {
@@ -10,7 +10,8 @@ export function botStreaming(account: ResolvedQQBotAccount, getRuntime: () => QQ
 		name: "bot-streaming",
 		description: "一键开关流式消息",
 		scope: "c2c",
-		authorized: checkCommandAuth,
+		// mu 修正：它改写 mu.json，只允许运维者（原版 "*" 或 open 时任何人都能改）
+		authorized: checkAdminCommandAuth,
 		usage: `/bot-streaming
 
 查看当前流式消息状态，或切换开/关。
@@ -37,8 +38,10 @@ export function botStreaming(account: ResolvedQQBotAccount, getRuntime: () => QQ
 				].join("\n");
 			}
 
-			// on / off → 切换
-			const targetEnabled = args === "on" || args === "1" || args === "true";
+			// on / off → 切换（mu 修正：原先 on 以外的任何参数都当作 off）
+			const on = ["on", "1", "true"].includes(args);
+			if (!on && !["off", "0", "false"].includes(args)) return "⚠️ 用法: /bot-streaming [on|off]";
+			const targetEnabled = on;
 			if (targetEnabled === currentEnabled) {
 				return `ℹ️ 流式消息已经是${currentEnabled ? "开启" : "关闭"}状态，无需切换。`;
 			}

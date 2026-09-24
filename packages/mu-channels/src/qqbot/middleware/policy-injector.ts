@@ -42,9 +42,9 @@ export function createPolicyInjector(account: ResolvedQQBotAccount): Middleware 
 		const policy: Record<string, unknown> = {
 			scope,
 			accountId: account.accountId,
-			// 访问控制：dmPolicy（c2c） / groupPolicy（group），默认 allowlist
+			// 访问控制：dmPolicy（c2c）默认 allowlist；groupPolicy（group）默认 open（与文档、config.ts 一致）
 			c2cMode: account.config?.dmPolicy ?? "allowlist",
-			groupMode: account.config?.groupPolicy ?? "allowlist",
+			groupMode: account.config?.groupPolicy ?? "open",
 			allowFrom: account.config?.allowFrom ?? [],
 			groupAllowFrom: account.config?.groupAllowFrom ?? [],
 		};

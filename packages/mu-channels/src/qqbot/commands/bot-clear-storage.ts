@@ -100,7 +100,7 @@ export function botClearStorage(account: ResolvedQQBotAccount): SlashCommand {
 					"",
 					"---",
 					"",
-					"确认清理后文件将永久删除，后续 AI 无法找回。",
+					"确认清理后文件将永久删除。已发给 AI 的图片仍保留在会话记录里。",
 					'‼️ <qqbot-cmd-enter text="/bot-clear-storage --force" />',
 				);
 				return lines.join("\n");

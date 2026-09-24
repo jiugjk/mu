@@ -5,7 +5,7 @@
  * （mu 中没有框架 chunker，该实现即实际使用的切分）。用例原样保留，eq / tableSafe 各注册一个 vitest 用例。
  */
 import { expect, it } from "vitest";
-import { chunkText } from "../src/qqbot/channel.ts";
+import { chunkText, fitChunks } from "../src/qqbot/channel.ts";
 
 const GFM_TABLE_SEP_RE = /^\|[\s:-]+\|/;
 
@@ -83,3 +83,24 @@ eq("纯表格无其他文本", "| H | V |\n|---|---|\n| d | v |", 100, 1);
 eq("表格在 limit 内", "开头\n| H | V |\n|---|---|\n| d | v |\n结尾", 100, 1);
 
 // ======================================================================
+
+// ======================================================================
+// mu 修正：发送前的最后一道（fitChunks）——超限的段硬切，切开的代码块两边补齐围栏
+
+it("fitChunks: 超过上限的单行被切开，不拆 UTF-16 代理对", () => {
+	const pieces = fitChunks(["a".repeat(120)], 50);
+	expect(pieces.every((p) => p.length <= 50)).toBe(true);
+	expect(pieces.join("")).toBe("a".repeat(120));
+	const emoji = fitChunks(["😀".repeat(40)], 50);
+	expect(emoji.join("")).toBe("😀".repeat(40));
+	expect(emoji.every((p) => !/^[\uDC00-\uDFFF]|[\uD800-\uDBFF]$/.test(p))).toBe(true);
+});
+
+it("fitChunks: 被切开的代码块在两段里都是完整的代码块", () => {
+	const pieces = fitChunks([`intro\n\`\`\`ts\n${"x\n".repeat(40)}\`\`\`\nend`], 60);
+	expect(pieces.length).toBeGreaterThan(1);
+	for (const piece of pieces) {
+		expect((piece.match(/^```/gm) ?? []).length % 2).toBe(0);
+	}
+	expect(pieces[1]?.startsWith("```ts\n")).toBe(true);
+});

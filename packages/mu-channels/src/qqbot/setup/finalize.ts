@@ -7,19 +7,33 @@
 import { DEFAULT_ACCOUNT_ID } from "../config.ts";
 import type { MuConfig } from "../types.ts";
 
-/** 写入默认 streaming / dmPolicy / mediaMaxMb；扫码用户加入白名单 */
+/**
+ * 写入默认 streaming / dmPolicy / mediaMaxMb；扫码用户加入白名单。
+ *
+ * mu 修正：原版每次登录都覆盖这些键，刷新凭据会把 dmPolicy "disabled" 改回 allowlist、扫码会把 allowFrom
+ * 换成扫码者一人。现在只补全未设置的键，扫码者追加进已有的 allowFrom。没有扫码者（--token / --use-env）
+ * 且没有 allowFrom 时 dmPolicy 默认 pairing：陌生人拿到配对码，由主机上的人 `mu qqbot pairing approve` 批准。
+ */
 export function applyAccountDefaults(cfg: MuConfig, accountId: string, userOpenid?: string): MuConfig {
 	const next = { ...cfg, channels: { ...cfg.channels } };
 	const qqbot = { ...((next.channels?.qqbot as Record<string, unknown>) ?? {}) } as Record<string, unknown>;
 
-	const defaults: Record<string, unknown> = { streaming: { mode: "partial" }, dmPolicy: "allowlist", mediaMaxMb: 200 };
-	if (userOpenid) defaults.allowFrom = [userOpenid];
+	const fill = (target: Record<string, unknown>) => {
+		const allowFrom = Array.isArray(target.allowFrom) ? target.allowFrom.map(String) : undefined;
+		if (userOpenid)
+			target.allowFrom = allowFrom?.includes(userOpenid) ? allowFrom : [...(allowFrom ?? []), userOpenid];
+		target.streaming ??= { mode: "partial" };
+		target.dmPolicy ??= userOpenid || allowFrom?.length ? "allowlist" : "pairing";
+		target.mediaMaxMb ??= 200;
+	};
 
 	if (accountId === DEFAULT_ACCOUNT_ID) {
-		Object.assign(qqbot, defaults);
+		fill(qqbot);
 	} else {
 		const accounts = { ...((qqbot.accounts as Record<string, unknown>) ?? {}) };
-		accounts[accountId] = { ...((accounts[accountId] as Record<string, unknown>) ?? {}), ...defaults };
+		const account = { ...((accounts[accountId] as Record<string, unknown>) ?? {}) };
+		fill(account);
+		accounts[accountId] = account;
 		qqbot.accounts = accounts;
 	}
 
