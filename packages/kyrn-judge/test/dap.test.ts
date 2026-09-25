@@ -129,13 +129,21 @@ describe("debug adapters", () => {
 	it("finds the project's virtual environment for Python only", () => {
 		const { root, dir } = tempArea("mu-venv-");
 		cleanup.push(() => rmSync(root, { recursive: true, force: true }));
-		mkdirSync(join(dir, ".venv", "bin"), { recursive: true });
-		writeFileSync(join(dir, ".venv", "bin", "python"), "#!/bin/sh\n");
-		chmodSync(join(dir, ".venv", "bin", "python"), 0o755);
-		const [debugpy, delve] = builtInAdapters("linux");
-		const executable = (path: string) => path === join(dir, ".venv", "bin", "python");
-		expect(projectInterpreter(debugpy, dir, "linux", executable)).toBe(join(dir, ".venv", "bin", "python"));
-		expect(projectInterpreter(delve, dir, "linux", executable)).toBeUndefined();
+		// Where this machine's venv keeps its interpreter: Scripts\python.exe on Windows, bin/python elsewhere.
+		const python =
+			process.platform === "win32"
+				? join(dir, ".venv", "Scripts", "python.exe")
+				: join(dir, ".venv", "bin", "python");
+		mkdirSync(dirname(python), { recursive: true });
+		writeFileSync(python, "#!/bin/sh\n");
+		chmodSync(python, 0o755);
+		const [debugpy, delve] = builtInAdapters(process.platform);
+		const executable = (path: string) => path === python;
+		expect(projectInterpreter(debugpy, dir, process.platform, executable)).toBe(python);
+		expect(projectInterpreter(delve, dir, process.platform, executable)).toBeUndefined();
+		expect(projectInterpreter(debugpy, "/w", "linux", (path) => path === "/w/.venv/bin/python")).toBe(
+			"/w/.venv/bin/python",
+		);
 		expect(projectInterpreter(debugpy, "C:\\w", "win32", (path) => path === "C:\\w\\venv\\Scripts\\python.exe")).toBe(
 			"C:\\w\\venv\\Scripts\\python.exe",
 		);
@@ -292,7 +300,8 @@ describe("pack:debugger", () => {
 			expect.arrayContaining(["debug_start", "debug_step", "debug_inspect", "debug_stop"]),
 		);
 		const [start, evaluated, frame, next, end, stop] = toolResults(harness);
-		expect(start).toContain(`Fake debugger, ${process.execPath}`);
+		// The results are JSON, where the backslashes of a Windows path come doubled.
+		expect(start).toContain(JSON.stringify(`Fake debugger, ${process.execPath}`).slice(1, -1));
 		expect(start).toContain("Stopped (breakpoint) at prog.fake:4.");
 		expect(start).toContain("#0 work at prog.fake:4");
 		expect(start).toContain("come from the program being debugged");

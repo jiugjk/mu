@@ -21,14 +21,18 @@ export function sh(cwd: string, ...args: string[]): string {
 
 /** A temp area whose path has a space and Chinese characters in it, like a Windows profile can. Remove `root` afterwards. */
 export function tempArea(prefix = "kyrn-wt-test-"): { root: string; dir: string } {
-	// realpath: git reports /private/var on macOS where tmpdir() says /var.
-	const root = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
+	// The real path, as git reports it: /private/var on macOS where tmpdir() says /var, and on Windows the long name of
+	// a folder the temp path gives by its short one (RUNNER~1 on GitHub's runners).
+	const root = realpathSync.native(mkdtempSync(join(tmpdir(), prefix)));
 	const dir = join(root, "临时 区");
 	mkdirSync(dir);
 	return { root, dir };
 }
 
-/** Turns `repo` into a repository with one commit holding `files`. */
+/**
+ * Turns `repo` into a repository with one commit holding `files`. The machine's own line-ending conversion stays out
+ * (GitHub's Windows runners have core.autocrlf=true): a test about it sets it in `config`.
+ */
 export function initRepo(
 	repo: string,
 	files: Record<string, string | Buffer>,
@@ -36,7 +40,7 @@ export function initRepo(
 ): string {
 	mkdirSync(repo, { recursive: true });
 	sh(repo, "init", "-q", "-b", "main", ".");
-	for (const [key, value] of Object.entries(config)) sh(repo, "config", key, value);
+	for (const [key, value] of Object.entries({ "core.autocrlf": "false", ...config })) sh(repo, "config", key, value);
 	for (const [path, content] of Object.entries(files)) {
 		mkdirSync(join(repo, path, ".."), { recursive: true });
 		writeFileSync(join(repo, path), content);

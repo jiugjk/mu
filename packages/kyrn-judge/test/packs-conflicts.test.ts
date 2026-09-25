@@ -7,7 +7,15 @@ import { parseConflicts, replaceBlocks } from "../src/packs/conflicts.ts";
 import { sh } from "./fixtures/git-repo.ts";
 import { call, disclosing, startPacks, toolResults } from "./packs-helpers.ts";
 
-const LOCAL = { "user.name": "t", "user.email": "t@t", "commit.gpgsign": "false", "core.hooksPath": ".git/no-hooks" };
+// The machine's own line-ending setting stays out (Windows runners have core.autocrlf=true, which gives the merged
+// files CRLF): the pack keeps whatever endings a file has, as the first test shows.
+const LOCAL = {
+	"user.name": "t",
+	"user.email": "t@t",
+	"commit.gpgsign": "false",
+	"core.hooksPath": ".git/no-hooks",
+	"core.autocrlf": "false",
+};
 const twelve = (change: Record<number, string> = {}) =>
 	`${Array.from({ length: 12 }, (_line, index) => change[index + 1] ?? `b${index + 1}`).join("\n")}\n`;
 
