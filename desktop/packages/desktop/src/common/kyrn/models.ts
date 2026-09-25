@@ -33,7 +33,8 @@ export function readThinkingLevelMap(value: unknown): ThinkingLevelMap {
   const map: ThinkingLevelMap = {};
   for (const level of THINKING_LEVELS) {
     const mapped = record[level];
-    if (mapped === null || typeof mapped === 'string') map[level] = mapped;
+    if (mapped === null) map[level] = null;
+    else if (typeof mapped === 'string') map[level] = mapped;
   }
   return map;
 }
