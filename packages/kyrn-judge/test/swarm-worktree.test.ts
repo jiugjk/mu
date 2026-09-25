@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { UNUSABLE_TEXT } from "../src/checkpoint/git.ts";
 import {
 	checkRepo,
 	collectPatch,
@@ -8,6 +9,7 @@ import {
 	describeSummary,
 	type GitRun,
 	gitArgs,
+	gitRunner,
 	type Marker,
 	markerPath,
 	parseNameStatus,
@@ -80,6 +82,55 @@ describe("worktree: where it can be used", () => {
 		});
 		expect(await checkRepo(noGit, repo)).toMatchObject({ ok: false, problem: "no-git" });
 	});
+
+	// Found with the QA fixes, 2026-09-25: a sub-agent's checkout started git on a Mac without the developer tools,
+	// whose /usr/bin/git only opens their installer, and read the Xcode license's exit as "not a repository".
+	it("never starts a Mac's git without the developer tools, and says why git cannot run", async () => {
+		const repo = makeRepo(area(), { "a.txt": "a\n" });
+		let asked = 0;
+		const stub = gitRunner({
+			platform: "darwin",
+			find: () => "/usr/bin/git",
+			hasDeveloperTools: async () => {
+				asked++;
+				return false;
+			},
+		});
+		// Started, git would find the repository.
+		for (let run = 0; run < 2; run++) {
+			expect(await checkRepo(stub, repo)).toEqual({
+				ok: false,
+				problem: "no-git",
+				message: UNUSABLE_TEXT.developer_tools_missing,
+			});
+		}
+		expect(asked).toBe(1);
+	});
+
+	it.skipIf(process.platform === "win32")(
+		"reads git held back by the Xcode license as git that cannot run",
+		async () => {
+			const repo = makeRepo(area(), { "a.txt": "a\n" });
+			const bin = area();
+			writeFileSync(
+				join(bin, "git"),
+				`#!/bin/sh\necho "You have not agreed to the Xcode license agreements. Please run 'sudo xcodebuild -license'." >&2\nexit 69\n`,
+				{ mode: 0o755 },
+			);
+			const run = gitRunner();
+			const held: GitRun = (args, options) => run(args, { ...options, env: { PATH: bin } });
+			expect(await held(["status"], { cwd: repo })).toMatchObject({
+				code: 69,
+				missing: true,
+				unusable: "xcode_license",
+			});
+			expect(await checkRepo(held, repo)).toEqual({
+				ok: false,
+				problem: "no-git",
+				message: UNUSABLE_TEXT.xcode_license,
+			});
+		},
+	);
 
 	it("adds the long-path switch on Windows only, and never lets safecrlf make hashing fatal", () => {
 		expect(gitArgs(["status"], "win32")).toContain("core.longpaths=true");

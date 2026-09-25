@@ -65,7 +65,7 @@ export class GitFailed extends Error {
 	}
 }
 
-/** What `spawnGit` looks at before it first starts git. Tests stand in for a Mac here. */
+/** What mu looks at before it first starts git (`stubProblem`). Tests stand in for a Mac here. */
 export interface GitProbe {
 	readonly platform: NodeJS.Platform;
 	/** The file `binary` is on this PATH, as spawn finds it. */
@@ -109,6 +109,32 @@ const MAC_STUB = "/usr/bin/git";
 const XCODE_LICENSE_EXIT = 69;
 
 /**
+ * Why `binary` must not be started, found before it ever is: on a Mac, a git that is the system's stub with no
+ * developer tools behind it opens their install dialog at each start. Undefined when it may run.
+ */
+export async function stubProblem(
+	binary: string,
+	path: string | undefined,
+	probe: GitProbe = hostProbe,
+): Promise<GitUnusable | undefined> {
+	if (probe.platform !== "darwin" || probe.find(binary, path) !== MAC_STUB) return undefined;
+	if (await probe.hasDeveloperTools()) return undefined;
+	return new GitUnusable("developer_tools_missing", `${MAC_STUB} needs the developer tools, which are not installed`);
+}
+
+/** Whether a git that ran was held back by the Xcode license rather than failing at its command. */
+export function heldByLicense(code: number, output: () => string): boolean {
+	return code === XCODE_LICENSE_EXIT && /licen[cs]e/i.test(output());
+}
+
+/** What a model is told when git cannot run on this Mac. Only the user can change it, in a system dialog or with sudo. */
+export const UNUSABLE_TEXT: Readonly<Record<GitUnusableReason, string>> = {
+	developer_tools_missing:
+		"git cannot run on this Mac: Apple's command line developer tools are not installed. Only the user can install them; do not try",
+	xcode_license: "git cannot run on this Mac until the user accepts the Xcode license. Only they can; do not try",
+};
+
+/**
  * The real runner: no shell, an argument array, no console window on Windows. `git.exe` is a real
  * executable there, so no `.cmd` shim is involved. A command that outlives `timeoutMs` is killed and
  * reported as failed, so a huge project costs a turn its checkpoint rather than its start. With a
@@ -119,19 +145,13 @@ const XCODE_LICENSE_EXIT = 69;
  * A git held back by the Xcode license is reported as such, not as a command that failed.
  */
 export function spawnGit(binary = "git", timeoutMs = 30_000, probe: GitProbe = hostProbe): GitRun {
-	let usable: Promise<void> | undefined;
+	let stub: Promise<GitUnusable | undefined> | undefined;
 	return async (args, env, input, limit) => {
-		usable ??= (async () => {
-			if (probe.platform !== "darwin" || probe.find(binary, env.PATH) !== MAC_STUB) return;
-			if (!(await probe.hasDeveloperTools()))
-				throw new GitUnusable(
-					"developer_tools_missing",
-					`${MAC_STUB} needs the developer tools, which are not installed`,
-				);
-		})();
-		await usable;
+		stub ??= stubProblem(binary, env.PATH, probe);
+		const problem = await stub;
+		if (problem) throw problem;
 		const result = await spawnOnce(binary, timeoutMs, args, env, input, limit);
-		if (result.code === XCODE_LICENSE_EXIT && /licen[cs]e/i.test(`${result.stderr}\n${result.stdout}`))
+		if (heldByLicense(result.code, () => `${result.stderr}\n${result.stdout}`))
 			throw new GitUnusable("xcode_license", `git ${args[0]} exited with 69: ${result.stderr.trim().slice(0, 300)}`);
 		return result;
 	};

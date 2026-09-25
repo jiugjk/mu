@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
@@ -6,6 +6,7 @@ import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi
 import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHarness, type Harness } from "../../coding-agent/test/suite/harness.ts";
+import { UNUSABLE_TEXT } from "../src/checkpoint/git.ts";
 import { parseConfig } from "../src/config.ts";
 import { DecisionEngine } from "../src/decision.ts";
 import { cacheWarming } from "../src/decisions/cache-warming.ts";
@@ -352,6 +353,36 @@ describe("kyrn features", () => {
 		const stored = harness.session.messages.find((message) => message.role === "toolResult");
 		expect(JSON.stringify(stored)).toContain("line 60 of a long listing");
 	});
+
+	// Found with the QA fixes, 2026-09-25: on a Mac where git cannot run, locate said "No tracked files found here".
+	it.skipIf(process.platform === "win32")(
+		"locate: says git cannot run on this Mac, and ranks nothing, when the Xcode license holds git back",
+		async () => {
+			const bin = mkdtempSync(join(tmpdir(), "mu-locate-git-"));
+			writeFileSync(
+				join(bin, "git"),
+				`#!/bin/sh\necho "You have not agreed to the Xcode license agreements. Please run 'sudo xcodebuild -license'." >&2\nexit 69\n`,
+				{ mode: 0o755 },
+			);
+			vi.stubEnv("PATH", bin);
+			try {
+				const harness = await start(() => ({}));
+				harness.setResponses([
+					fauxAssistantMessage([fauxToolCall("locate", { query: "where session cookies are set" })], {
+						stopReason: "toolUse",
+					}),
+					fauxAssistantMessage("I will search another way."),
+				]);
+				await harness.session.prompt("Where are session cookies set?");
+				const result = harness.session.messages.find((message) => message.role === "toolResult");
+				expect(JSON.stringify(result)).toContain(UNUSABLE_TEXT.xcode_license);
+				expect(JSON.stringify(result)).toContain('"ranked":[]');
+			} finally {
+				vi.unstubAllEnvs();
+				rmSync(bin, { recursive: true, force: true });
+			}
+		},
+	);
 });
 
 describe("decision specs over lists and choices", () => {
