@@ -52,7 +52,7 @@ jobs:
         run: npm test
 
   desktop:
-    name: Desktop · type check and unit tests
+    name: Desktop · checks and unit tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
@@ -78,6 +78,17 @@ jobs:
 
       - name: Run postinstall
         run: bun run postinstall || true
+
+      # What AionUi checked before every commit (desktop/.pre-commit-config.yaml): oxlint's errors (its warnings stay
+      # advisory), oxfmt's formatting, and the locale files against the generated i18n-keys.d.ts.
+      - name: Lint
+        run: bun run lint
+
+      - name: Format
+        run: bun run format:check
+
+      - name: Locales
+        run: node scripts/check-i18n.js
 
       - name: Type check
         run: bunx tsc --noEmit
