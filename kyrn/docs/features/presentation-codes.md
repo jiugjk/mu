@@ -209,6 +209,13 @@ These fields are added:
 - `answerIds`, in the order of `answers`: `once`, `session` (when offered) and `deny`. These are the same ids `permissions.resolved` reports.
 - `toolCallId`, here and in `permissions.resolved`: the tool call the question is about. Show the answer on that call's row in your own words. The call's tool result keeps the English reason the model reads.
 
+`reason` is itself a code. Two values were added on 2026-09-25 for Jev mode without a verdict:
+
+| reason | English |
+| --- | --- |
+| `nojudge` | No judge is available yet, so mu asks about each step. |
+| `judgedown` | The judge did not answer this time, so mu asks you. |
+
 The mode labels and descriptions are already in Chinese or English. Key your own strings on `mode` and `modes[].id`.
 
 ## web.search

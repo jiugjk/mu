@@ -21,7 +21,12 @@ Jev mode puts one choice question, `tool.approval`, to Jev: what is `tool_call` 
 
 - Only `needed` at probability 0.8 or higher runs without you.
 - Anything else asks you, and the prompt says why ("Jev thinks this goes beyond what you asked for").
-- If there is no verdict at all (the judge is down, or its mode is `off`), you are asked.
+- If there is no verdict at all, you are asked, and the prompt says why:
+  - `nojudge`: no judge can answer yet, because it has no usable key (`error:auth`). "No judge is available yet, so mu asks about each step." / "还没有可用的判定器，所以每一步都先问你。"
+  - `judgedown`: the judge failed this time (any other `error:*`: down, too slow, a broken answer). "The judge did not answer this time, so mu asks you." / "判定器这次没有回答，所以先问你。"
+  - When the decision's mode is `off`, Jev is never asked, and the prompt still says `unsure`, as before.
+
+  Before 2026-09-25 (macOS QA), a judge that never answered was reported as Jev being unsure of the step.
 
 Jev's verdict counts even when the decision's own mode is `shadow`, because choosing Jev mode is the opt-in.
 
@@ -95,6 +100,6 @@ Tell the desktop session before changing the version, the location or the accept
 
 - `toolCallId` is the id of the tool call the question is about: the same id as in pi's tool events and in that call's tool result. A client marks that call's own row with it. What the model is told about a refused call stays in English in the tool result.
 - `kind` is one of `edit`, `shell`, `run`, `outside`, `delegate` or `other`.
-- `reason` is one of `ask` (minimal mode), `unsure`, `beyond`, `unrelated`, `flagged` or `protected`.
+- `reason` is one of `ask` (minimal mode), `unsure`, `beyond`, `unrelated`, `flagged`, `protected`, `nojudge` (no judge can answer yet) or `judgedown` (the judge did not answer this time). A flagged command keeps `flagged` whatever the judge did.
 - `answers` holds the exact option strings the picker offers, in order. The picker is the normal extension `select` dialog (over RPC, `extension_ui_request` with `method: "select"`), so the desktop answers it with the chosen string.
 - To switch modes, send `/permissions <id>` as a typed command when the person picked the mode, and `/permissions <id> --here` when the app does it by itself (and `conversationSwitch` is there).
