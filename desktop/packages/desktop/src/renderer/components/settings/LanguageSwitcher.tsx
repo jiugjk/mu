@@ -6,7 +6,7 @@ import { changeLanguage } from '@/renderer/services/i18n';
 import { languageListOrder, nativeLanguageName } from './languageOrder';
 
 const LanguageSwitcher: React.FC = () => {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const selectRef = useRef<SelectHandle>(null);
 
   const handleLanguageChange = useCallback((value: string) => {
@@ -30,7 +30,13 @@ const LanguageSwitcher: React.FC = () => {
 
   return (
     <div className='flex items-center gap-8px'>
-      <AionSelect ref={selectRef} className='w-160px' value={i18n.language} onChange={handleLanguageChange}>
+      <AionSelect
+        ref={selectRef}
+        className='w-160px'
+        value={i18n.language}
+        onChange={handleLanguageChange}
+        aria-label={t('settings.language')}
+      >
         {/* The language in use on top, the others by their own names (see languageOrder). */}
         {languageListOrder(i18n.language).map((language) => (
           <AionSelect.Option key={language} value={language}>

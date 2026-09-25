@@ -205,7 +205,9 @@ describe('a settings section as its own page', () => {
     at('/settings/judges', <SettingsArea section='judges' />);
     const tiers = await screen.findByTestId('mu-judge-tiers');
     expect(screen.getByRole('heading', { name: 'Judge tiers' })).toBeInTheDocument();
-    expect(within(tiers).getByLabelText('Order')).toBeInTheDocument();
+    expect(within(tiers).getByRole('combobox', { name: 'Order' })).toBeInTheDocument();
+    // Its typing input, which takes the focus, says the same.
+    expect(within(tiers).getByRole('textbox', { name: 'Order' })).toBeInTheDocument();
     // Laya, the one judge here, needs nothing in the tiers: the choice above installs and starts it.
     const laya = within(tiers).getByTestId('mu-judge-tier-0');
     expect(laya).toHaveTextContent('Tier 1: Local Laya');

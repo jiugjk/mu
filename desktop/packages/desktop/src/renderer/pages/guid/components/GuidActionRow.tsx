@@ -506,6 +506,7 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
                 shape='circle'
                 icon={<Plus theme='outline' size='14' strokeWidth={2} fill={iconColors.primary} />}
                 data-testid='file-upload-btn'
+                aria-label={t('common.more')}
                 onClick={() => setIsSheetOpen(true)}
               />
               {files.length > 0 && (
@@ -528,6 +529,8 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
                   className={isPlusDropdownOpen ? styles.plusButtonRotate : ''}
                   icon={<Plus theme='outline' size='14' strokeWidth={2} fill={iconColors.primary} />}
                   data-testid='file-upload-btn'
+                  // Files, skills: what the menu under it adds.
+                  aria-label={t('common.add')}
                 />
                 {files.length > 0 && (
                   <Tooltip
@@ -585,6 +588,7 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
           icon={<SendArrowIcon size={16} />}
           onClick={onSend}
           data-testid='guid-send-btn'
+          aria-label={t('common.send')}
         />
       </div>
     </div>
