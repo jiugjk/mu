@@ -324,6 +324,11 @@ describe('custom model providers in models.json', () => {
       const read = f.store.read();
       const add = (patch: Partial<ProviderSettings>) => () =>
         f.store.save({ ...read, models: { ...read.models, providers: [provider(patch)] } });
+      // A save moves the revision on, so each address that is taken is saved over a fresh read.
+      const save = (patch: Partial<ProviderSettings>) => () => {
+        const now = f.store.read();
+        f.store.save({ ...now, models: { ...now.models, providers: [provider(patch)] } });
+      };
       for (const baseUrl of [
         'http://example.com/v1',
         'http://8.8.8.8/v1',
@@ -341,10 +346,10 @@ describe('custom model providers in models.json', () => {
       expect(add({ models: [{ ...provider().models[0], maxTokens: 1.5 }] })).toThrow('Invalid max output tokens');
       expect(existsSync(join(f.dir, 'models.json'))).toBe(false);
       expect(add({ baseUrl: 'http://127.0.0.1:8080/v1', api: 'openai-completions' })).not.toThrow();
-      expect(add({ baseUrl: 'http://192.168.31.124:8000/v1', api: 'openai-completions' })).not.toThrow();
-      expect(add({ baseUrl: 'http://10.1.2.3/v1', api: 'openai-completions' })).not.toThrow();
-      expect(add({ baseUrl: 'http://172.16.5.5/v1', api: 'openai-completions' })).not.toThrow();
-      expect(add({ baseUrl: 'http://[fd00::1]:8000/v1', api: 'openai-completions' })).not.toThrow();
+      expect(save({ baseUrl: 'http://192.168.31.124:8000/v1', api: 'openai-completions' })).not.toThrow();
+      expect(save({ baseUrl: 'http://10.1.2.3/v1', api: 'openai-completions' })).not.toThrow();
+      expect(save({ baseUrl: 'http://172.16.5.5/v1', api: 'openai-completions' })).not.toThrow();
+      expect(save({ baseUrl: 'http://[fd00::1]:8000/v1', api: 'openai-completions' })).not.toThrow();
     });
   });
   it('only takes a key for a provider of the same save, under the one variable its id maps to', () => {
