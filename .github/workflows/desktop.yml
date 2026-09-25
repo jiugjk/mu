@@ -341,6 +341,15 @@ jobs:
             check_app "$unpacked/mu.app"
           done
 
+      # The app runs the mu it carries on its own binary as Node (ELECTRON_RUN_AS_NODE). That copy is started the same
+      # way here, in a throwaway home: version, doctor, sign-in status, import, and the judgment layer over RPC. It runs
+      # after the Gatekeeper check, so nothing it may leave in the unpacked app can touch what was checked.
+      - name: Start the app's own mu
+        shell: bash
+        # The x64 Mac app is built on an arm64 runner, where it runs only if Rosetta is there.
+        continue-on-error: ${{ matrix.platform == 'macos-x64' }}
+        run: node ../kyrn/npm/smoke-app.mjs out ${{ matrix.arch }}
+
       - name: List what was built
         if: always()
         shell: bash
