@@ -17,7 +17,10 @@ test('preview confines real paths to the project and rejects credential files', 
     await assert.rejects(readProjectFile(root, '.env'));
     await assert.rejects(readProjectFile(root, 'escape.ts'));
     await assert.rejects(readProjectFile(root, join(outside, 'other.ts')));
-  } finally { await rm(root, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
 });
 test('saving refuses to overwrite an intervening agent edit', async () => {
   const root = await mkdtemp(join(tmpdir(), 'kyrn-save-'));
@@ -29,5 +32,7 @@ test('saving refuses to overwrite an intervening agent edit', async () => {
     await writeFile(join(root, 'main.ts'), 'agent edit');
     await assert.rejects(saveProjectFile(root, file.path, 'stale edit', saved.revision), /已被/);
     assert.equal((await readProjectFile(root, file.path)).text, 'agent edit');
-  } finally { await rm(root, { recursive: true, force: true }); }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

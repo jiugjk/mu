@@ -4,6 +4,7 @@ import type { JudgeLike, JudgeTierReport } from "./judge.ts";
 import { validateQuestions } from "./judge.ts";
 import type { LedgerRecord, LedgerSink } from "./ledger.ts";
 import { hasEscapeOption } from "./policy.ts";
+import { environmentSecrets, redactJson } from "./redact.ts";
 import type {
 	Answer,
 	AnswersFor,
@@ -124,6 +125,11 @@ export interface DecisionEngineOptions {
 	 * A record is written when the answer arrives, and by then the caller may have moved on to the next turn.
 	 */
 	origin?: () => JsonValue | undefined;
+	/**
+	 * Values taken out of everything a judge is shown, wherever they appear. Default: this process's credential
+	 * variables. Tokens in a shape only credentials have go whatever this returns.
+	 */
+	knownSecrets?: () => readonly string[];
 }
 
 /**
@@ -151,6 +157,7 @@ export class DecisionEngine {
 	private readonly modes: Map<string, DecisionMode>;
 	private readonly recordState: boolean;
 	private readonly origin: (() => JsonValue | undefined) | undefined;
+	private readonly knownSecrets: () => readonly string[];
 
 	constructor(options: DecisionEngineOptions) {
 		this.judge = options.judge;
@@ -159,6 +166,7 @@ export class DecisionEngine {
 		this.modes = new Map(Object.entries(options.modes ?? {}));
 		this.recordState = options.recordState ?? false;
 		this.origin = options.origin;
+		this.knownSecrets = options.knownSecrets ?? (() => environmentSecrets());
 	}
 
 	get providerId(): string {
@@ -237,7 +245,14 @@ export class DecisionEngine {
 
 		this.stats.calls++;
 		try {
-			const result = await this.judgeFor(spec.id).evaluate({ state, questions, signal, capabilities });
+			// A judge weighs what a call does, never the key it does it with.
+			const known = this.knownSecrets();
+			const result = await this.judgeFor(spec.id).evaluate({
+				state: redactJson(state, known),
+				questions: redactJson(questions, known),
+				signal,
+				capabilities,
+			});
 			this.stats.inputTokens += result.usage.inputTokens ?? 0;
 			const evaluation: Evaluation<Out> = {
 				answers: result.answers,

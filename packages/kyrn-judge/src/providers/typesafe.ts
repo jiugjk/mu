@@ -5,11 +5,16 @@ import { MAX_ERROR_MESSAGE_LENGTH, messageFromErrorBody, readWarnings } from "./
 
 export const TYPESAFE_BASE_URL = "https://api.typesafe.ai/v1/systemone";
 export const TYPESAFE_DEFAULT_MODEL = "jev-latest";
+/** OpenRouter names Jev its own way: without a model, a judge that posts there asks for this one. */
+export const OPENROUTER_DEFAULT_MODEL = "~typesafe/jev-latest";
 
 export interface TypeSafeJudgeProviderOptions {
 	/** A key, or a resolver called per request so the host owns credential storage. */
 	apiKey: string | ApiKeyResolver;
+	/** The variable the key is read from, named when it is missing. */
+	keyName?: string;
 	model?: string;
+	/** Any service that speaks System One (TypeSafe, OpenRouter, a relay); empty is TypeSafe's own. */
 	baseUrl?: string;
 	fetch?: typeof fetch;
 }
@@ -63,29 +68,37 @@ function fromWire(question: Question, raw: Record<string, unknown> | undefined):
 }
 
 /**
- * Jev straight from TypeSafe's System One endpoint, for an account with its
- * own TypeSafe key. (`GatewayJudgeProvider` reaches the same model through the
- * Vercel AI Gateway.) Uses `fetch` directly; error messages never contain the
- * key or the submitted state.
+ * Jev over System One: TypeSafe's own endpoint, or another service that
+ * serves it with the same protocol, such as OpenRouter. (`GatewayJudgeProvider`
+ * reaches the same model through the Vercel AI Gateway.) Uses `fetch` directly;
+ * error messages name the service and the key's variable, never the key or the
+ * submitted state.
  */
 export class TypeSafeJudgeProvider implements JudgeProvider {
 	readonly id: string;
 	private readonly apiKey: string | ApiKeyResolver;
+	private readonly keyName: string;
 	private readonly model: string;
 	private readonly baseUrl: string;
+	/** "TypeSafe" at TypeSafe's own address, otherwise the host the requests go to, e.g. "openrouter.ai". */
+	private readonly service: string;
 	private readonly fetchImpl: typeof fetch;
 
 	constructor(options: TypeSafeJudgeProviderOptions) {
 		this.apiKey = options.apiKey;
-		this.model = options.model ?? TYPESAFE_DEFAULT_MODEL;
-		this.baseUrl = (options.baseUrl ?? TYPESAFE_BASE_URL).replace(/\/+$/, "");
+		this.keyName = options.keyName ?? "TYPESAFE_API_KEY";
+		this.baseUrl = (options.baseUrl || TYPESAFE_BASE_URL).replace(/\/+$/, "");
 		this.fetchImpl = options.fetch ?? fetch;
-		this.id = `typesafe:${this.model}`;
+		const host = URL.canParse(this.baseUrl) ? new URL(this.baseUrl).host : this.baseUrl;
+		this.service = host === new URL(TYPESAFE_BASE_URL).host ? "TypeSafe" : host;
+		this.model = options.model || (host === "openrouter.ai" ? OPENROUTER_DEFAULT_MODEL : TYPESAFE_DEFAULT_MODEL);
+		this.id = `${this.service === "TypeSafe" ? "typesafe" : host}:${this.model}`;
 	}
 
 	async evaluate(request: JudgeRequest): Promise<ProviderResponse> {
 		const apiKey = typeof this.apiKey === "string" ? this.apiKey : await this.apiKey();
-		if (!apiKey) throw new JudgeError("auth", "No TypeSafe API key is configured (TYPESAFE_API_KEY)");
+		if (!apiKey)
+			throw new JudgeError("auth", `No API key is configured for Jev at ${this.service} (${this.keyName})`);
 
 		const questions = Object.fromEntries(
 			Object.entries(request.questions).map(([id, question]) => [id, toWire(question)]),
@@ -101,7 +114,7 @@ export class TypeSafeJudgeProvider implements JudgeProvider {
 		} catch (error) {
 			// Aborts are classified by the kernel, which knows whether its timeout or the caller fired.
 			if (error instanceof Error && error.name === "AbortError") throw error;
-			throw new JudgeError("unreachable", "Could not reach TypeSafe", { cause: error });
+			throw new JudgeError("unreachable", `Could not reach ${this.service}`, { cause: error });
 		}
 
 		if (!response.ok) {
@@ -109,19 +122,21 @@ export class TypeSafeJudgeProvider implements JudgeProvider {
 			const message = messageFromErrorBody(body).slice(0, MAX_ERROR_MESSAGE_LENGTH);
 			throw new JudgeError(
 				errorKindForStatus(response.status, message),
-				message || `TypeSafe responded with HTTP ${response.status}`,
+				message || `${this.service} responded with HTTP ${response.status}`,
 				{ status: response.status },
 			);
 		}
 
 		const body = (await response.json().catch(() => undefined)) as SystemOneBody | undefined;
 		if (!body || typeof body.answers !== "object" || body.answers === null) {
-			throw new JudgeError("invalid_response", "TypeSafe response has no answers", { status: response.status });
+			throw new JudgeError("invalid_response", `${this.service} response has no answers`, {
+				status: response.status,
+			});
 		}
 		const answers: Record<string, Answer> = {};
 		for (const [id, question] of Object.entries(request.questions)) {
 			const answer = fromWire(question, body.answers[id]);
-			if (!answer) throw new JudgeError("invalid_response", `TypeSafe gave no usable answer for "${id}"`);
+			if (!answer) throw new JudgeError("invalid_response", `${this.service} gave no usable answer for "${id}"`);
 			answers[id] = answer;
 		}
 		return {

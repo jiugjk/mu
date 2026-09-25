@@ -66,6 +66,8 @@ export function muErrorText(t: TFunction, language: string, error: MuError, mani
       return only(t('mu.errors.modelsCommented'));
     case 'endpoint':
       return only(t('mu.endpointRule'));
+    case 'judgeEndpoint':
+      return only(t('mu.errors.judgeEndpoint'));
     case 'harnessOld':
       return only(t('mu.harness.tooOld'));
     case 'optionValue': {

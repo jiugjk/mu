@@ -3,7 +3,10 @@ import { fork } from 'node:child_process';
 import { join } from 'node:path';
 import { runScenario } from './scenario.mjs';
 
-const child = fork(join(import.meta.dirname, 'host-entry.mjs'), [], { env: process.env, stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
+const child = fork(join(import.meta.dirname, 'host-entry.mjs'), [], {
+  env: process.env,
+  stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
+});
 const link = { send: (message) => child.send(message), onMessage: (handler) => child.on('message', handler) };
 const guard = setTimeout(() => {
   console.error('spike timed out');

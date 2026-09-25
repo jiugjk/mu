@@ -132,9 +132,9 @@ describe('a settings section as its own page', () => {
     fireEvent.click(await screen.findByTestId('mu-judge-choice-jev'));
     expect(screen.queryByTestId('mu-nav-judges')).not.toBeInTheDocument();
     expect(screen.getByTestId('mu-judge-choice-jev')).toHaveAttribute('aria-checked', 'true');
-    // The chosen one asks for its key, and only that.
-    expect(screen.getByLabelText('API key')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'jev-key' } });
+    // The chosen one asks for its service and that service's key, and only that.
+    expect(within(screen.getByTestId('mu-judge-choice-jev')).getByLabelText('Service')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('TypeSafe API key'), { target: { value: 'jev-key' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(bridge.save).toHaveBeenCalledTimes(1));
     const saved = bridge.save.mock.calls[0][0] as SaveSettings;
@@ -243,7 +243,7 @@ describe('the first-run guide', () => {
 
     await screen.findByTestId('mu-welcome-step-judge');
     fireEvent.click(screen.getByTestId('mu-judge-choice-jev'));
-    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'jev-key' } });
+    fireEvent.change(screen.getByLabelText('TypeSafe API key'), { target: { value: 'jev-key' } });
     fireEvent.click(screen.getByTestId('mu-welcome-next'));
 
     await screen.findByTestId('mu-welcome-step-done');
@@ -269,6 +269,25 @@ describe('the first-run guide', () => {
       'TYPESAFE_API_KEY',
     ]);
     expect(localStorage.getItem(ONBOARDING_KEY)).toBeTruthy();
+  });
+
+  it('picks the service Jev is reached through, and keeps its key under that service’s own name', async () => {
+    at('/welcome', <Welcome />);
+    fireEvent.click(await screen.findByTestId('mu-welcome-begin'));
+    fireEvent.click(await screen.findByTestId('mu-welcome-skip'));
+    await screen.findByTestId('mu-welcome-step-judge');
+    fireEvent.click(screen.getByTestId('mu-judge-choice-jev'));
+    fireEvent.click(screen.getByLabelText('Service'));
+    fireEvent.click(await screen.findByText('Vercel AI Gateway', { selector: '.arco-select-option' }));
+    fireEvent.change(await screen.findByLabelText('Vercel AI Gateway API key'), { target: { value: 'gateway-key' } });
+    fireEvent.click(screen.getByTestId('mu-welcome-next'));
+    await screen.findByTestId('mu-welcome-step-done');
+    fireEvent.click(screen.getByTestId('mu-welcome-start'));
+    expect(await screen.findByText('landing page')).toBeInTheDocument();
+    const saved = bridge.save.mock.calls[0][0] as SaveSettings;
+    expect(saved.tiers).toEqual(['jev-gateway']);
+    expect(saved.judges['jev-gateway']).toMatchObject({ type: 'gateway', apiKeyEnv: 'AI_GATEWAY_API_KEY' });
+    expect(saved.credentials).toEqual([{ name: 'AI_GATEWAY_API_KEY', value: 'gateway-key' }]);
   });
 
   it('speaks OpenAI Responses when that is chosen', async () => {

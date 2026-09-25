@@ -209,6 +209,13 @@
   border-top: 0;
 }
 
+/* Several fields in one chosen tile (Jev's service, its address, its key): each one a label, a control and a hint. */
+.choiceFields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
 .choiceField {
   display: flex;
   flex-direction: column;

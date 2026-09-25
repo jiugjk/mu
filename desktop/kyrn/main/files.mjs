@@ -8,12 +8,16 @@ export async function projectFile(root, input) {
   const path = await realpath(resolve(base, input));
   const rel = relative(base, path);
   if (rel.startsWith('..') || isAbsolute(rel)) throw new Error('文件超出当前项目');
-  if (rel.split(/[\\/]/).some(part => ['.git', 'node_modules', '.ssh'].includes(part)) || /^(\.env($|\.)|auth\.json$|.*\.(pem|key)$)/i.test(basename(path))) throw new Error('此文件不在代码预览范围内');
+  if (
+    rel.split(/[\\/]/).some((part) => ['.git', 'node_modules', '.ssh'].includes(part)) ||
+    /^(\.env($|\.)|auth\.json$|.*\.(pem|key)$)/i.test(basename(path))
+  )
+    throw new Error('此文件不在代码预览范围内');
   const info = await stat(path);
   if (!info.isFile() || info.size > 1024 * 1024) throw new Error('只预览 1 MB 以内的文本文件');
   return path;
 }
-const digest = text => createHash('sha256').update(text).digest('hex');
+const digest = (text) => createHash('sha256').update(text).digest('hex');
 export async function readProjectFile(root, input) {
   const path = await projectFile(root, input);
   const text = await readFile(path, 'utf8');

@@ -18,6 +18,7 @@ import { findRegistration, initializeKyrn } from '../agent/kyrn/product';
 import { muEnv, muHome } from '../agent/kyrn/naming';
 import { asRecord, text } from '../agent/kyrn/piRpc';
 import { sessionBinding } from '../agent/kyrn/sessionBinding';
+import { conversationSessions } from '../agent/kyrn/conversationSession';
 import { getDataPath } from '../utils/utils';
 
 /** `out/main/localJudgeOnnx.js`, next to the main entry even when this module sits in `out/main/chunks/`. */
@@ -47,16 +48,16 @@ function activityKinds(kinds: unknown): string[] | undefined {
 
 /**
  * An app conversation as mu sees it: its `extra` (the workspace among it), and the mu session behind it, '' when mu
- * does not run it (another agent, or not started yet).
+ * does not run it (another agent, or not started yet). `sessionOf` asks the backend only the first time.
  */
-async function conversationOf(conversationId: string): Promise<{ extra: Record<string, unknown>; sessionId: string }> {
-  if (!/^[a-zA-Z0-9-]{1,80}$/.test(conversationId)) throw new KyrnError('invalid', 'Invalid conversation');
-  const conversation = await httpRequest<Record<string, unknown>>('GET', `/api/conversations/${conversationId}`);
-  const extra = asRecord(conversation.extra);
-  return { extra, sessionId: sessionBinding(getDataPath(), conversationId, text(extra.agent_id)) };
-}
-
-const sessionOf = async (conversationId: string): Promise<string> => (await conversationOf(conversationId)).sessionId;
+const { conversation: conversationOf, session: sessionOf } = conversationSessions(
+  async (conversationId) => {
+    if (!/^[a-zA-Z0-9-]{1,80}$/.test(conversationId)) throw new KyrnError('invalid', 'Invalid conversation');
+    const conversation = await httpRequest<Record<string, unknown>>('GET', `/api/conversations/${conversationId}`);
+    return asRecord(conversation.extra);
+  },
+  (conversationId, agentId) => sessionBinding(getDataPath(), conversationId, agentId)
+);
 
 export function initKyrnBridge(): void {
   const desktopRoot = process.env.KYRN_DESKTOP_ROOT || process.cwd();

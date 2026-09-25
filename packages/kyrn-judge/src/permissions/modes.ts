@@ -1,5 +1,7 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { lstatSync, mkdirSync, readFileSync, readlinkSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { isReadOnlyCommand } from "../checkpoint/mutating.ts";
 import { isShellTool } from "../extension/shell-tools.ts";
 
@@ -95,7 +97,6 @@ const LOOKING: ReadonlySet<string> = new Set([
 	"conflicts_show",
 	"sg_search",
 	"review_triage",
-	"debug_inspect",
 	"debug_step",
 	"debug_stop",
 ]);
@@ -107,6 +108,14 @@ const TWO_WORD =
 	/^(?:git|npm|pnpm|yarn|bun|npx|cargo|go|docker|kubectl|pip|pip3|uv|poetry|make|dotnet|gh|brew|apt|apt-get)$/;
 /** Chaining, redirection, substitution: a grant for the first word would cover whatever comes after it. */
 const COMPOUND = /[<>;&|`\n\r]|\$\(|\$\{/;
+/**
+ * Programs that run the command given to them: the first word says nothing about what runs. "Allow `timeout` for
+ * this conversation" would allow `timeout 60 <anything>`.
+ */
+const WRAPPER =
+	/^(?:sudo|doas|pkexec|su|runas|env|xargs|eval|exec|command|builtin|nohup|timeout|nice|ionice|time|stdbuf|setsid|chroot|taskset|flock|watch|unbuffer|caffeinate|script|busybox|start|sh|bash|zsh|dash|ksh|fish|pwsh|powershell|cmd)$/i;
+/** What makes `find` run a program on, or delete, every file it finds. */
+const FIND_ACTS = /^-(?:exec|execdir|ok|okdir|delete|fprint0?|fprintf|fls)$/;
 
 /** "npm test", "git commit", "python": what "allow for this conversation" allows for a command. */
 export function commandPrefix(command: string): string | undefined {
@@ -114,8 +123,8 @@ export function commandPrefix(command: string): string | undefined {
 	if (!text || COMPOUND.test(text)) return undefined;
 	const words = text.split(/\s+/);
 	// A leading `VAR=value` or `sudo` changes what runs: such a command is allowed once or not at all.
-	if (/=/.test(words[0]) || /^(?:sudo|doas|env|xargs|eval|exec|sh|bash|zsh|pwsh|powershell|cmd)$/i.test(words[0]))
-		return undefined;
+	if (/=/.test(words[0]) || WRAPPER.test(words[0])) return undefined;
+	if (/^find$/i.test(words[0]) && words.some((word) => FIND_ACTS.test(word))) return undefined;
 	const [first, second] = words;
 	return TWO_WORD.test(first) && second && !second.startsWith("-") ? `${first} ${second}` : first;
 }
@@ -126,11 +135,75 @@ function pathOf(input: Readonly<Record<string, unknown>>): string {
 	return text(input.path) || text(input.file_path) || text(input.file);
 }
 
+/** The path with links resolved as far as it exists, a link to a place that does not exist yet included. */
+function realPath(path: string, depth = 0): string {
+	try {
+		return realpathSync.native(path);
+	} catch {
+		if (depth < 40) {
+			try {
+				// Writing through such a link creates the file where it points.
+				if (lstatSync(path).isSymbolicLink())
+					return realPath(resolve(dirname(path), readlinkSync(path)), depth + 1);
+			} catch {
+				// Nothing there at all.
+			}
+		}
+		const parent = dirname(path);
+		return parent === path ? path : join(realPath(parent, depth + 1), basename(path));
+	}
+}
+
+const UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;
+
+/** pi's `normalizeWindowsShellPath`: Git Bash, MSYS, Cygwin and WSL spell `C:\x` as `/c/x`. */
+function windowsDrive(path: string): string {
+	if (!path.startsWith("/") || path.startsWith("//") || path.includes("\\")) return path;
+	const match = /^\/(?:mnt\/|cygdrive\/)?([a-z])(?:\/(.*))?$/i.exec(path);
+	return match ? `${match[1].toUpperCase()}:\\${match[2]?.replaceAll("/", "\\") ?? ""}` : path;
+}
+
+/**
+ * Where a file tool will really write, or undefined when it cannot write anywhere. pi reads a path its own way
+ * (`resolveToCwd`): one leading `@` is dropped, `~` is the home, a `file://` URL is a path, and on Windows `/c/...`
+ * is a drive. Read plainly, `~/.zshrc` would be a folder called `~` inside the project. Links are then followed as
+ * far as the path exists.
+ */
+export function toolPath(cwd: string, raw: string, home: string = homedir()): string | undefined {
+	let path = raw.replace(UNICODE_SPACES, " ");
+	if (path.startsWith("@")) path = path.slice(1);
+	if (process.platform === "win32") path = windowsDrive(path);
+	if (path === "~") path = home;
+	else if (path.startsWith("~/") || (process.platform === "win32" && path.startsWith("~\\")))
+		path = join(home, path.slice(2));
+	else if (/^file:\/\//.test(path)) {
+		try {
+			path = fileURLToPath(path);
+		} catch {
+			return undefined;
+		}
+	}
+	return realPath(isAbsolute(path) ? resolve(path) : resolve(cwd, path));
+}
+
+/** `target` (a `toolPath`) relative to the project, or undefined when it is not inside it. */
+function inProject(cwd: string, target: string | undefined): string | undefined {
+	if (target === undefined) return undefined;
+	const rel = relative(realPath(resolve(cwd)), target);
+	return rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel) ? undefined : rel;
+}
+
 export function insideProject(cwd: string, path: string): boolean {
-	if (!path) return true;
-	const target = resolve(cwd, path);
-	const rel = relative(resolve(cwd), target);
-	return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+	return !path || inProject(cwd, toolPath(cwd, path)) !== undefined;
+}
+
+/**
+ * A file of the project, which Jev mode edits without asking: inside the folder, and not git's own. Git runs its
+ * hooks and reads its config on the user's next git command, and a checkpoint never holds them.
+ */
+function projectFile(cwd: string, target: string | undefined): boolean {
+	const rel = inProject(cwd, target);
+	return rel !== undefined && !rel.split(/[\\/]/).some((part) => part.toLowerCase() === ".git");
 }
 
 /**
@@ -181,7 +254,8 @@ export function permissionNeed(
 	if (LOOKING.has(toolName)) return undefined;
 	if (isShellTool(toolName) || toolName === "bg_start") {
 		const command = text(input.command);
-		if (isReadOnlyCommand(command)) return undefined;
+		// A background command on Windows may run in PowerShell as well.
+		if (isReadOnlyCommand(command, toolName === "powershell" || process.platform === "win32")) return undefined;
 		const guarded = touches(command);
 		const prefix = commandPrefix(command);
 		return {
@@ -193,13 +267,27 @@ export function permissionNeed(
 	if (toolName === "sg_rewrite" && input.apply !== true) return undefined;
 	if (EDITING.has(toolName)) {
 		const path = pathOf(input);
-		const inProject = insideProject(cwd, path);
-		const guarded = path ? touches(resolve(cwd, path)) : undefined;
-		const summary = clip(`${toolName} ${path || text(input.id) || text(input.pattern)}`, 300);
+		// `sg_rewrite` takes the folders and files it rewrites as a list.
+		const listed = Array.isArray(input.paths)
+			? input.paths.filter((each): each is string => typeof each === "string")
+			: [];
+		const paths = [...(path ? [path] : []), ...listed];
+		const targets = paths.map((each) => ({ said: each, target: toolPath(cwd, each) }));
+		const summary = clip(`${toolName} ${path || listed.join(" ") || text(input.id) || text(input.pattern)}`, 300);
+		// As written and as it really is: a spelling of mu's folder, or a link into it.
+		const guarded = targets
+			.flatMap(({ said, target }) => [resolve(cwd, said), ...(target ? [target] : [])])
+			.map(touches)
+			.find(Boolean);
 		if (guarded) return { kind: "edit", summary, protected: guarded };
-		return inProject
-			? { kind: "edit", summary, inProject, grant: { key: "edit", label: "edit" } }
-			: { kind: "outside", summary, grant: { key: `outside:${resolve(cwd, path)}`, label: path } };
+		const away = targets.find(({ target }) => !projectFile(cwd, target));
+		return away
+			? {
+					kind: "outside",
+					summary,
+					grant: { key: `outside:${away.target ?? away.said}`, label: away.said },
+				}
+			: { kind: "edit", summary, inProject: true, grant: { key: "edit", label: "edit" } };
 	}
 	if (toolName === "delegate" || toolName === "hive") {
 		const tasks = Array.isArray(input.tasks) ? input.tasks.length : 0;
@@ -208,6 +296,17 @@ export function permissionNeed(
 			kind: "delegate",
 			summary: clip(`${toolName} ${tasks ? `${tasks} task${tasks === 1 ? "" : "s"}` : title}`, 300),
 			grant: { key: `tool:${toolName}`, label: toolName },
+		};
+	}
+	// Looking at a stopped program only looks. An expression evaluated in it can call anything there, which is more
+	// than running the program the user allowed: `__import__('os').system(...)`.
+	if (toolName === "debug_inspect") {
+		const expression = text(input.expression).trim();
+		if (!expression) return undefined;
+		return {
+			kind: "run",
+			summary: clip(`${toolName} ${expression}`, 300),
+			grant: { key: "tool:debug_inspect", label: toolName },
 		};
 	}
 	if (toolName === "debug_start") {

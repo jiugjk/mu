@@ -16,17 +16,25 @@ import { CONFIG_FILE, LEGACY_CONFIG_FILE, muEnv } from "./naming.ts";
  */
 export interface JudgeConfig {
 	/**
-	 * `jev` is Jev by whichever access this machine has: TypeSafe directly when TYPESAFE_API_KEY is set,
-	 * otherwise the Vercel AI Gateway. `typesafe` and `gateway` name one of the two explicitly.
+	 * `jev` is Jev by whichever access this machine has: TypeSafe directly when TYPESAFE_API_KEY is set, else
+	 * OpenRouter when MU_JUDGE_OPENROUTER_API_KEY is set, else the Vercel AI Gateway. `typesafe` is Jev over
+	 * System One at `baseUrl` (TypeSafe's own, OpenRouter's, a relay's), `gateway` through the Vercel AI Gateway.
 	 */
 	readonly type: "jev" | "typesafe" | "gateway" | "local" | "http" | "llm" | "mock";
 	/** jev, typesafe, gateway: judge model id. llm: "provider/model-id". */
 	readonly model?: string;
-	/** gateway, local, http. */
+	/**
+	 * gateway, local, http, and the System One route (`typesafe`, or `jev` when a TypeSafe key is set).
+	 * For System One this is the endpoint URL; empty uses TypeSafe's own.
+	 */
 	readonly baseUrl?: string;
 	/** http: request path, default "/evaluate". */
 	readonly path?: string;
-	/** http, typesafe: name of the environment variable holding a bearer token. The token itself never goes in the file. */
+	/**
+	 * http, typesafe: name of the environment variable holding a bearer token. The token itself never goes in the file.
+	 * A typesafe judge keyed by MU_JUDGE_OPENROUTER_API_KEY or MU_JUDGE_CUSTOM_API_KEY needs its own `baseUrl`: those
+	 * keys belong to another service and never go to TypeSafe.
+	 */
 	readonly apiKeyEnv?: string;
 	/** llm: thinking level for the judge model, default "off". */
 	readonly thinking?: string;
@@ -59,6 +67,14 @@ export interface KyrnConfig {
 export const BUILT_IN_JUDGES: Readonly<Record<string, JudgeConfig>> = {
 	jev: { type: "jev" },
 	"jev-direct": { type: "typesafe" },
+	// OpenRouter serves Jev over the same System One protocol. The key is Jev's own, not the one for OpenRouter's
+	// chat models, so setting one never changes the other.
+	"jev-openrouter": {
+		type: "typesafe",
+		baseUrl: "https://openrouter.ai/api/v1/systemone",
+		model: "~typesafe/jev-latest",
+		apiKeyEnv: "MU_JUDGE_OPENROUTER_API_KEY",
+	},
 	"jev-gateway": { type: "gateway", model: "typesafe-ai/jev" },
 	// Measured in kyrn/docs/03-local-judge.md: the base checkpoint classifies one text well, says "yes" to
 	// nearly every relational question, and cannot use a rubric or judge the request itself.

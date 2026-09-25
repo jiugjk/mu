@@ -180,6 +180,7 @@
       "details": "Flujo y registros",
       "pending": "Esperando el estado de la abeja",
       "unknown": "Estado no disponible",
+      "lastStep": "{{status}} · último paso: {{step}}",
       "runs": "Ejecuciones de Hive",
       "graph": "Mapa de colaboración",
       "graphHint": "Cuanto más gruesa la línea, más pasó por ella. Elige una abeja para abrir su fila; señala una línea para leer lo que llevó.",

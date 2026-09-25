@@ -1,4 +1,5 @@
 import {
+  isPrivateNetworkHost,
   isSafeEndpoint,
   PROVIDER_ID,
   RESERVED_PROVIDER_IDS,
@@ -71,7 +72,8 @@ export function providerIdFor(baseUrl: string, taken: ReadonlySet<string>): stri
   let base = 'custom';
   try {
     const host = new URL(baseUrl).hostname;
-    if (isLoopback(baseUrl)) base = 'local';
+    // A numeric LAN address is not a name (`192` of 192.168.x.x). Call it local, and show the host as the label.
+    if (isLoopback(baseUrl) || isPrivateNetworkHost(host)) base = 'local';
     else base = hostWord(host) || base;
   } catch {
     // An address that does not parse is caught by the check before this is ever called.

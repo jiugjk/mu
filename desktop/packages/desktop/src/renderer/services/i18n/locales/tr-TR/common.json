@@ -180,6 +180,7 @@
       "details": "Akış ve kayıtlar",
       "pending": "Arı durumu bekleniyor",
       "unknown": "Durum kullanılamıyor",
+      "lastStep": "{{status}} · son adım: {{step}}",
       "runs": "Hive çalışmaları",
       "graph": "İş birliği haritası",
       "graphHint": "Çizgi ne kadar kalınsa o kadar çok şey taşınmıştır. Bir arıyı seçmek satırını açar; bir çizginin üzerine gelmek taşıdığını gösterir.",

@@ -5836,19 +5836,19 @@
 				"fa-IR": "Hive"
 			},
 			"summary": {
-				"zh": "多只蜂并行攻一个难题，判定器把关它们之间传什么。",
-				"en": "Several bees work one hard task in parallel; the judge gates what passes between them.",
-				"zh-TW": "多個蜂群成員平行處理同一個難題，由判定器把關它們之間傳遞什麼。",
-				"ja-JP": "複数のビーが 1 つの難しいタスクに並行して取り組みます。ビーの間でやり取りする内容は判定器が選別します。",
-				"ko-KR": "여러 비(bee)가 하나의 어려운 작업을 병렬로 처리하고, 비 사이에 오가는 내용은 판정기가 통제합니다.",
-				"de-DE": "Mehrere Bienen bearbeiten parallel eine schwierige Aufgabe; der Judge entscheidet, was zwischen ihnen weitergegeben wird.",
-				"fr-FR": "Plusieurs abeilles travaillent en parallèle sur une tâche difficile ; le juge filtre ce qui passe entre elles.",
-				"es-ES": "Varias abejas trabajan en paralelo en una misma tarea difícil; el juez controla lo que pasa entre ellas.",
-				"pt-BR": "Várias abelhas trabalham em paralelo em uma tarefa difícil; o juiz controla o que passa entre elas.",
-				"ru-RU": "Несколько пчёл параллельно работают над одной сложной задачей; судья решает, что передаётся между ними.",
-				"uk-UA": "Кілька бджіл паралельно працюють над одним складним завданням; суддя вирішує, що передається між ними.",
-				"tr-TR": "Birkaç arı zor bir görev üzerinde paralel çalışır; aralarında neyin geçeceğine hakem karar verir.",
-				"fa-IR": "چند زنبور به‌طور موازی روی یک کار دشوار کار می‌کنند؛ داور تعیین می‌کند چه چیزی میان آن‌ها رد و بدل شود."
+				"zh": "多只蜂并行攻一个难题，判定器把关它们之间传什么。输入 /hive <问题> 就能自己发起；遇到直接做不下去的难题，代理也会自己发起。",
+				"en": "Several bees work one hard task in parallel; the judge gates what passes between them. /hive <question> starts one yourself; the agent also starts one when a problem resists a direct attempt.",
+				"zh-TW": "多個蜂群成員平行處理同一個難題，由判定器把關它們之間傳遞什麼。輸入 /hive <問題> 就能自己發起；遇到直接做不下去的難題，代理也會自己發起。",
+				"ja-JP": "複数のビーが 1 つの難しいタスクに並行して取り組みます。ビーの間でやり取りする内容は判定器が選別します。/hive <質問> で自分で始められます。まっすぐには解けない問題では、エージェントも自分から始めます。",
+				"ko-KR": "여러 비(bee)가 하나의 어려운 작업을 병렬로 처리하고, 비 사이에 오가는 내용은 판정기가 통제합니다. /hive <질문>으로 직접 시작할 수 있고, 곧바로 풀리지 않는 문제에서는 에이전트도 스스로 시작합니다.",
+				"de-DE": "Mehrere Bienen bearbeiten parallel eine schwierige Aufgabe; der Judge entscheidet, was zwischen ihnen weitergegeben wird. Mit /hive <Frage> startest du selbst einen; der Agent startet auch selbst einen, wenn sich ein Problem nicht direkt lösen lässt.",
+				"fr-FR": "Plusieurs abeilles travaillent en parallèle sur une tâche difficile ; le juge filtre ce qui passe entre elles. /hive <question> en lance une vous-même ; l’agent en lance aussi une de lui-même quand un problème résiste à une première tentative.",
+				"es-ES": "Varias abejas trabajan en paralelo en una misma tarea difícil; el juez controla lo que pasa entre ellas. Con /hive <pregunta> lo inicias tú; el agente también lo inicia por su cuenta cuando un problema no se resuelve al primer intento.",
+				"pt-BR": "Várias abelhas trabalham em paralelo em uma tarefa difícil; o juiz controla o que passa entre elas. Com /hive <pergunta> você mesmo inicia um; o agente também inicia um por conta própria quando um problema resiste à primeira tentativa.",
+				"ru-RU": "Несколько пчёл параллельно работают над одной сложной задачей; судья решает, что передаётся между ними. Запустить его самому можно командой /hive <вопрос>; агент тоже запускает его сам, когда задача не решается с первой попытки.",
+				"uk-UA": "Кілька бджіл паралельно працюють над одним складним завданням; суддя вирішує, що передається між ними. Запустити його самому можна командою /hive <питання>; агент теж запускає його сам, коли задача не розв’язується з першої спроби.",
+				"tr-TR": "Birkaç arı zor bir görev üzerinde paralel çalışır; aralarında neyin geçeceğine hakem karar verir. /hive <soru> ile kendiniz başlatabilirsiniz; bir sorun ilk denemede çözülmediğinde ajan da kendiliğinden başlatır.",
+				"fa-IR": "چند زنبور به‌طور موازی روی یک کار دشوار کار می‌کنند؛ داور تعیین می‌کند چه چیزی میان آن‌ها رد و بدل شود. با /hive <پرسش> خودتان یکی را شروع می‌کنید؛ وقتی مسئله‌ای با تلاش مستقیم حل نشود، عامل هم خودش یکی را شروع می‌کند."
 			},
 			"defaultEnabled": true,
 			"options": [

@@ -53,8 +53,9 @@ The launch codes:
 | `no_judge` | `judgeReason` (a decision reason, see below) | no judge could choose an action (…) |
 | `no_progress` | | the judge found no operation that makes progress |
 | `not_confirmed` | `label` | "…" looks irreversible and was not confirmed |
-| `no_value` | `label` | no value could be produced for "…" |
+| `no_value` | `label` | no value could be produced for "…" (also when the model did not say what to type within `browser.writeTimeoutMs`) |
 | `stuck` | `actions` | three actions in a row changed nothing |
+| `off_the_web` | `where` (the page's origin, or its scheme: `file:`) | a page sent the browser to … (this computer / the local network / …), where it goes only when asked to open it there; nothing of that page was read |
 | `error` | | the run threw; `reason` is the error message, and `errorCode` / `errorParams` say what it was when the error carries a code. None does today: a browser that will not start never gets this far (it is `state: "failed"` above) |
 
 ## progress

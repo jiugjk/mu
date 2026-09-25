@@ -22,6 +22,8 @@ export const KYRN_ERROR_CODES = [
   'modelsCommented',
   /** An address a key must not be sent to. */
   'endpoint',
+  /** A judge keyed for a service other than TypeSafe has no address of its own to send the key to. Params: `name`. */
+  'judgeEndpoint',
   /** The harness has no manifest, so decisions and features cannot be saved. */
   'harnessOld',
   /** A feature option has a value it cannot take. Params: `feature`, `option`, `problem` (an `OptionProblem`). */

@@ -31,9 +31,14 @@ type StateReport = { about: string; state: string };
 /**
  * Reports of how things stand. The harness sends each one whenever it starts, which is every time the conversation
  * is opened, and again when the state changes. A server's start and its failures report one state: running with
- * these tools, or failed for this reason.
+ * these tools, or failed for this reason. The task frame comes back as `restored` at every start: only a frame that
+ * reads differently is an update.
  */
 const STATE_REPORTS: Readonly<Record<string, (payload: Record<string, unknown>) => StateReport>> = {
+  'frame.updated': (payload) => ({
+    about: 'frame',
+    state: JSON.stringify([payload.frame, payload.openQuestionCodes, payload.stale, payload.unmerged]),
+  }),
   'permissions.mode': (payload) => ({ about: 'permissions', state: str(payload.mode) || str(payload.label) }),
   'board.switched': (payload) => ({ about: 'board', state: String(payload.on) }),
   'inherit.found': (payload) => ({

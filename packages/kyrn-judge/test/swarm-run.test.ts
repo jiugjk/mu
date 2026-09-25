@@ -4,7 +4,15 @@ import { join } from "node:path";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Paint } from "../src/extension/features/welcome.ts";
-import { CHECKPOINT, HIVE_MESSAGE, lastCall, NOTES_HEADER, SWARM_MESSAGE, wrapUp } from "../src/swarm/markers.ts";
+import {
+	CHECKPOINT,
+	HIVE_MESSAGE,
+	lastCall,
+	NOTES_HEADER,
+	SWARM_MESSAGE,
+	toolsClosed,
+	wrapUp,
+} from "../src/swarm/markers.ts";
 import { activeRuns, type BeeObserver, type BeeRunner, controlPath, SwarmRun } from "../src/swarm/run.ts";
 import { applyEvent, type BeeEvent, codedError, newBee, reportOf, summarizeCall } from "../src/swarm/state.ts";
 import { clock, renderSwarm } from "../src/swarm/view.ts";
@@ -68,6 +76,35 @@ describe("bee state", () => {
 		expect(bee.recent.map((entry) => entry.text)).toEqual(["bash npm test", "bash failed"]);
 	});
 
+	it("keeps the start of a long message, so a finished bee's row begins where its report does", () => {
+		// It used to keep the last 600 characters: the row of a bee back with a long report began mid-sentence.
+		const start = "**Found** - the parser fails on empty files.";
+		const report = `${start} ${"The evidence is in src/parser.ts and in its tests. ".repeat(20)}`.trim();
+		const bee = newBee("repro", 0);
+		applyEvent(bee, { type: "message_start", message: { role: "assistant" } }, 1);
+		for (const delta of report.split(/(?<= )/)) {
+			applyEvent(bee, { type: "message_update", assistantMessageEvent: { type: "text_delta", delta } }, 2);
+		}
+		expect(bee.said?.startsWith(start)).toBe(true);
+		expect(bee.said?.length).toBeLessThanOrEqual(600);
+
+		applyEvent(bee, assistant(report), 3);
+		const kept = bee.said?.slice(0, -1) ?? "";
+		expect(bee.said?.endsWith("…")).toBe(true);
+		expect(bee.said?.length).toBeLessThanOrEqual(600);
+		// Cut between two words, not inside one.
+		expect(report.startsWith(kept)).toBe(true);
+		expect(report[kept.length]).toBe(" ");
+
+		const chinese = `发现：空文件会让解析器崩溃。${"证据在解析器的代码和测试里，复现步骤已经写好。".repeat(30)}`;
+		applyEvent(bee, assistant(chinese), 4);
+		expect(bee.said?.startsWith("发现：空文件会让解析器崩溃。")).toBe(true);
+		expect(bee.said).toMatch(/[，。]…$/);
+
+		applyEvent(bee, assistant("Done: nothing to change."), 5);
+		expect(bee.said).toBe("Done: nothing to change.");
+	});
+
 	it("shows a rate-limited bee as retrying, and forgets the error once a request goes through", () => {
 		const bee = newBee("web", 0);
 		applyEvent(bee, { type: "agent_start" }, 0);
@@ -100,17 +137,23 @@ describe("bee state", () => {
 		applyEvent(bee, told(HIVE_MESSAGE, CHECKPOINT), 2);
 		applyEvent(bee, told(HIVE_MESSAGE, lastCall(["- web (finding): late"])), 3);
 		applyEvent(bee, told(SWARM_MESSAGE, wrapUp("time budget of 10 min reached")), 4);
+		// Notes and a checkpoint due at the same step come as one message.
+		applyEvent(bee, told(HIVE_MESSAGE, `${NOTES_HEADER}\n- web (finding): c\n\n${CHECKPOINT}`), 5);
 		expect(bee.recent.map((entry) => entry.text)).toEqual([
 			"← 2 notes from the others",
 			"← asked what it has found so far",
 			"← last call: 1 late note",
 			"← told to wrap up and report",
+			"← 1 note from the others",
+			"← asked what it has found so far",
 		]);
 		expect(bee.recent.map((entry) => [entry.code, entry.params])).toEqual([
 			["notes_received", { count: 2 }],
 			["asked_findings", undefined],
 			["late_notes", { count: 1 }],
 			["told_wrap_up", undefined],
+			["notes_received", { count: 1 }],
+			["asked_findings", undefined],
 		]);
 		expect(bee.said).toBeUndefined();
 	});
@@ -361,18 +404,99 @@ describe("swarm run", () => {
 			action: "wrap_up",
 			reason: "time budget of 1 min reached",
 		});
-		await vi.advanceTimersByTimeAsync(40_000);
+		// One that never shows it heard gets the grace period twice over, and no more.
+		await vi.advanceTimersByTimeAsync(50_000);
+		expect(run.bees[1].status).toBe("wrapping-up");
+		await vi.advanceTimersByTimeAsync(20_000);
 
 		const [obedient, deaf] = await finished;
 		expect(obedient.state.status).toBe("done");
 		expect(obedient.report).toBe("(Cut short: time budget of 1 min reached.)\nWhat I have so far: the docs moved.");
 		expect(deaf.state.status).toBe("timed-out");
-		expect(deaf.report).toContain("time budget of 1 min reached; no report within 30s of being asked");
+		expect(deaf.report).toContain("time budget of 1 min reached; no report within 60s of being asked");
 		expect(obedient.state.wrapUp).toMatchObject({ code: "time_budget", params: { minutes: 1 } });
 		expect(deaf.state).toMatchObject({
 			errorCode: "no_report_in_time",
-			errorParams: { seconds: 30, after: "time_budget" },
+			errorParams: { seconds: 60, after: "time_budget" },
 		});
+	});
+
+	it("counts the grace period from when a bee heard it was to report, and keeps what a cut-off one had written", async () => {
+		// Seen live, with a model thinking at "high": asked at 5m00s, heard it 22 s later when its step ended, wrote
+		// its report for 37 s and was cut off by a 60 s grace period counted from the asking, report and all.
+		vi.useFakeTimers();
+		const dir = tempDir();
+		const run = new SwarmRun<string>({
+			kind: "hive",
+			title: "slow thinkers",
+			dir,
+			bees: [spec("slow"), spec("cut")],
+			limits: { beeMinutes: 1, graceSeconds: 30, stallSeconds: 0, toolStallSeconds: 0 },
+		});
+		const asked = (env: Readonly<Record<string, string>>) =>
+			new Promise<void>((resolve) => {
+				const poll = setInterval(() => {
+					if (!existsSync(env.KYRN_SWARM_CONTROL)) return;
+					clearInterval(poll);
+					resolve();
+				}, 1000);
+			});
+		const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+		const delta = (text: string): BeeEvent => ({
+			type: "message_update",
+			assistantMessageEvent: { type: "text_delta", delta: text },
+		});
+		const reason = "time budget of 1 min reached";
+		const finished = run.run(
+			scripted({
+				// Deep in a step when it is asked: it hears 20 s later, from the tool call that step ends in.
+				slow: async (observer, _signal, env) => {
+					observer?.event({ type: "agent_start" });
+					observer?.event({ type: "message_start", message: { role: "assistant" } });
+					await asked(env);
+					for (let i = 0; i < 4; i++) {
+						await sleep(5000);
+						observer?.event(delta("."));
+					}
+					observer?.event({
+						type: "message_start",
+						message: { role: "toolResult", content: [{ type: "text", text: toolsClosed(reason) }] },
+					});
+					observer?.event({ type: "message_start", message: { role: "assistant" } });
+					for (let i = 0; i < 5; i++) {
+						await sleep(5000);
+						observer?.event(delta("Found it. "));
+					}
+					observer?.event(assistant("FOUND: the docs moved to /v2."));
+					return "FOUND: the docs moved to /v2.";
+				},
+				// Hears it at once and starts its report, but does not finish it in time.
+				cut: async (observer, signal, env) => {
+					observer?.event({ type: "agent_start" });
+					await asked(env);
+					observer?.event({
+						type: "message_start",
+						message: { role: "custom", customType: SWARM_MESSAGE, content: wrapUp(reason) },
+					});
+					observer?.event({ type: "message_start", message: { role: "assistant" } });
+					observer?.event(delta("FOUND: the cache key ignores the locale "));
+					observer?.event(delta("(src/cache.ts:41); ruled out: the CDN."));
+					const beat = setInterval(() => observer?.event(delta(" ")), 5000);
+					return untilAborted(signal).finally(() => clearInterval(beat));
+				},
+			}),
+		);
+		await vi.advanceTimersByTimeAsync(130_000);
+
+		const [slow, cut] = await finished;
+		expect(slow.state.status).toBe("done");
+		expect(slow.report).toBe(`(Cut short: ${reason}.)\nFOUND: the docs moved to /v2.`);
+		expect(slow.state.wrapUp?.heardAt).toBeGreaterThan(slow.state.wrapUp?.at ?? 0);
+		expect(cut.state.status).toBe("timed-out");
+		expect(cut.report).toMatch(/no report within 3\ds of being asked/);
+		expect(cut.report).toContain(
+			"What it had written of its report when it was stopped:\nFOUND: the cache key ignores the locale (src/cache.ts:41); ruled out: the CDN.",
+		);
 	});
 
 	it("lets the user stop one bee or all of them and still get what was found", async () => {

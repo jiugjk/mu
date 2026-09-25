@@ -4,10 +4,13 @@ import { newDraft } from '@/renderer/pages/settings/KyrnSettings/draft';
 import {
   choiceOf,
   choose,
+  defaultModelOf,
+  JEV_SERVICES,
   jevKeyVariable,
   kindOf,
   profileFor,
-  withJevAccess,
+  serviceOf,
+  withJevService,
 } from '@/renderer/pages/settings/KyrnSettings/judgeChoice';
 import {
   apiModelProblem,
@@ -89,7 +92,7 @@ describe('the judge choice', () => {
     expect(choiceOf(modelFirst)).toBeUndefined();
   });
 
-  it('stands for the profile of a kind the order already asks, so the key asked for is the one its way in needs', () => {
+  it('stands for the profile of a kind the order already asks, so the key asked for is the one its service needs', () => {
     const viaGateway = settings({ tiers: ['jev-gateway'] });
     expect(profileFor(viaGateway, 'jev')).toBe('jev-gateway');
     expect(jevKeyVariable(viaGateway.judges[profileFor(viaGateway, 'jev')!])).toBe('AI_GATEWAY_API_KEY');
@@ -98,18 +101,129 @@ describe('the judge choice', () => {
     expect(kindOf(viaGateway.judges.mock)).toBeUndefined();
   });
 
-  it('swaps the profile of Jev’s way in into its place in the order, never asking the same one twice', () => {
-    expect(withJevAccess(settings(), 1, 'gateway').tiers).toEqual(['laya', 'jev-gateway']);
-    expect(withJevAccess(settings({ tiers: ['jev-gateway', 'laya'] }), 0, 'jev').tiers).toEqual(['jev', 'laya']);
-    // Already that way: nothing changes.
+  it('reads the service of a Jev profile from its type and the variable of its key', () => {
+    const judges = settings().judges;
+    const systemOne = (apiKeyEnv: string) => ({ ...judges.jev, type: 'typesafe' as const, apiKeyEnv });
+    expect(serviceOf(judges.jev)).toBe('auto');
+    expect(serviceOf(judges['jev-gateway'])).toBe('gateway');
+    expect(serviceOf(systemOne('TYPESAFE_API_KEY'))).toBe('typesafe');
+    expect(serviceOf(systemOne('MU_JUDGE_OPENROUTER_API_KEY'))).toBe('openrouter');
+    expect(serviceOf(systemOne('MU_JUDGE_CUSTOM_API_KEY'))).toBe('custom');
+    // A TypeSafe key under a name of its own, or none named, is still TypeSafe's.
+    expect(serviceOf(systemOne('KYRN_JUDGE_TYPESAFE'))).toBe('typesafe');
+    expect(serviceOf(systemOne(''))).toBe('typesafe');
+    expect(serviceOf(judges.laya)).toBeUndefined();
+    expect(serviceOf(undefined)).toBeUndefined();
+    // Every service is Jev to the choice above, and has a model its own profile starts with.
+    for (const service of JEV_SERVICES) {
+      const made = withJevService(settings(), 1, service);
+      expect(kindOf(made.judges[made.tiers[1]]), service).toBe('jev');
+      expect(defaultModelOf(service), service).toBeTruthy();
+    }
+    expect(choiceOf(withJevService(settings({ tiers: ['jev'] }), 0, 'custom'))).toBe('jev');
+  });
+
+  it('puts the profile of the service picked in its place in the order, made from its preset when there is none', () => {
+    // The built-in one is used as it is.
+    expect(withJevService(settings(), 1, 'gateway').tiers).toEqual(['laya', 'jev-gateway']);
+    expect(withJevService(settings({ tiers: ['jev-gateway', 'laya'] }), 0, 'auto').tiers).toEqual(['jev', 'laya']);
+    const changed = settings();
+    const byHand = {
+      ...changed,
+      judges: { ...changed.judges, 'jev-gateway': { ...changed.judges['jev-gateway'], model: 'typesafe-ai/jev-2' } },
+    };
+    expect(withJevService(byHand, 1, 'gateway').judges['jev-gateway'].model).toBe('typesafe-ai/jev-2');
+    // None yet: made from the preset, and the profile it replaces stays as it was.
+    const direct = withJevService(settings(), 1, 'typesafe');
+    expect(direct.tiers).toEqual(['laya', 'jev-direct']);
+    expect(direct.judges['jev-direct']).toEqual({
+      type: 'typesafe',
+      model: 'jev-latest',
+      baseUrl: '',
+      apiKeyEnv: 'TYPESAFE_API_KEY',
+      timeoutMs: 10000,
+    });
+    expect(direct.judges.jev).toEqual(settings().judges.jev);
+    const openRouter = withJevService(settings(), 1, 'openrouter');
+    expect(openRouter.tiers).toEqual(['laya', 'jev-openrouter']);
+    expect(openRouter.judges['jev-openrouter']).toEqual({
+      type: 'typesafe',
+      model: '~typesafe/jev-latest',
+      baseUrl: 'https://openrouter.ai/api/v1/systemone',
+      apiKeyEnv: 'MU_JUDGE_OPENROUTER_API_KEY',
+      timeoutMs: 10000,
+    });
+    // A custom service has no address until one is typed.
+    const custom = withJevService(settings(), 1, 'custom');
+    expect(custom.tiers).toEqual(['laya', 'jev-custom']);
+    expect(custom.judges['jev-custom']).toMatchObject({
+      type: 'typesafe',
+      baseUrl: '',
+      apiKeyEnv: 'MU_JUDGE_CUSTOM_API_KEY',
+    });
+    // A custom service someone set up under a name of their own is the one picked again, with its address.
+    const relay = {
+      type: 'typesafe' as const,
+      model: 'jev-latest',
+      baseUrl: 'http://192.168.1.20:8000/v1/systemone',
+      apiKeyEnv: 'MU_JUDGE_CUSTOM_API_KEY',
+      timeoutMs: 10000,
+    };
+    const own = withJevService(settings({ judges: { ...settings().judges, relay } }), 1, 'custom');
+    expect(own.tiers).toEqual(['laya', 'relay']);
+    expect(own.judges['jev-custom']).toBeUndefined();
+    // A profile of another service written by hand under the built-in name is left alone.
+    const taken = settings({
+      judges: { ...settings().judges, 'jev-custom': { ...relay, apiKeyEnv: 'MU_JUDGE_OPENROUTER_API_KEY' } },
+    });
+    const beside = withJevService(taken, 1, 'custom');
+    expect(beside.tiers).toEqual(['laya', 'jev-custom-2']);
+    expect(beside.judges['jev-custom']).toEqual(taken.judges['jev-custom']);
+    expect(serviceOf(beside.judges['jev-custom-2'])).toBe('custom');
+  });
+
+  it('changes nothing for the service a judge already has, and never asks the same profile twice', () => {
     const same = settings();
-    expect(withJevAccess(same, 1, 'jev')).toBe(same);
+    expect(withJevService(same, 1, 'auto')).toBe(same);
+    // Not a judge in the order: nothing to change.
+    expect(withJevService(same, 5, 'gateway')).toBe(same);
     // Two Jevs would be the same profile: the second goes.
-    expect(withJevAccess(settings({ tiers: ['jev', 'jev-gateway'] }), 1, 'jev').tiers).toEqual(['jev']);
-    // No profile for that way: the judge's own profile changes its type.
-    const direct = withJevAccess(settings(), 1, 'typesafe');
-    expect(direct.tiers).toEqual(['laya', 'jev']);
-    expect(direct.judges.jev.type).toBe('typesafe');
+    expect(withJevService(settings({ tiers: ['jev', 'jev-gateway'] }), 1, 'auto').tiers).toEqual(['jev']);
+    const twice = withJevService(settings({ tiers: ['jev-gateway', 'jev'] }), 1, 'gateway');
+    expect(twice.tiers).toEqual(['jev-gateway']);
+  });
+
+  it('carries no address and no key over to another service', () => {
+    const typed = settings();
+    const addressed = {
+      ...typed,
+      tiers: ['jev-direct'],
+      judges: {
+        ...typed.judges,
+        'jev-direct': {
+          type: 'typesafe' as const,
+          model: 'jev-latest',
+          baseUrl: 'http://192.168.1.20:8000/v1/systemone',
+          apiKeyEnv: 'TYPESAFE_API_KEY',
+          timeoutMs: 10000,
+        },
+      },
+    };
+    // A TypeSafe address is no custom service's, nor OpenRouter's.
+    const custom = withJevService(addressed, 0, 'custom');
+    expect(custom.judges['jev-custom'].baseUrl).toBe('');
+    expect(jevKeyVariable(custom.judges[custom.tiers[0]])).toBe('MU_JUDGE_CUSTOM_API_KEY');
+    const openRouter = withJevService(addressed, 0, 'openrouter');
+    expect(openRouter.judges['jev-openrouter'].baseUrl).toBe('https://openrouter.ai/api/v1/systemone');
+    expect(jevKeyVariable(openRouter.judges[openRouter.tiers[0]])).toBe('MU_JUDGE_OPENROUTER_API_KEY');
+    // The profile left behind keeps its own address for when it is picked again.
+    expect(custom.judges['jev-direct'].baseUrl).toBe('http://192.168.1.20:8000/v1/systemone');
+    const back = withJevService(custom, 0, 'typesafe');
+    expect(back.tiers).toEqual(['jev-direct']);
+    expect(back.judges['jev-direct'].baseUrl).toBe('http://192.168.1.20:8000/v1/systemone');
+    // Each service's key stays in its own variable.
+    expect(jevKeyVariable(withJevService(addressed, 0, 'gateway').judges['jev-gateway'])).toBe('AI_GATEWAY_API_KEY');
+    expect(jevKeyVariable(withJevService(addressed, 0, 'auto').judges.jev)).toBe('TYPESAFE_API_KEY');
   });
 
   it('keeps the key of a Jev profile where the profile says, else in TYPESAFE_API_KEY', () => {
@@ -152,6 +266,7 @@ describe('the first-run guide', () => {
     expect(providerIdFor('https://relay.example.com', new Set(['relay']))).toBe('relay-custom');
     expect(providerIdFor('https://relay.example.com', new Set(['relay', 'relay-custom']))).toBe('relay-custom-2');
     expect(providerIdFor('http://localhost:11434/v1', none)).toBe('local');
+    expect(providerIdFor('http://192.168.31.124:8000/v1', none)).toBe('local');
     expect(providerIdFor('https://api.openai.com/v1', none)).toBe('openai-custom');
     expect(providerIdFor('https://api.moonshot.cn/v1', none)).toBe('moonshot');
   });
@@ -161,6 +276,7 @@ describe('the first-run guide', () => {
     // Not "local" or "…-custom", which are English words.
     expect(providerNameFor('http://localhost:11434/v1', 'local')).toBe('localhost:11434');
     expect(providerNameFor('http://127.0.0.1:1234/v1', 'local-custom')).toBe('127.0.0.1:1234');
+    expect(providerNameFor('http://192.168.31.124:8000/v1', 'local')).toBe('192.168.31.124:8000');
     expect(providerNameFor('https://api.deepseek.com/v1', 'deepseek-custom')).toBe('api.deepseek.com');
     expect(providerNameFor('https://relay.example.com', 'relay-custom')).toBe('relay.example.com');
 
@@ -183,6 +299,9 @@ describe('the first-run guide', () => {
     };
     expect(apiModelProblem(input)).toBeUndefined();
     expect(apiModelProblem({ ...input, baseUrl: 'http://relay.example.com/v1' })).toBe('baseUrl');
+    expect(apiModelProblem({ ...input, baseUrl: 'http://8.8.8.8/v1' })).toBe('baseUrl');
+    expect(apiModelProblem({ ...input, baseUrl: 'http://192.168.31.124:8000/v1' })).toBeUndefined();
+    expect(apiModelProblem({ ...input, baseUrl: 'http://192.168.31.124:8000/v1', key: '' })).toBe('key');
     expect(apiModelProblem({ ...input, key: ' ' })).toBe('key');
     expect(apiModelProblem({ ...input, baseUrl: 'http://127.0.0.1:11434/v1', key: '' })).toBeUndefined();
     expect(apiModelProblem({ ...input, model: '' })).toBe('model');

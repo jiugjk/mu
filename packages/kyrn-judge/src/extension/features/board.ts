@@ -50,6 +50,7 @@ import {
 } from "../../decisions/board-read.ts";
 import { appLanguage, say } from "../../language.ts";
 import type { LlmCompletion } from "../../providers/llm.ts";
+import { environmentSecrets, redactSecrets } from "../../redact.ts";
 import { activeRuns, type SwarmSnapshot } from "../../swarm/run.ts";
 import { isOver } from "../../swarm/state.ts";
 import { clip, failOpen, type KyrnRuntime, textOf } from "../runtime.ts";
@@ -637,7 +638,8 @@ export function registerBoard(runtime: KyrnRuntime, roots: HarnessRoots | undefi
 			try {
 				const reply = await complete({
 					system: narratorSystem(facts.language, writeIn()),
-					user: narratorRequest(facts),
+					// The writer tells what the agent did, never the key it did it with.
+					user: redactSecrets(narratorRequest(facts), environmentSecrets()),
 					signal: AbortSignal.any([AbortSignal.timeout(options.narrateTimeoutMs), gone]),
 				});
 				text = parseBoardText(reply.text);

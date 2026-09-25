@@ -50,7 +50,6 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
   targetLine,
   targetColumn,
 }) => {
-
   const [languageExt, setLanguageExt] = useState<Extension[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
 
@@ -191,11 +190,7 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
 
   return (
     <div ref={containerRef} className='code-editor'>
-      {isStreaming && (
-        <div className='code-writing'>
-          AI 正在写入
-        </div>
-      )}
+      {isStreaming && <div className='code-writing'>AI 正在写入</div>}
       <CodeMirror
         value={value}
         height='100%'

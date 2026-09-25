@@ -267,6 +267,7 @@ export default function Welcome() {
               <ChoiceBody
                 choice={choice}
                 draft={draft}
+                onChange={mu.editSettings}
                 onKey={(variable, value) =>
                   mu.edit((now) => ({ ...now, judgeKeys: { ...now.judgeKeys, [variable]: value } }))
                 }

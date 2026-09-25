@@ -6,6 +6,7 @@ import {
 	type Operation,
 	type TargetOption,
 } from "../decisions/browser-step.ts";
+import { Bounds, type Refusal, type ResolveHost, refusalReason } from "./bounds.ts";
 import { type BrowserSession, type PageAction, type PageState, StalePage } from "./session.ts";
 
 const OPERATION_OF: Readonly<Partial<Record<PageAction["kind"], Operation>>> = {
@@ -109,6 +110,8 @@ export interface BrowserTaskOptions {
 	readonly maxSteps?: number;
 	readonly signal?: AbortSignal;
 	readonly onStep?: (record: BrowserStepRecord) => void;
+	/** For tests: how host names are resolved when a page leaves the host the run was opened on. */
+	readonly resolve?: ResolveHost;
 }
 
 /**
@@ -124,7 +127,8 @@ export type BrowserEndCode =
 	| "no_progress"
 	| "not_confirmed"
 	| "no_value"
-	| "stuck";
+	| "stuck"
+	| "off_the_web";
 
 export interface BrowserTaskResult {
 	readonly status: "done" | "blocked" | "budget" | "needs_confirmation" | "aborted";
@@ -148,6 +152,7 @@ export async function runBrowserTask(options: BrowserTaskOptions): Promise<Brows
 	const startedAt = performance.now();
 	const history: BrowserStepRecord[] = [];
 	let decisions = 0;
+	const bounds = new Bounds(session.start, options.resolve);
 	let page: PageState = await session.observe();
 
 	const finish = (
@@ -166,13 +171,36 @@ export async function runBrowserTask(options: BrowserTaskOptions): Promise<Brows
 		elapsedMs: Math.round(performance.now() - startedAt),
 	});
 
+	/**
+	 * After every observation: when a page has sent the browser where it may not be, nothing of that page is kept,
+	 * for the judge, the writer or the model, and the run ends.
+	 */
+	const within = async (): Promise<Refusal | undefined> => {
+		const refused = await bounds.refuse(page.url);
+		if (refused) page = { ...page, url: refused.where, title: "", text: "", actions: [] };
+		return refused;
+	};
+	const look = async (): Promise<Refusal | undefined> => {
+		page = await session.observe();
+		return within();
+	};
+	const offTheWeb = (refused: Refusal) =>
+		finish("blocked", "off_the_web", refusalReason(refused), { where: refused.where });
+
+	// The address itself may already have redirected elsewhere.
+	const opened = await within();
+	if (opened) return offTheWeb(opened);
+
 	while (true) {
 		if (options.signal?.aborted) return finish("aborted", "cancelled");
 		if (options.beforeStep && !(await options.beforeStep()))
 			return finish("aborted", "stopped_by_user", "stopped by the person watching");
 		if (history.length >= maxSteps || decisions >= maxSteps * 2)
 			return finish("budget", "max_steps", `stopped after ${maxSteps} actions`, { maxSteps });
-		if (!(await session.fresh(page))) page = await session.observe();
+		if (!(await session.fresh(page))) {
+			const refused = await look();
+			if (refused) return offTheWeb(refused);
+		}
 
 		const space = actionSpace(page.actions);
 		const input: BrowserStepInput = {
@@ -236,7 +264,8 @@ export async function runBrowserTask(options: BrowserTaskOptions): Promise<Brows
 				await session.act(action, page, text);
 			} catch (error) {
 				if (!(error instanceof StalePage)) throw error;
-				page = await session.observe();
+				const refused = await look();
+				if (refused) return offTheWeb(refused);
 				continue;
 			}
 			const record: BrowserStepRecord = {
@@ -249,10 +278,11 @@ export async function runBrowserTask(options: BrowserTaskOptions): Promise<Brows
 			// Logged before observing: a navigation during the next observation must not erase the action.
 			history.push(record);
 			const before = page.fingerprint;
-			page = await session.observe();
+			const refused = await look();
 			record.page_changed = page.fingerprint !== before;
 			record.url = page.url;
 			options.onStep?.(record);
+			if (refused) return offTheWeb(refused);
 		}
 
 		const lastThree = history.slice(-3);

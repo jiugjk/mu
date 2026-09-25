@@ -61,7 +61,11 @@ function within(promise, ms, what) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** Every process of this machine as [pid, parent pid]. */
+/**
+ * Every process of this machine as [pid, parent pid, start]. On Windows the start (creation time, in milliseconds:
+ * the 100 ns ticks would not fit a JavaScript number) tells a process from a later one given the same pid;
+ * elsewhere it is 0.
+ */
 function processTable() {
   const text = windows
     ? execFileSync(
@@ -69,7 +73,7 @@ function processTable() {
         [
           '-NoProfile',
           '-Command',
-          'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId) $($_.ParentProcessId)" }',
+          'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId) $($_.ParentProcessId) $(if ($_.CreationDate) { [long]($_.CreationDate.ToFileTimeUtc() / 10000) } else { 0 })" }',
         ],
         { encoding: 'utf8', windowsHide: true }
       )
@@ -77,16 +81,26 @@ function processTable() {
   return text
     .split(/\r?\n/)
     .map((line) => line.trim().split(/\s+/).map(Number))
-    .filter(([pid, parent]) => pid > 0 && parent >= 0);
+    .filter(([pid, parent]) => pid > 0 && parent >= 0)
+    .map(([pid, parent, start = 0]) => [pid, parent, start]);
 }
 
-/** A process and all its descendants, as they are now. */
+/**
+ * A process and all its descendants, as they are now, each with its start. Windows keeps a parent pid after the
+ * parent has exited and soon gives that pid to another process, so a "child" that started before its parent is an
+ * unrelated older process: it is not ours to end, and counting it made the check fail at random.
+ */
 function tree(root) {
+  const table = processTable();
+  const startOf = new Map(table.map(([pid, , start]) => [pid, start]));
   const children = new Map();
-  for (const [pid, parent] of processTable()) children.set(parent, [...(children.get(parent) ?? []), pid]);
+  for (const [pid, parent, start] of table) {
+    if (start < (startOf.get(parent) ?? 0)) continue;
+    children.set(parent, [...(children.get(parent) ?? []), pid]);
+  }
   const found = [root];
   for (let i = 0; i < found.length; i++) found.push(...(children.get(found[i]) ?? []));
-  return found;
+  return found.map((pid) => ({ pid, start: startOf.get(pid) ?? 0 }));
 }
 
 function alive(pid) {
@@ -98,13 +112,21 @@ function alive(pid) {
   }
 }
 
-async function gone(pids, ms = 15000) {
+/** Whether one of these processes still runs. On Windows a pid only counts with its own start: pids are reused fast. */
+function anyAlive(procs) {
+  if (!windows) return procs.some(({ pid }) => alive(pid));
+  const now = new Map(processTable().map(([pid, , start]) => [pid, start]));
+  return procs.some(({ pid, start }) => now.get(pid) === start);
+}
+
+async function gone(procs, ms = 15000) {
   const end = Date.now() + ms;
   while (Date.now() < end) {
-    if (!pids.some(alive)) return true;
-    await sleep(250);
+    if (!anyAlive(procs)) return true;
+    // Reading the process table on Windows takes a PowerShell start, about a second.
+    await sleep(windows ? 1000 : 250);
   }
-  return !pids.some(alive);
+  return !anyAlive(procs);
 }
 
 /** Ends a command's tree as AionCore does: taskkill /F /T on Windows, the process group elsewhere. */
@@ -165,9 +187,9 @@ async function acp(name, command, args, extraEnv = {}) {
   } catch (error) {
     report(`${name}`, false, error.message);
   }
-  const pids = tree(child.pid);
+  const procs = tree(child.pid);
   endAsAionCore(child);
-  report(`${name}: ending it leaves nothing behind`, await gone(pids), `${pids.length} processes`);
+  report(`${name}: ending it leaves nothing behind`, await gone(procs), `${procs.length} processes`);
 }
 
 /**
@@ -357,10 +379,10 @@ async function permissionRoundTrip(name, command, args, extraEnv = {}) {
   } catch (error) {
     report(`${name}: permission round trip`, false, error.message);
   }
-  const pids = tree(child.pid);
+  const procs = tree(child.pid);
   endAsAionCore(child);
   server.close();
-  report(`${name}: ending it leaves nothing behind`, await gone(pids), `${pids.length} processes`);
+  report(`${name}: ending it leaves nothing behind`, await gone(procs), `${procs.length} processes`);
 }
 
 try {
@@ -381,9 +403,9 @@ try {
     report('mu answers over RPC', false, error.message);
   }
   // The child is private to TypeScript, not at run time.
-  const pids = rpc.child?.pid ? tree(rpc.child.pid) : [];
+  const procs = rpc.child?.pid ? tree(rpc.child.pid) : [];
   rpc.close();
-  report('closing mu ends its whole tree', await gone(pids), `${pids.length} processes`);
+  report('closing mu ends its whole tree', await gone(procs), `${procs.length} processes`);
 
   // 3. The registration's command, as AionCore runs it.
   const scripts = join(desktop, 'scripts', 'kyrn');

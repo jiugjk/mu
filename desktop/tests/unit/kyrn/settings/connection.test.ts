@@ -169,7 +169,7 @@ describe('testing a provider connection from the main process', () => {
   it('validates before it connects: endpoint rules, wire format and the shape of a typed key', async () => {
     const bad = (patch: Partial<ProviderTestInput>) =>
       testProvider(input('openai-completions', 'https://example.com/v1', patch), undefined);
-    await expect(bad({ baseUrl: 'http://example.com/v1' })).rejects.toThrow('Use HTTPS or a loopback');
+    await expect(bad({ baseUrl: 'http://example.com/v1' })).rejects.toThrow('private-network address');
     await expect(bad({ baseUrl: 'https://user:pw@example.com/v1' })).rejects.toThrow('embedded credentials');
     await expect(bad({ api: 'soap' as EndpointType })).rejects.toThrow('Invalid endpoint type');
     await expect(bad({ apiKey: 'two words' })).rejects.toThrow('Invalid credential');

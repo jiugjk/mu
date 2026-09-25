@@ -344,12 +344,13 @@ describe("workflow commands", () => {
 	const roles = new Set(loadAgents(join(tmpdir(), "mu-no-user-agents")).map((agent) => agent.name));
 
 	it("/implement, /scout-and-plan and /implement-and-review load as pi prompt templates and name roles that exist", () => {
-		const templates = loadPromptTemplates({
+		const { templates, diagnostics } = loadPromptTemplates({
 			cwd: tmpdir(),
 			agentDir: tmpdir(),
 			promptPaths: [prompts],
 			includeDefaults: false,
 		});
+		expect(diagnostics).toEqual([]);
 		for (const name of ["implement", "scout-and-plan", "implement-and-review"]) {
 			const template = templates.find((each) => each.name === name);
 			expect(template?.description, name).toBeTruthy();

@@ -1,9 +1,11 @@
 import React from 'react';
 import { Input, Tag } from '@arco-design/web-react';
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
+import { isSafeEndpoint } from '@/common/kyrn/models';
+import type { JudgeSettings, KyrnSettings } from '@/common/kyrn/types';
 import AionSelect from '@/renderer/components/base/AionSelect';
 import { formatNumber } from '@/renderer/services/i18n/format';
-import type { KyrnSettings } from '@/common/kyrn/types';
 import type { Draft } from '../draft';
 import ChoiceTile from '../fields/ChoiceTile';
 import Row from '../fields/Row';
@@ -11,14 +13,16 @@ import fieldStyles from '../fields/fields.module.css';
 import {
   choiceOf,
   choose,
-  JEV_ACCESS,
+  defaultModelOf,
+  JEV_SERVICES,
   JUDGE_CHOICES,
-  type JevAccess,
+  type JevService,
   type JudgeChoice,
   jevKeyVariable,
   kindOf,
   profileFor,
-  withJevAccess,
+  serviceOf,
+  withJevService,
 } from '../judgeChoice';
 import SectionShell, { Card, GroupTitle } from './SectionShell';
 import LocalJudgePanel from './LocalJudgePanel';
@@ -33,8 +37,8 @@ type JudgesSectionProps = {
 
 /**
  * The judges page. First the choice most people make once: which judge answers the small questions mu asks while it
- * works, and under it the one thing that choice needs (Jev a key, Laya the one-click panel). Below it the judge tiers:
- * the order in which several judges are asked, and what each one needs.
+ * works, and under it what that choice needs (Jev a service and its key, Laya the one-click panel). Below it the judge
+ * tiers: the order in which several judges are asked, and what each one needs.
  */
 export default function JudgesSection({ draft, base, onChange, onKey }: JudgesSectionProps) {
   const { t } = useTranslation();
@@ -48,7 +52,7 @@ export default function JudgesSection({ draft, base, onChange, onKey }: JudgesSe
 
 type JudgeChoicesProps = Pick<JudgesSectionProps, 'draft' | 'onChange' | 'onKey'>;
 
-/** The choice itself: which judge answers the small questions, and the one thing that choice needs. */
+/** The choice itself: which judge answers the small questions, and what that choice needs. */
 export function JudgeChoices({ draft, onChange, onKey }: JudgeChoicesProps) {
   const { t } = useTranslation();
   const { settings } = draft;
@@ -63,7 +67,7 @@ export function JudgeChoices({ draft, onChange, onKey }: JudgeChoicesProps) {
             active={current === choice}
             onPick={() => onChange((now) => choose(now, choice))}
           >
-            {current === choice ? <ChoiceBody choice={choice} draft={draft} onKey={onKey} /> : null}
+            {current === choice ? <ChoiceBody choice={choice} draft={draft} onChange={onChange} onKey={onKey} /> : null}
           </JudgeChoiceTile>
         ))}
       </div>
@@ -94,34 +98,77 @@ export function JudgeChoiceTile({ choice, active, onPick, children }: TileProps)
 type BodyProps = {
   choice: JudgeChoice;
   draft: Draft;
+  onChange: JudgesSectionProps['onChange'];
   onKey: JudgesSectionProps['onKey'];
 };
 
-/** The one thing a choice needs: Jev a key, Laya to be installed and running (one click each). */
-export function ChoiceBody({ choice, draft, onKey }: BodyProps) {
+/**
+ * What a choice needs: Jev the service it is reached through (with the address of a service that has one to set) and
+ * that service's key, Laya to be installed and running (one click each).
+ */
+export function ChoiceBody({ choice, draft, onChange, onKey }: BodyProps) {
   const { t } = useTranslation();
   const { settings } = draft;
   const name = profileFor(settings, choice);
   const judge = name ? settings.judges[name] : undefined;
 
   if (choice === 'jev') {
+    const service = serviceOf(judge) ?? 'auto';
     const variable = jevKeyVariable(judge);
     const set = settings.keys[variable];
+    const address = addressOf(t, service, judge?.baseUrl ?? '');
+    const keyLabel = t(`mu.judges.services.${service}.key`);
     return (
-      <div className={styles.choiceField}>
-        <label className={styles.choiceLabel}>
-          {t('mu.apiKey')}
-          <Tag size='small'>{t(set ? 'mu.keyState.set' : 'mu.keyState.none')}</Tag>
-        </label>
-        <Input.Password
-          className={styles.choiceInput}
-          aria-label={t('mu.apiKey')}
-          autoComplete='new-password'
-          value={draft.judgeKeys[variable] ?? ''}
-          placeholder={set ? t('mu.keyKeep') : t('mu.judges.keyPlaceholder')}
-          onChange={(value) => onKey(variable, value)}
-        />
-        <div className={styles.choiceHint}>{t('mu.keyHelp')}</div>
+      <div className={styles.choiceFields}>
+        <div className={styles.choiceField}>
+          <label className={styles.choiceLabel}>{t('mu.judges.service')}</label>
+          <AionSelect
+            className={styles.choiceInput}
+            aria-label={t('mu.judges.service')}
+            value={service}
+            // The Jev the order asks first: the one this choice stands for.
+            onChange={(next: JevService) =>
+              onChange((now) => withJevService(now, now.tiers.indexOf(profileFor(now, 'jev') ?? ''), next))
+            }
+            options={serviceOptions(t)}
+          />
+          <div className={styles.choiceHint}>{t(`mu.judges.services.${service}.help`)}</div>
+        </div>
+        {address && name ? (
+          <div className={styles.choiceField}>
+            <label className={styles.choiceLabel}>{t('mu.judges.baseUrl')}</label>
+            <Input
+              className={styles.choiceInput}
+              aria-label={t('mu.judges.baseUrl')}
+              placeholder={address.placeholder}
+              status={address.problem ? 'error' : undefined}
+              value={judge?.baseUrl}
+              onChange={(baseUrl) => onChange((now) => withProfile(now, name, { baseUrl }))}
+            />
+            {address.problem ? (
+              <div className={fieldStyles.problem} role='alert'>
+                {address.problem}
+              </div>
+            ) : (
+              <div className={styles.choiceHint}>{address.help}</div>
+            )}
+          </div>
+        ) : null}
+        <div className={styles.choiceField}>
+          <label className={styles.choiceLabel}>
+            {keyLabel}
+            <Tag size='small'>{t(set ? 'mu.keyState.set' : 'mu.keyState.none')}</Tag>
+          </label>
+          <Input.Password
+            className={styles.choiceInput}
+            aria-label={keyLabel}
+            autoComplete='new-password'
+            value={draft.judgeKeys[variable] ?? ''}
+            placeholder={set ? t('mu.keyKeep') : t('mu.judges.keyPlaceholder')}
+            onChange={(value) => onKey(variable, value)}
+          />
+          <div className={styles.choiceHint}>{t('mu.keyHelp')}</div>
+        </div>
       </div>
     );
   }
@@ -138,10 +185,10 @@ export function ChoiceBody({ choice, draft, onKey }: BodyProps) {
 
 /**
  * The judge tiers, under the choice: the order, by the judges' names (Jev, Laya), then a group per judge in that order
- * with what it needs. Jev: the way it is reached and its model. The one thing a judge needs to run (Jev's key, Laya's
- * install) is asked for in the choice above when it is the judge chosen there, the first; a judge further down the
- * order needs it here, where it is the only place. A judge of another kind (a model as judge, a self-hosted service)
- * goes by the name it was given.
+ * with what it needs. Jev: the service it is reached through, its model and the service's address where it has one.
+ * The one thing a judge needs to run (Jev's key, Laya's install) is asked for in the choice above when it is the judge
+ * chosen there, the first; a judge further down the order needs it here, where it is the only place. A judge of
+ * another kind (a model as judge, a self-hosted service) goes by the name it was given.
  */
 function JudgeTiers({ draft, base, onChange, onKey }: JudgesSectionProps) {
   const { t, i18n } = useTranslation();
@@ -210,50 +257,103 @@ function JudgeTiers({ draft, base, onChange, onKey }: JudgesSectionProps) {
   );
 }
 
-/** Jev in the order: how it is reached and its model, and its key when it is not the judge chosen on the judges page. */
+/** TypeSafe's own System One address, shown when a direct TypeSafe judge has no address of its own yet. */
+const TYPESAFE_ENDPOINT = 'https://api.typesafe.ai/v1/systemone';
+/** What a custom service's address looks like, shown until one is typed. */
+const CUSTOM_ENDPOINT = 'https://relay.example.com/v1/systemone';
+
+/** The services Jev is reached through, by their names in the app language. */
+const serviceOptions = (t: TFunction) =>
+  JEV_SERVICES.map((value) => ({ value, label: t(`mu.judges.services.${value}.name`) }));
+
+/**
+ * The address of a Jev profile, for the services that have one to set: TypeSafe's may be moved (empty is TypeSafe's
+ * own), a custom service's is needed, since its key goes there and nowhere else. Any address follows the rule for
+ * every address a key is sent to. The store refuses a change that leaves either problem.
+ */
+function addressOf(t: TFunction, service: JevService, baseUrl: string) {
+  if (service !== 'typesafe' && service !== 'custom') return undefined;
+  const custom = service === 'custom';
+  let problem: string | undefined;
+  if (baseUrl) problem = isSafeEndpoint(baseUrl) ? undefined : t('mu.endpointRule');
+  else if (custom) problem = t('mu.judges.baseUrlNeeded');
+  return {
+    placeholder: custom ? CUSTOM_ENDPOINT : TYPESAFE_ENDPOINT,
+    help: t(custom ? 'mu.judges.customUrlHelp' : 'mu.judges.baseUrlHelp'),
+    problem,
+  };
+}
+
+/** The settings with fields of one judge's profile changed. */
+const withProfile = (settings: KyrnSettings, name: string, patch: Partial<JudgeSettings>): KyrnSettings => ({
+  ...settings,
+  judges: { ...settings.judges, [name]: { ...settings.judges[name], ...patch } },
+});
+
+/**
+ * Jev in the order: the service it is reached through, its model and the service's address where it has one to set,
+ * and the service's key when it is not the judge chosen on the judges page.
+ */
 function JevFields({ draft, base, index, onChange, onKey }: JudgesSectionProps & { index: number }) {
   const { t } = useTranslation();
   const { settings } = draft;
   const name = settings.tiers[index];
   const judge = settings.judges[name];
-  const access = judge.type as JevAccess;
+  const service = serviceOf(judge) ?? 'auto';
   const before = base.judges[base.tiers[index] ?? ''];
+  const saved = base.judges[name];
   const variable = jevKeyVariable(judge);
+  const keyLabel = t(`mu.judges.services.${service}.key`);
+  const address = addressOf(t, service, judge.baseUrl);
   // The first judge's key is asked for in the choice above.
   const keyHere = index > 0;
   return (
     <>
       <Row
-        title={t('mu.judges.type')}
-        help={t(`mu.judges.types.${access}Help`)}
-        modified={before !== undefined && before.type !== judge.type}
+        title={t('mu.judges.service')}
+        help={t(`mu.judges.services.${service}.help`)}
+        modified={before !== undefined && serviceOf(before) !== service}
       >
         <AionSelect
           size='small'
           className={fieldStyles.wide}
-          aria-label={t('mu.judges.type')}
-          value={access}
-          onChange={(next: JevAccess) => onChange((now) => withJevAccess(now, index, next))}
-          options={JEV_ACCESS.map((value) => ({ value, label: t(`mu.judges.access.${value}`) }))}
+          aria-label={t('mu.judges.service')}
+          value={service}
+          onChange={(next: JevService) => onChange((now) => withJevService(now, index, next))}
+          options={serviceOptions(t)}
         />
       </Row>
-      <Row
-        title={t('mu.judges.model')}
-        modified={base.judges[name] !== undefined && base.judges[name].model !== judge.model}
-      >
+      <Row title={t('mu.judges.model')} modified={saved !== undefined && saved.model !== judge.model}>
         <Input
           size='small'
           className={fieldStyles.wide}
           aria-label={t('mu.judges.model')}
+          placeholder={defaultModelOf(service)}
           value={judge.model}
-          onChange={(model) =>
-            onChange((now) => ({ ...now, judges: { ...now.judges, [name]: { ...now.judges[name], model } } }))
-          }
+          onChange={(model) => onChange((now) => withProfile(now, name, { model }))}
         />
       </Row>
+      {address ? (
+        <Row
+          title={t('mu.judges.baseUrl')}
+          help={address.problem ? undefined : address.help}
+          problem={address.problem}
+          modified={saved !== undefined && saved.baseUrl !== judge.baseUrl}
+        >
+          <Input
+            size='small'
+            className={fieldStyles.wide}
+            aria-label={t('mu.judges.baseUrl')}
+            placeholder={address.placeholder}
+            status={address.problem ? 'error' : undefined}
+            value={judge.baseUrl}
+            onChange={(baseUrl) => onChange((now) => withProfile(now, name, { baseUrl }))}
+          />
+        </Row>
+      ) : null}
       {keyHere ? (
         <Row
-          title={t('mu.apiKey')}
+          title={keyLabel}
           help={t('mu.keyHelp')}
           modified={Boolean(draft.judgeKeys[variable])}
           badges={<Tag size='small'>{t(settings.keys[variable] ? 'mu.keyState.set' : 'mu.keyState.none')}</Tag>}
@@ -261,7 +361,7 @@ function JevFields({ draft, base, index, onChange, onKey }: JudgesSectionProps &
           <Input.Password
             size='small'
             className={fieldStyles.wide}
-            aria-label={t('mu.apiKey')}
+            aria-label={keyLabel}
             autoComplete='new-password'
             value={draft.judgeKeys[variable] ?? ''}
             placeholder={settings.keys[variable] ? t('mu.keyKeep') : t('mu.judges.keyPlaceholder')}

@@ -1,3 +1,4 @@
+import { stripVTControlCharacters } from "node:util";
 import { truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import type { Paint } from "../extension/features/welcome.ts";
 import type { SwarmSnapshot } from "./run.ts";
@@ -78,8 +79,9 @@ function doing(bee: BeeState, now: number, paint: Paint): string | undefined {
 function quote(text: string, width: number, maxLines: number, paint: Paint): string[] {
 	const lines = wrapTextWithAnsi(flat(text), Math.max(16, width));
 	const shown = lines.slice(0, maxLines);
+	// Cut without an ellipsis of its own: " …" is the one that says more was said.
 	if (lines.length > maxLines)
-		shown[maxLines - 1] = `${truncateToWidth(shown[maxLines - 1], Math.max(8, width - 2))} …`;
+		shown[maxLines - 1] = `${truncateToWidth(shown[maxLines - 1], Math.max(8, width - 2), "")} …`;
 	return shown.map((line) => paint.fg("dim", line));
 }
 
@@ -177,5 +179,16 @@ export function renderSwarm(snapshot: SwarmSnapshot, options: SwarmViewOptions, 
 	} else if (expanded) {
 		lines.push(paint.fg("dim", `transcripts, board and gate log: ${snapshot.dir}`));
 	}
-	return lines.map((line) => truncateToWidth(line, width));
+	return lines.map((line) => truncateToWidth(line, width, "…"));
+}
+
+const PLAIN: Paint = { fg: (_color, text) => text, bold: (text) => text };
+
+/**
+ * The view as text, for whoever cannot draw it: the tool's partial results (the desktop app, print and JSON
+ * mode) and `/swarm`'s notice. A line cut to width ends in a style reset even when nothing in it is styled,
+ * and a reader of plain text would see that as `[0m`.
+ */
+export function swarmText(snapshot: SwarmSnapshot, options: SwarmViewOptions): string {
+	return stripVTControlCharacters(renderSwarm(snapshot, options, PLAIN).join("\n"));
 }

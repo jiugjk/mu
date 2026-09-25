@@ -1,6 +1,11 @@
 import { homedir } from "node:os";
-import { join } from "node:path";
-import type { ExtensionContext, ToolCallEvent, ToolCallEventResult } from "@earendil-works/pi-coding-agent";
+import { join, resolve, sep } from "node:path";
+import {
+	CONFIG_DIR_NAME,
+	type ExtensionContext,
+	type ToolCallEvent,
+	type ToolCallEventResult,
+} from "@earendil-works/pi-coding-agent";
 import { toolApproval } from "../../decisions/tool-approval.ts";
 import { toolRisk } from "../../decisions/tool-risk.ts";
 import { say } from "../../language.ts";
@@ -15,7 +20,10 @@ import {
 	parseMode,
 	permissionNeed,
 	protectedSpellings,
+	toolPath,
 } from "../../permissions/modes.ts";
+import { threeZone } from "../../policy.ts";
+import { subAgentUserGoal } from "../../swarm/brief.ts";
 import { clip, type KyrnRuntime } from "../runtime.ts";
 import { isShellTool } from "../shell-tools.ts";
 import { describeCall } from "./constraints.ts";
@@ -61,9 +69,19 @@ export function modeLabel(mode: PermissionMode): string {
 	return say({ zh: MODE_TEXT[mode].zh, en: MODE_TEXT[mode].en });
 }
 
-/** Where mu keeps its own settings, as a command may spell it: a call touching it is the user's to allow. */
+/** Where mu keeps its own settings, as a command may spell it, and where it really is: a call touching it is the user's to allow. */
 function protectedPaths(roots: HarnessRoots | undefined): string[] {
-	return roots ? protectedSpellings(roots.agentDir, homedir(), process.platform) : [];
+	if (!roots) return [];
+	const spelled = protectedSpellings(roots.agentDir, homedir(), process.platform);
+	const real = toolPath(roots.agentDir, roots.agentDir);
+	return real && real !== roots.agentDir ? [...spelled, real] : spelled;
+}
+
+/** The project's own mu folder (`.mu`, a stock pi's `.pi`): its settings and extensions run inside mu. */
+function projectSettings(cwd: string): string[] {
+	const spelled = join(resolve(cwd), CONFIG_DIR_NAME);
+	const real = toolPath(cwd, CONFIG_DIR_NAME) ?? spelled;
+	return [...new Set([spelled, real])].map((path) => `${path}${sep}`);
 }
 
 /**
@@ -155,7 +173,9 @@ export function registerPermissions(runtime: KyrnRuntime, roots: HarnessRoots | 
 		ctx: ExtensionContext,
 	): Promise<{ approved: boolean; reason: AskReason }> => {
 		const call = `${event.toolName}: ${clip(describeCall(event.toolName, event.input), 400)}`;
-		const userMessage = clip(runtime.turn.userMessage, 400);
+		// In a sub-agent the message and the frame are what the parent's model wrote: only the user's goal vouches.
+		const inherited = subAgentUserGoal();
+		const userMessage = clip(inherited ?? runtime.turn.userMessage, 400);
 		runtime.progress(
 			say({ zh: `Jev 在审批：${clip(need.summary, 60)}`, en: `Jev is reviewing: ${clip(need.summary, 60)}` }),
 			"permission_review",
@@ -167,14 +187,21 @@ export function registerPermissions(runtime: KyrnRuntime, roots: HarnessRoots | 
 				{ command: clip(describeCall(event.toolName, event.input), 400), userMessage, flag },
 				{ signal: ctx.signal },
 			);
-			// The user chose Jev to decide, so its verdict counts in shadow too; no verdict means asking.
-			return { approved: (decision.judged ?? decision.outcome) === "allow", reason: "flagged" };
+			// The user chose Jev to decide, so its verdict counts in shadow too; no verdict means asking. A rule flagged
+			// the call, so only Jev being sure the user asked for it runs it: "not destructive" is read from the command
+			// itself, which can say anything about itself.
+			const requested = decision.answers?.requested;
+			const asked = requested?.type === "boolean" && threeZone(requested) === "yes";
+			return { approved: asked && (decision.judged ?? decision.outcome) === "allow", reason: "flagged" };
 		}
 		const frame = runtime.frame;
 		const decision = await runtime.engine.decide(
 			toolApproval,
 			{
-				task: clip([frame?.goal, frame?.currentSubgoal].filter(Boolean).join(" / now: ") || userMessage, 600),
+				task: clip(
+					inherited ?? ([frame?.goal, frame?.currentSubgoal].filter(Boolean).join(" / now: ") || userMessage),
+					600,
+				),
 				userMessage,
 				call,
 				where:
@@ -264,7 +291,7 @@ export function registerPermissions(runtime: KyrnRuntime, roots: HarnessRoots | 
 	const gate = async (event: ToolCallEvent, ctx: ExtensionContext): Promise<ToolCallEventResult | undefined> => {
 		if (mode === "full") return undefined;
 		const input = event.input as Record<string, unknown>;
-		const need = permissionNeed(event.toolName, input, ctx.cwd, guarded);
+		const need = permissionNeed(event.toolName, input, ctx.cwd, [...guarded, ...projectSettings(ctx.cwd)]);
 		if (!need) return undefined;
 		const command = isShellTool(event.toolName) || event.toolName === "bg_start" ? String(input.command ?? "") : "";
 		const flag = command ? riskFlag(command) : undefined;

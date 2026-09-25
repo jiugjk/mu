@@ -22,6 +22,32 @@ describe('the judge log', () => {
     expect(items.map((item) => (item.type === 'event' ? item.event.kind : item.type))).toEqual(['goal.state']);
   });
 
+  it('lists a task frame restored as the conversation opens again only when it reads differently', () => {
+    const frame = (goal: string, reason: string) =>
+      event('frame.updated', {
+        frame: { version: 1, goal },
+        openQuestionCodes: [],
+        reason,
+        stale: false,
+        unmerged: [],
+      });
+    const items = logItems([
+      frame('Map the swarm', 'created'),
+      frame('Map the swarm, then fix it', 'progress'),
+      // Opened again three times: the same frame, restored each time.
+      frame('Map the swarm, then fix it', 'restored'),
+      frame('Map the swarm, then fix it', 'restored'),
+      frame('Map the swarm, then fix it', 'restored'),
+      frame('Fix the swarm', 'progress'),
+    ]);
+    const goals = items.map((item) => (item.type === 'event' ? item.event.payload.frame : undefined));
+    expect(goals).toEqual([
+      { version: 1, goal: 'Map the swarm' },
+      { version: 1, goal: 'Map the swarm, then fix it' },
+      { version: 1, goal: 'Fix the swarm' },
+    ]);
+  });
+
   it('asks for the lessons’ words where a judgment names lessons: the ones brought in and the ones followed', () => {
     const judged = (specId: string) =>
       logItems([event('decision', { id: `${specId}-1`, specId, source: 'judge', outcome: { apply: ['a'] } })])[0];

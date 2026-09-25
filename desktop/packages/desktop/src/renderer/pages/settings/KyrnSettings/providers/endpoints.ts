@@ -25,6 +25,7 @@ export const blankModel = (id = ''): ProviderModel => ({
   imageInput: false,
   contextWindow: 128000,
   maxTokens: 16384,
+  thinkingLevelMap: {},
   thinkingLevels: ['off'],
 });
 

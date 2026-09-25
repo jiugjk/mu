@@ -31,6 +31,12 @@ const DEFAULT_TIMEOUT_MS: Readonly<Record<JudgeConfig["type"], number>> = {
 	mock: 1000,
 };
 
+/**
+ * Keys for Jev at a service other than TypeSafe (OpenRouter, an address of the user's own). Any other variable may
+ * hold a TypeSafe key under a name of its own, and goes to TypeSafe when no address is set.
+ */
+const KEYS_FOR_ELSEWHERE: ReadonlySet<string> = new Set(["MU_JUDGE_OPENROUTER_API_KEY", "MU_JUDGE_CUSTOM_API_KEY"]);
+
 /** `llm:provider/model` names an LLM judge inline, without a `judges` entry. */
 export function resolveJudgeConfig(name: string, config: KyrnConfig): JudgeConfig | undefined {
 	if (name.startsWith("llm:")) return { type: "llm", model: name.slice("llm:".length) };
@@ -65,18 +71,31 @@ function createProvider(name: string, judge: JudgeConfig, host: JudgeHost): Judg
 			if (!complete) throw new TypeError(`Judge "${name}": model "${judge.model}" is not available`);
 			return new LlmJudgeProvider({ id: `llm:${judge.model}`, complete });
 		}
-		case "typesafe":
+		case "typesafe": {
+			const keyName = judge.apiKeyEnv ?? "TYPESAFE_API_KEY";
+			// A key set up for another service goes only to the address it was set up with, never to TypeSafe's.
+			if (KEYS_FOR_ELSEWHERE.has(keyName) && !judge.baseUrl) {
+				throw new TypeError(`Judge "${name}" needs a baseUrl: its key ${keyName} is not sent to TypeSafe`);
+			}
 			return new TypeSafeJudgeProvider({
-				apiKey: () => host.env?.[judge.apiKeyEnv ?? "TYPESAFE_API_KEY"],
+				apiKey: () => host.env?.[keyName],
+				keyName,
 				model: judge.model,
 				baseUrl: judge.baseUrl,
 				fetch: host.fetch,
 			});
-		case "jev":
-			// A TypeSafe key is the direct route; without one, Jev is reached through the Vercel AI Gateway.
-			return host.env?.[judge.apiKeyEnv ?? "TYPESAFE_API_KEY"]
-				? createProvider(name, { ...judge, type: "typesafe" }, host)
-				: createProvider(name, { ...judge, type: "gateway", model: judge.model ?? "typesafe-ai/jev" }, host);
+		}
+		case "jev": {
+			// A TypeSafe key is the direct route, a key for Jev on OpenRouter the next; without either, Jev is reached
+			// through the Vercel AI Gateway. Each service names the model its own way: a model set here is TypeSafe's
+			// ("jev-latest"), and reaches the gateway only when it is written the gateway's way ("typesafe-ai/jev").
+			if (host.env?.[judge.apiKeyEnv ?? "TYPESAFE_API_KEY"])
+				return createProvider(name, { ...judge, type: "typesafe" }, host);
+			const openRouter = BUILT_IN_JUDGES["jev-openrouter"];
+			if (openRouter.apiKeyEnv && host.env?.[openRouter.apiKeyEnv]) return createProvider(name, openRouter, host);
+			const model = judge.model?.includes("/") ? judge.model : "typesafe-ai/jev";
+			return createProvider(name, { ...judge, type: "gateway", model }, host);
+		}
 		default:
 			return new GatewayJudgeProvider({
 				apiKey: judge.apiKeyEnv

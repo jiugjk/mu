@@ -6,7 +6,7 @@ import { isBeeActive, type HiveBee, type HiveToolData } from '@/common/kyrn/hive
 import type { NormalizedToolStatus } from '@/common/chat/normalizeToolCall';
 import { requestHiveFocus } from '../focus';
 import BeeAvatar from './BeeAvatar';
-import { beeErrorText, swarmTitleText } from './codes';
+import { beeActivityText, beeErrorText, swarmTitleText } from './codes';
 import HiveMiniature from './Graph/Miniature';
 import styles from './Hive.module.css';
 
@@ -19,17 +19,20 @@ import styles from './Hive.module.css';
 
 /**
  * What a sub-agent's line says on its right: its own words, in the app language where the harness gave a code. The
- * work panel's hive tab says the same on its rows.
- */
-/**
- * What a sub-agent's line says on its right: its own words, in the app language where the harness gave a code.
- * `thinking` is its thinking level, shown beside its model, never as what it is doing.
+ * work panel's hive tab says the same on its rows. `thinking` is its thinking level, shown beside its model, never as
+ * what it is doing.
+ *
+ * A read or a search takes milliseconds and a model reply seconds, so a working sub-agent is nearly always caught
+ * waiting on its model, with no tool running and nothing said yet. Its status alone would then read "thinking" for
+ * the whole run; its last step beside it changes as it works.
  */
 export function beeLine(t: ReturnType<typeof useTranslation>['t'], bee: HiveBee, language?: string | null): string {
   if (bee.error) return beeErrorText(t, bee, language);
   if (bee.tool) return bee.tool.summary || bee.tool.name;
   if (bee.said) return bee.said;
-  return t(bee.status === 'unknown' ? 'common.kyrn.hiveView.unknown' : `common.kyrn.beeStatus.${bee.status}`);
+  const status = t(bee.status === 'unknown' ? 'common.kyrn.hiveView.unknown' : `common.kyrn.beeStatus.${bee.status}`);
+  const last = isBeeActive(bee.status) ? bee.recent.at(-1) : undefined;
+  return last ? t('common.kyrn.hiveView.lastStep', { status, step: beeActivityText(t, last, language) }) : status;
 }
 
 export default function HiveToolCard({

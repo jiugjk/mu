@@ -32,9 +32,9 @@ import {
 	type SwarmSnapshot,
 } from "../../swarm/run.ts";
 import { type BeeEvent, codedError } from "../../swarm/state.ts";
-import { renderSwarm } from "../../swarm/view.ts";
+import { renderSwarm, swarmText } from "../../swarm/view.ts";
 import { type AgentDefinition, type AgentThinking, loadAgents, THINKING_LEVELS } from "../agents.ts";
-import { clip, type KyrnRuntime } from "../runtime.ts";
+import { clip, type KyrnRuntime, userWords } from "../runtime.ts";
 import { Isolation, type IsolationOutcome, type Placement, patchesOf } from "./swarm-isolation.ts";
 
 /** A role the main model asked for by name is in `agent`. Left out, the judge picks one. */
@@ -333,7 +333,7 @@ export function announceRouting(
 export const SWARM_LIMIT_DEFAULTS = {
 	/** Minutes a sub-agent may work before it is told to wrap up and report. 0 means no budget. */
 	beeMinutes: 10,
-	/** Seconds it then has to hand in its report. */
+	/** Seconds it then has to hand in its report, from when it heard it was to; twice this at most from the asking. */
 	graceSeconds: 90,
 	/** Seconds without a sign of life before it is stopped: while the model thinks, and while a tool runs. */
 	stallSeconds: 300,
@@ -372,7 +372,7 @@ export function streamUpdates(
 		last = Date.now();
 		const snapshot = run.snapshot();
 		onUpdate({
-			content: [{ type: "text", text: renderSwarm(snapshot, { expanded: false, width: 120 }, PLAIN).join("\n") }],
+			content: [{ type: "text", text: swarmText(snapshot, { expanded: false, width: 120 }) }],
 			details: { snapshot },
 		});
 	};
@@ -386,8 +386,6 @@ export function streamUpdates(
 		else pending ??= setTimeout(send, wait);
 	};
 }
-
-const PLAIN = { fg: (_color: unknown, text: string) => text, bold: (text: string) => text };
 
 /** The terminal's view of a swarm tool call: live while it runs, a summary with the reports behind ctrl+o when it is over. */
 export function renderSwarmResult(
@@ -507,12 +505,14 @@ export function registerSwarm(runtime: KyrnRuntime, runner: SwarmRunner = spawnR
 		execute: async (_toolCallId, params, signal, onUpdate, ctx) => {
 			runtime.touch(ctx);
 			const parent = runtime.frame;
+			// What the user asked for goes down with each part: inside the sub-agent it is what its calls are weighed against.
+			const userGoal = userWords(runtime.turn.userMessage);
 			// Each part gets a frame of its own: the part as its goal, the caller's criteria as its checklist.
 			const tasks: SwarmTask[] = params.tasks.slice(0, options.maxTasks).map((task) => ({
 				title: task.title,
 				instructions: task.instructions,
 				agent: task.agent,
-				brief: briefFor(task, parent),
+				brief: briefFor(task, parent, userGoal),
 			}));
 			const constraints = (parent?.constraints ?? []).map((constraint) => constraint.text);
 			const inheritedConstraints =
@@ -679,76 +679,76 @@ export function registerSwarm(runtime: KyrnRuntime, runner: SwarmRunner = spawnR
 
 const withCommand = new WeakSet<KyrnRuntime>();
 
+/** Where `/swarm` and `/hive` say what they have to say. */
+export interface SwarmCommandContext {
+	ui: { notify(message: string, type?: "info" | "warning" | "error"): void };
+}
+
+/**
+ * What `/swarm [stop|kill] [name]` does, and `/hive` without a question. `idle` is what is said when nothing
+ * runs, for a command that has more to offer then.
+ */
+export function controlSwarm(runtime: KyrnRuntime, args: string, ctx: SwarmCommandContext, idle?: string): void {
+	const [verb = "status", ...rest] = args.trim().split(/\s+/).filter(Boolean);
+	const name = rest.join(" ") || undefined;
+	const runs = activeRuns();
+	// What isolated sub-agents handed back stays listed after they are gone: it is waiting for a decision.
+	const patches = patchesOf(runtime).map((record) => `  ${describeRecord(record)}`);
+	const patchList = patches.length > 0 ? `patches (apply_patch_from brings one in)\n${patches.join("\n")}` : "";
+	if (runs.length === 0) {
+		ctx.ui.notify(
+			[patchList || "No sub-agents are running. They start when the agent uses its delegate or hive tool.", idle]
+				.filter(Boolean)
+				.join("\n"),
+			"info",
+		);
+		return;
+	}
+	if (verb === "stop" || verb === "kill") {
+		const reached = runs.reduce(
+			(sum, run) =>
+				sum +
+				(verb === "stop"
+					? run.wrapUp(name, "stopped by the user", { code: "stopped_by_user" })
+					: run.kill(name, "ended by the user", "stopped", { code: "ended_by_user" })),
+			0,
+		);
+		ctx.ui.notify(
+			reached === 0
+				? `Nothing to ${verb}${name ? ` named "${name}"` : ""}. Running: ${runs.flatMap((run) => run.bees.map((bee) => bee.name)).join(", ")}`
+				: verb === "stop"
+					? `Asked ${reached} sub-agent${reached === 1 ? "" : "s"} to stop and report. Anything that has not reported in time is ended.`
+					: `Ended ${reached} sub-agent${reached === 1 ? "" : "s"}. What they had found is kept.`,
+			reached === 0 ? "warning" : "info",
+		);
+		return;
+	}
+	ctx.ui.notify(
+		[...runs.map((run) => swarmText(run.snapshot(), { expanded: true, width: 110 })), patchList]
+			.filter(Boolean)
+			.join("\n\n"),
+		"info",
+	);
+}
+
 /**
  * `/swarm`: look at the sub-agents that are running right now, and end them
  * without losing what they found. Commands run while the agent is busy, so
  * this works in the middle of a hive or a delegate call, which is when it is
  * needed. Esc cancels the whole tool call and throws its results away; this
- * does not.
+ * does not. (`/hive` does the same without a question: see hive.ts.)
  */
 export function registerSwarmCommand(runtime: KyrnRuntime): void {
 	// The swarm and the hive both bring it; one session gets it once.
 	if (withCommand.has(runtime)) return;
 	withCommand.add(runtime);
-	const handler = async (
-		args: string,
-		ctx: { ui: { notify(message: string, type?: "info" | "warning" | "error"): void } },
-	) => {
-		const [verb = "status", ...rest] = args.trim().split(/\s+/).filter(Boolean);
-		const name = rest.join(" ") || undefined;
-		const runs = activeRuns();
-		// What isolated sub-agents handed back stays listed after they are gone: it is waiting for a decision.
-		const patches = patchesOf(runtime).map((record) => `  ${describeRecord(record)}`);
-		const patchList = patches.length > 0 ? `patches (apply_patch_from brings one in)\n${patches.join("\n")}` : "";
-		if (runs.length === 0) {
-			ctx.ui.notify(
-				patchList || "No sub-agents are running. They start when the agent uses its delegate or hive tool.",
-				"info",
-			);
-			return;
-		}
-		if (verb === "stop" || verb === "kill") {
-			const reached = runs.reduce(
-				(sum, run) =>
-					sum +
-					(verb === "stop"
-						? run.wrapUp(name, "stopped by the user", { code: "stopped_by_user" })
-						: run.kill(name, "ended by the user", "stopped", { code: "ended_by_user" })),
-				0,
-			);
-			ctx.ui.notify(
-				reached === 0
-					? `Nothing to ${verb}${name ? ` named "${name}"` : ""}. Running: ${runs.flatMap((run) => run.bees.map((bee) => bee.name)).join(", ")}`
-					: verb === "stop"
-						? `Asked ${reached} sub-agent${reached === 1 ? "" : "s"} to stop and report. Anything that has not reported in time is ended.`
-						: `Ended ${reached} sub-agent${reached === 1 ? "" : "s"}. What they had found is kept.`,
-				reached === 0 ? "warning" : "info",
-			);
-			return;
-		}
-		const theme = PLAIN;
-		ctx.ui.notify(
-			[
-				...runs.map((run) => renderSwarm(run.snapshot(), { expanded: true, width: 110 }, theme).join("\n")),
-				patchList,
-			]
-				.filter(Boolean)
-				.join("\n\n"),
-			"info",
-		);
-	};
-	for (const command of ["swarm", "hive"]) {
-		runtime.pi.registerCommand(command, {
-			description:
-				command === "swarm"
-					? say({
-							zh: "正在干活的子代理：/swarm 看每个在做什么，/swarm stop [名字] 让它现在交报告，/swarm kill [名字] 立刻结束它",
-							en: "Sub-agents at work: /swarm (what each one is doing), /swarm stop [name] (report now), /swarm kill [name]",
-						})
-					: say({ zh: "同 /swarm", en: "Same as /swarm" }),
-			// No argument completions on purpose: with them the first Enter picks a completion and only the
-			// second one runs the command, and "stop" is typed by someone who wants it to happen now.
-			handler,
-		});
-	}
+	runtime.pi.registerCommand("swarm", {
+		description: say({
+			zh: "正在干活的子代理：/swarm 看每个在做什么，/swarm stop [名字] 让它现在交报告，/swarm kill [名字] 立刻结束它",
+			en: "Sub-agents at work: /swarm (what each one is doing), /swarm stop [name] (report now), /swarm kill [name]",
+		}),
+		// No argument completions on purpose: with them the first Enter picks a completion and only the
+		// second one runs the command, and "stop" is typed by someone who wants it to happen now.
+		handler: async (args, ctx) => controlSwarm(runtime, args, ctx),
+	});
 }

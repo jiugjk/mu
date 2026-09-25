@@ -9,14 +9,20 @@ export class RpcHost {
   constructor({ launcher, cwd, session, onEvent, env = {}, spawnProcess = spawn }) {
     this.onEvent = onEvent;
     this.process = spawnProcess(launcher, ['--mode', 'rpc', ...(session ? ['--session', session] : [])], {
-      cwd, stdio: ['pipe', 'pipe', 'pipe'], detached: process.platform !== 'win32',
+      cwd,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      detached: process.platform !== 'win32',
       env: { ...process.env, ...env, PI_SKIP_VERSION_CHECK: '1' },
     });
     this.process.stdout.setEncoding('utf8');
     const reader = createInterface({ input: this.process.stdout });
-    reader.on('line', line => {
+    reader.on('line', (line) => {
       let event;
-      try { event = JSON.parse(line); } catch { return; }
+      try {
+        event = JSON.parse(line);
+      } catch {
+        return;
+      }
       if (event.type === 'response' && this.pending.has(event.id)) {
         const request = this.pending.get(event.id);
         this.pending.delete(event.id);
@@ -34,7 +40,10 @@ export class RpcHost {
   finish(reason) {
     if (this.stopped) return;
     this.stopped = true;
-    for (const request of this.pending.values()) { clearTimeout(request.timer); request.reject(new Error(reason)); }
+    for (const request of this.pending.values()) {
+      clearTimeout(request.timer);
+      request.reject(new Error(reason));
+    }
     this.pending.clear();
     this.onEvent({ type: 'kyrn_host_exit', reason });
   }
@@ -42,11 +51,19 @@ export class RpcHost {
     if (this.stopped) return Promise.reject(new Error('会话进程已结束，请重新打开任务。'));
     const id = randomUUID();
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error('KYRN 命令确认超时；请查看任务状态，勿重复提交。')); }, command.type === 'prompt' ? 120000 : 20000);
+      const timer = setTimeout(
+        () => {
+          this.pending.delete(id);
+          reject(new Error('KYRN 命令确认超时；请查看任务状态，勿重复提交。'));
+        },
+        command.type === 'prompt' ? 120000 : 20000
+      );
       this.pending.set(id, { resolve, reject, timer });
-      this.process.stdin.write(`${JSON.stringify({ ...command, id })}\n`, error => {
+      this.process.stdin.write(`${JSON.stringify({ ...command, id })}\n`, (error) => {
         if (!error) return;
-        clearTimeout(timer); this.pending.delete(id); reject(error);
+        clearTimeout(timer);
+        this.pending.delete(id);
+        reject(error);
       });
     });
   }
@@ -56,8 +73,14 @@ export class RpcHost {
   close() {
     if (this.stopped) return;
     const pid = this.process.pid;
-    try { process.platform === 'win32' ? this.process.kill('SIGTERM') : process.kill(-pid, 'SIGTERM'); } catch {}
-    const timer = setTimeout(() => { try { process.platform === 'win32' ? this.process.kill('SIGKILL') : process.kill(-pid, 'SIGKILL'); } catch {} }, 3000);
+    const signal = (name) => {
+      try {
+        if (process.platform === 'win32') this.process.kill(name);
+        else process.kill(-pid, name);
+      } catch {}
+    };
+    signal('SIGTERM');
+    const timer = setTimeout(() => signal('SIGKILL'), 3000);
     timer.unref();
   }
 }

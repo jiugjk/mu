@@ -2,9 +2,9 @@ import type { JudgeSettings, JudgeType, KyrnSettings } from '@/common/kyrn/types
 
 /**
  * The two kinds of judge a person chooses between: Jev, or Laya on this machine. The profiles behind them (jev,
- * jev-direct, jev-gateway, laya) are how the config keeps them; the tiers page shows them by these two names, and a
- * Jev profile as the way it reaches Jev. Anything else (a model as judge, a mock, a self-hosted HTTP judge) is only
- * named there, by the name it was given.
+ * jev-direct, jev-openrouter, jev-gateway, jev-custom, laya) are how the config keeps them; the tiers page shows them by
+ * these two names, and a Jev profile by the service it reaches Jev through. Anything else (a model as judge, a mock, a
+ * self-hosted HTTP judge) is only named there, by the name it was given.
  */
 export type JudgeChoice = 'jev' | 'local';
 
@@ -28,15 +28,52 @@ export const kindOf = (judge: JudgeSettings | undefined): JudgeChoice | undefine
   judge ? KIND_OF[judge.type] : undefined;
 
 /**
- * The ways Jev can be reached, each kept as a profile of its own under a built-in name: chosen by the key that is
- * set, always TypeSafe directly, always through the Vercel AI Gateway.
+ * The services Jev is reached through, each kept as a profile of its own: chosen by the key that is set (TypeSafe's,
+ * else OpenRouter's, else the Vercel AI Gateway's), TypeSafe directly, OpenRouter, the Vercel AI Gateway, or an
+ * address of the person's own that speaks TypeSafe's System One protocol. A profile's service follows from its type
+ * and the variable of its key; nothing stores it.
  */
-export const JEV_ACCESS = ['jev', 'typesafe', 'gateway'] as const satisfies readonly JudgeType[];
-export type JevAccess = (typeof JEV_ACCESS)[number];
-const ACCESS_PROFILE: Record<JevAccess, string> = { jev: 'jev', typesafe: 'jev-direct', gateway: 'jev-gateway' };
+export const JEV_SERVICES = ['auto', 'typesafe', 'openrouter', 'gateway', 'custom'] as const;
+export type JevService = (typeof JEV_SERVICES)[number];
 
 /** Where the key of a Jev profile is kept when the profile names none. */
 export const JEV_KEY_VARIABLE = 'TYPESAFE_API_KEY';
+const OPENROUTER_KEY_VARIABLE = 'MU_JUDGE_OPENROUTER_API_KEY';
+const CUSTOM_KEY_VARIABLE = 'MU_JUDGE_CUSTOM_API_KEY';
+
+type Preset = Omit<JudgeSettings, 'timeoutMs'>;
+
+/**
+ * Each service's profile: the store's and the harness's built-in one under its name, or for a custom service
+ * jev-custom, which this page makes when it is first chosen. A missing profile is made from the preset.
+ */
+const SERVICE_PROFILES: Record<JevService, { name: string; preset: Preset }> = {
+  auto: { name: 'jev', preset: { type: 'jev', model: 'jev-latest', baseUrl: '', apiKeyEnv: JEV_KEY_VARIABLE } },
+  typesafe: {
+    name: 'jev-direct',
+    preset: { type: 'typesafe', model: 'jev-latest', baseUrl: '', apiKeyEnv: JEV_KEY_VARIABLE },
+  },
+  openrouter: {
+    name: 'jev-openrouter',
+    preset: {
+      type: 'typesafe',
+      model: '~typesafe/jev-latest',
+      baseUrl: 'https://openrouter.ai/api/v1/systemone',
+      apiKeyEnv: OPENROUTER_KEY_VARIABLE,
+    },
+  },
+  gateway: {
+    name: 'jev-gateway',
+    preset: { type: 'gateway', model: 'typesafe-ai/jev', baseUrl: '', apiKeyEnv: 'AI_GATEWAY_API_KEY' },
+  },
+  custom: {
+    name: 'jev-custom',
+    preset: { type: 'typesafe', model: 'jev-latest', baseUrl: '', apiKeyEnv: CUSTOM_KEY_VARIABLE },
+  },
+};
+
+/** The timeout the store reads for a profile that names none. */
+const TIMEOUT_MS = 10000;
 
 /** What the first judge asked is: the choice shown as selected. Undefined for a mock or a self-hosted judge. */
 export function choiceOf(settings: KyrnSettings): JudgeChoice | undefined {
@@ -45,7 +82,7 @@ export function choiceOf(settings: KyrnSettings): JudgeChoice | undefined {
 }
 
 /**
- * The profile a choice stands for: the one of that kind the order already asks (so Jev's key is the one its way in
+ * The profile a choice stands for: the one of that kind the order already asks (so Jev's key is the one its service
  * needs), else the one with the built-in name, else the first of that kind.
  */
 export function profileFor(settings: KyrnSettings, choice: JudgeChoice): string | undefined {
@@ -66,20 +103,43 @@ export function choose(settings: KyrnSettings, choice: JudgeChoice): KyrnSetting
 }
 
 /**
- * The settings with the judge at `index` of the order reaching Jev by `access`: the profile of that way takes its
- * place (the built-in one, else the first of that type), and is not asked twice. Without such a profile, the judge's
- * own profile changes its type.
+ * The service a Jev profile reaches Jev through, read from its type and the variable of its key: a System One profile
+ * keyed for OpenRouter or for a service of the person's own is that one, any other is TypeSafe. Undefined for a judge
+ * that is not Jev.
  */
-export function withJevAccess(settings: KyrnSettings, index: number, access: JevAccess): KyrnSettings {
+export function serviceOf(judge: JudgeSettings | undefined): JevService | undefined {
+  if (judge?.type === 'jev') return 'auto';
+  if (judge?.type === 'gateway') return 'gateway';
+  if (judge?.type !== 'typesafe') return undefined;
+  if (judge.apiKeyEnv === OPENROUTER_KEY_VARIABLE) return 'openrouter';
+  return judge.apiKeyEnv === CUSTOM_KEY_VARIABLE ? 'custom' : 'typesafe';
+}
+
+/** The model a service's own profile starts with: shown where the model is typed while it is empty. */
+export const defaultModelOf = (service: JevService): string => SERVICE_PROFILES[service].preset.model;
+
+/**
+ * The settings with the judge at `index` of the order reaching Jev through `service`: that service's profile takes its
+ * place (the built-in one, else the first of that service, else one made from the service's preset), and is not asked
+ * twice. Nothing of the profile it replaces comes along: an address and a key belong to their own service (a TypeSafe
+ * URL is no OpenRouter URL, and an OpenRouter key goes to OpenRouter only).
+ */
+export function withJevService(settings: KyrnSettings, index: number, service: JevService): KyrnSettings {
   const current = settings.tiers[index];
-  if (current === undefined || settings.judges[current]?.type === access) return settings;
-  const builtIn = ACCESS_PROFILE[access];
-  const profile =
-    settings.judges[builtIn]?.type === access
-      ? builtIn
-      : Object.keys(settings.judges).find((name) => settings.judges[name].type === access);
-  if (!profile)
-    return { ...settings, judges: { ...settings.judges, [current]: { ...settings.judges[current], type: access } } };
+  if (current === undefined || serviceOf(settings.judges[current]) === service) return settings;
+  const { name: builtIn, preset } = SERVICE_PROFILES[service];
+  const fits = (name: string) => serviceOf(settings.judges[name]) === service;
+  const existing = fits(builtIn) ? builtIn : Object.keys(settings.judges).find(fits);
+  if (existing) return askedAt(settings, index, existing);
+  // Made under the built-in name, unless a profile of another service written by hand has it: that one stays as it is.
+  let name = builtIn;
+  for (let number = 2; name in settings.judges; number++) name = `${builtIn}-${number}`;
+  const judges = { ...settings.judges, [name]: { ...preset, timeoutMs: TIMEOUT_MS } };
+  return askedAt({ ...settings, judges }, index, name);
+}
+
+/** The settings with `profile` asked at `index` of the order, and nowhere else. */
+function askedAt(settings: KyrnSettings, index: number, profile: string): KyrnSettings {
   const tiers = settings.tiers.map((name, at) => (at === index ? profile : name));
   return { ...settings, tiers: tiers.filter((name, at) => tiers.indexOf(name) === at) };
 }

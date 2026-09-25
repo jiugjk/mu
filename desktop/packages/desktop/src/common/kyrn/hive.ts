@@ -4,16 +4,26 @@ const isRecord = (value: unknown): boolean => value !== null && typeof value ===
 const text = (value: unknown): string => (typeof value === 'string' ? value : '');
 const number = (value: unknown): number =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
+/**
+ * A field of a tool's output, by the harness's name for it. The relay snake_cases every key of a tool call's output,
+ * in what it streams to the window and in what it stores (`titleCode` arrives as `title_code`); activity records keep
+ * the harness's own names.
+ */
+const field = (row: Record<string, unknown>, key: string): unknown =>
+  row[key] ?? row[key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)];
 
 /** What a presentation code names (a count, a tool, a message): only strings and finite numbers are kept. */
 export type CodeParams = Readonly<Record<string, string | number>>;
 /** A sentence of the harness as a stable code and its params; the English next to it is the fallback. */
 export type Coded = { code: string; params: CodeParams };
 
+/** The params under the harness's own names: a relayed `max_attempts` is its `maxAttempts` again. */
 export function parseParams(value: unknown): CodeParams {
   const params: Record<string, string | number> = {};
   for (const [key, item] of Object.entries(record(value))) {
-    if (typeof item === 'string' || (typeof item === 'number' && Number.isFinite(item))) params[key] = item;
+    if (typeof item === 'string' || (typeof item === 'number' && Number.isFinite(item))) {
+      params[key.replace(/_([a-z0-9])/g, (_, next: string) => next.toUpperCase())] = item;
+    }
   }
   return params;
 }
@@ -45,14 +55,14 @@ export function parseBeeActivity(value: unknown): BeeActivity[] {
 
 export function parseBeeError(value: unknown): BeeErrorState {
   const bee = record(value);
-  const errorCode = text(bee.errorCode);
-  const wrapUp = record(bee.wrapUp);
+  const errorCode = text(field(bee, 'errorCode'));
+  const wrapUp = record(field(bee, 'wrapUp'));
   const wrapUpCode = text(wrapUp.code);
   return {
     error: text(bee.error),
     ...(errorCode ? { errorCode } : {}),
-    errorParams: parseParams(bee.errorParams),
-    ...(isRecord(bee.wrapUp)
+    errorParams: parseParams(field(bee, 'errorParams')),
+    ...(isRecord(field(bee, 'wrapUp'))
       ? {
           wrapUp: {
             at: number(wrapUp.at),
@@ -114,7 +124,7 @@ export type HiveToolData = { kind: SwarmKind; goal: string; names: string[]; sna
 
 export function parseSwarmTitle(value: unknown): SwarmTitle {
   const row = record(value);
-  const titleCode = parseCoded(row.titleCode);
+  const titleCode = parseCoded(field(row, 'titleCode'));
   return { title: text(row.title), ...(titleCode ? { titleCode } : {}) };
 }
 
@@ -140,13 +150,13 @@ export function parseSwarmSnapshot(value: unknown): HiveSnapshot | undefined {
         model: text(bee.model),
         thinking: text(bee.thinking),
         turns: number(bee.turns),
-        toolCalls: number(bee.toolCalls),
-        toolErrors: number(bee.toolErrors),
+        toolCalls: number(field(bee, 'toolCalls')),
+        toolErrors: number(field(bee, 'toolErrors')),
         published: number(bee.published),
         received: number(bee.received),
         said: text(bee.said),
         ...parseBeeError(bee),
-        quietMs: number(bee.quietMs),
+        quietMs: number(field(bee, 'quietMs')),
         tool: text(tool.name) ? { name: text(tool.name), summary: text(tool.summary) } : undefined,
         recent: parseBeeActivity(bee.recent),
       },
@@ -156,8 +166,8 @@ export function parseSwarmSnapshot(value: unknown): HiveSnapshot | undefined {
     kind,
     ...parseSwarmTitle(row),
     bees,
-    startedAt: number(row.startedAt),
-    endedAt: number(row.endedAt),
+    startedAt: number(field(row, 'startedAt')),
+    endedAt: number(field(row, 'endedAt')),
     now: number(row.now),
     latest: parseBoardLines(record(row.board).latest),
   };

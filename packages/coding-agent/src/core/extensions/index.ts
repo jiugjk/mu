@@ -21,6 +21,9 @@ export type {
 export { ExtensionRunner } from "./runner.ts";
 export type {
 	AfterProviderResponseEvent,
+	AgentActivityOutcome,
+	AgentBeforeSettleEvent,
+	AgentBeforeSettleEventResult,
 	AgentEndEvent,
 	AgentSettledEvent,
 	AgentStartEvent,
@@ -39,16 +42,24 @@ export type {
 	BeforeProviderHeadersEvent,
 	BeforeProviderRequestEvent,
 	BeforeProviderRequestEventResult,
+	BoundaryContextPreview,
+	BoundaryResult,
+	BoundaryState,
 	BuildSystemPromptOptions,
 	CacheWarmingDecisionEvent,
 	CacheWarmingDecisionEventResult,
+	CompactionEntryDraft,
 	// Context
 	CompactOptions,
+	ContextEditEntryDraft,
 	// Events - Agent
 	ContextEvent,
 	// Event Results
 	ContextEventResult,
 	ContextUsage,
+	ContextWithSystemEvent,
+	CustomEntryDraft,
+	CustomMessageEntryDraft,
 	CustomToolCallEvent,
 	CustomToolResultEvent,
 	EditorFactory,
@@ -119,6 +130,7 @@ export type {
 	// Provider Registration
 	ProviderConfig,
 	ProviderModelConfig,
+	ProviderStreamEvent,
 	ReadToolCallEvent,
 	ReadToolResultEvent,
 	// Commands
@@ -139,6 +151,7 @@ export type {
 	SessionBeforeSwitchResult,
 	SessionBeforeTreeEvent,
 	SessionBeforeTreeResult,
+	SessionBoundaryDraft,
 	SessionCompactEvent,
 	SessionCompactFailedEvent,
 	SessionEvent,
@@ -170,6 +183,7 @@ export type {
 	ToolResultEventResult,
 	TreePreparation,
 	TurnEndEvent,
+	TurnEndEventResult,
 	TurnStartEvent,
 	UIPromptEndEvent,
 	UIPromptKind,

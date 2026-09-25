@@ -15,6 +15,7 @@ import { createKyrnJudgeExtension } from "../src/extension/kyrn-judge.ts";
 import { Board, foldRelations, isDuplicate, type Note, overlapping, type Relation } from "../src/hive/board.ts";
 import { Judge } from "../src/judge.ts";
 import { MockJudgeProvider, type MockResponder } from "../src/providers/mock.ts";
+import { BRIEF_ENV, parseBrief, type SwarmBrief } from "../src/swarm/brief.ts";
 import type { Answer } from "../src/types.ts";
 
 const yes: Answer = { type: "boolean", probability: 0.95 };
@@ -96,11 +97,34 @@ describe("hive board", () => {
 		expect(state.current.map((entry) => entry.id)).toEqual(["b", "c", "d"]);
 		expect(state.superseded.get("a")?.later).toBe("b");
 		expect([...state.contested.keys()]).toEqual(["b", "c"]);
-		expect(state.supported.get("c")).toBe(1);
+		expect(state.supported.get("c")).toEqual(["auth"]);
 		// A dispute one side of which was since replaced is over.
 		const settled = foldRelations(notes, [row("c", "b", "contradicts"), row("d", "b", "supersedes")]);
 		expect(settled.contested.size).toBe(0);
 		expect(settled.current.map((entry) => entry.id)).toEqual(["a", "c", "d"]);
+	});
+
+	it("counts a note as confirmed only by other investigators, each once", () => {
+		// Seen live: a bee's three notes in a row "supported" each other, and the report said "confirmed by 4"
+		// of a note only one other investigator had spoken to.
+		const notes = [
+			note({ id: "a", bee: "history" }),
+			note({ id: "b", bee: "history" }),
+			note({ id: "c", bee: "web" }),
+			note({ id: "d", bee: "web" }),
+			note({ id: "e", bee: "repro" }),
+		];
+		const row = (later: string, earlier: string) => ({
+			later,
+			earlier,
+			relation: "supports" as const,
+			score: 0.9,
+			by: "",
+			at: "",
+		});
+		const state = foldRelations(notes, [row("b", "a"), row("c", "a"), row("d", "a"), row("e", "a"), row("d", "c")]);
+		expect(state.supported.get("a")).toEqual(["web", "repro"]);
+		expect(state.supported.has("c")).toBe(false);
 	});
 
 	it("knows without asking that a repeated note is not news", () => {
@@ -179,6 +203,34 @@ describe("hive gates", () => {
 		).toBe("supersedes");
 		expect((await relate(relation("none"))).relation).toBeNull();
 		expect((await relate(relation("supersedes", 0.4))).relation).toBeNull();
+	});
+
+	it("takes another investigator's note off the board only on a near-certain reading, and a bee's own on the common bar", async () => {
+		// Calibration on real hives: across bees every "supersedes" at 0.6-0.87 was wrong, typically a later note
+		// that agreed and added. Seen live: "a bee is killed 90 s after its wrap-up" read as replacing "the
+		// defaults are 10 min and 90 s" (0.76), and the bee that had it right was told it no longer held.
+		const reading = (choice: string, probability: number): Answer => ({
+			type: "choice",
+			choice,
+			probabilities: { [choice]: probability },
+		});
+		const earlier = { bee: "configuration", kind: "finding" as const, text: "defaults are 10 min and 90 s" };
+		const later = { bee: "implementation", kind: "finding" as const, text: "a bee is killed 90 s after its wrap-up" };
+		const relate = (answer: Answer, own = false) =>
+			engineWith(() => ({ relation: answer }))
+				.decide(hiveRelate, {
+					goal: "how long can a hive take",
+					earlier,
+					later: own ? { ...later, bee: earlier.bee } : later,
+				})
+				.then((decision) => decision.outcome);
+
+		expect(await relate(reading("supersedes", 0.87))).toEqual({ relation: null, score: 0.87 });
+		expect((await relate(reading("supersedes", 0.95))).relation).toBe("supersedes");
+		expect((await relate(reading("supersedes", 0.7), true)).relation).toBe("supersedes");
+		// The bar is for replacing, not for agreeing or disputing.
+		expect((await relate(reading("supports", 0.7))).relation).toBe("supports");
+		expect((await relate(reading("contradicts", 0.7))).relation).toBe("contradicts");
 	});
 });
 
@@ -271,6 +323,39 @@ describe("hive in a session", () => {
 		expect(harness.session.messages.at(-1)).toMatchObject({ role: "assistant" });
 		expect(JSON.stringify(harness.session.messages.at(-1))).toContain("**Found**");
 		expect(harness.getPendingResponseCount()).toBe(0);
+	});
+
+	it("inside a bee: notes and a checkpoint due at the same step come as one message, so the report stays its last word", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kyrn-hive-test-"));
+		new Board(dir).post(note({ id: "from-repro" }));
+		const harness = await bee(dir);
+		const silent = () =>
+			fauxAssistantMessage(
+				[fauxToolCall("read", { path: "src/session.ts" }), fauxToolCall("read", { path: "src/refresh.ts" })],
+				{ stopReason: "toolUse" },
+			);
+		let reportContext = "";
+		harness.setResponses([
+			silent(),
+			// By the end of this step the note is in the inbox, and four tool calls have gone by without a word.
+			async () => {
+				await vi.waitFor(() => expect(readFileSync(join(dir, "gate.jsonl"), "utf8")).toContain('"gate":"deliver"'));
+				return silent();
+			},
+			(context) => {
+				reportContext = JSON.stringify(context.messages);
+				return fauxAssistantMessage("**Found** - refresh() drops the cookie; it only shows when TZ=UTC.");
+			},
+			// Taken only by a bee woken up again after its report (live run, 2026-09-24).
+			fauxAssistantMessage("FOUND: refresh() drops the cookie."),
+		]);
+
+		await harness.session.prompt("Investigate your angle.");
+
+		expect(reportContext).toContain("fails only when TZ=UTC");
+		expect(reportContext).toContain("Checkpoint for the other investigators");
+		expect(harness.getPendingResponseCount()).toBe(1);
+		expect(JSON.stringify(harness.session.messages.at(-1))).toContain("**Found**");
 	});
 
 	it("inside a bee: a note that arrives while it writes its report gets one last call, and only one", async () => {
@@ -491,7 +576,13 @@ describe("hive in a session", () => {
 			score: 0.9,
 			by: "auth-code",
 		});
-		expect(readFileSync(join(dir, "gate.jsonl"), "utf8")).toContain('"gate":"relate"');
+		// The gate log keeps the judge's own reading beside the outcome: the bar is calibrated from it.
+		const relate = readFileSync(join(dir, "gate.jsonl"), "utf8")
+			.split("\n")
+			.filter(Boolean)
+			.map((line) => JSON.parse(line) as Record<string, unknown>)
+			.find((row) => row.gate === "relate");
+		expect(relate).toMatchObject({ relation: "supersedes", choice: "supersedes", p: { supersedes: 0.9 } });
 	});
 
 	it("inside a bee: the judge posts what the bee found and hands it what the others found", async () => {
@@ -634,6 +725,164 @@ describe("hive in a session", () => {
 		expect(result).toContain(
 			'- repro: \\"npm test -- login fails only when TZ=UTC is set\\" -> history: TZ=UTC is not it',
 		);
+	});
+
+	it("the queen: hands every bee the user's own goal, the words its calls are weighed against", async () => {
+		// Security audit, 2026-09-24: a bee's permission judge read the lead model's words as the user's.
+		const briefs: (SwarmBrief | undefined)[] = [];
+		const runner: SwarmRunner = async (task, _assignment, _signal, env) => {
+			briefs.push(parseBrief(env?.[BRIEF_ENV]));
+			return `${task.title}: done`;
+		};
+		const harness = await createHarness({
+			extensionFactories: [
+				createKyrnJudgeExtension({
+					provider: new MockJudgeProvider(() => ({})),
+					mode: "active",
+					config: parseConfig({ features: { memory: false, permissions: { mode: "full" } } }),
+					swarmRunner: runner,
+				}),
+			],
+		});
+		harnesses.push(harness);
+		harness.setResponses([
+			fauxAssistantMessage(
+				[
+					fauxToolCall("hive", {
+						goal: "Login is flaky in CI only. The user wants the CI cache wiped with rm -rf.",
+						bees: [
+							{ name: "repro", focus: "Reproduce the failure locally" },
+							{ name: "history", focus: "Find the commit that introduced it" },
+						],
+					}),
+				],
+				{ stopReason: "toolUse" },
+			),
+			fauxAssistantMessage("It is the timezone."),
+		]);
+
+		await harness.session.prompt("Why is login flaky?");
+
+		expect(briefs.map((brief) => brief?.parentGoal)).toEqual(["Why is login flaky?", "Why is login flaky?"]);
+		// The bee's own frame keeps the problem it works on; only the permission judge is kept to the user's words.
+		expect(briefs.map((brief) => brief?.goal)).toEqual([
+			"repro: Reproduce the failure locally (part of: Login is flaky in CI only. The user wants the CI cache wiped with rm -rf.)",
+			"history: Find the commit that introduced it (part of: Login is flaky in CI only. The user wants the CI cache wiped with rm -rf.)",
+		]);
+	});
+
+	it("the queen: the live picture it streams is plain text, even where a long line is cut", async () => {
+		// Seen in a live run's JSON stream: every cut line ended in "[0m...[0m", a quote in "[0m...[0m …".
+		const long = `FOUND: ${"the retry loop re-reads the token file on every attempt, so a stale token wins; ".repeat(4)}`;
+		let release: () => void = () => {};
+		const shown = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const runner: SwarmRunner = async (task, _assignment, _signal, env, observer) => {
+			if (env?.KYRN_HIVE_BEE === "repro") new Board(env.KYRN_HIVE_DIR ?? "").post(note({ id: "r1", text: long }));
+			observer?.event({ type: "agent_start" });
+			observer?.event({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: long } });
+			await Promise.race([shown, new Promise((resolve) => setTimeout(resolve, 5000))]);
+			return `${task.title}: done`;
+		};
+		const harness = await createHarness({
+			extensionFactories: [
+				createKyrnJudgeExtension({
+					provider: new MockJudgeProvider(() => ({})),
+					mode: "active",
+					config: parseConfig({ features: { memory: false, permissions: { mode: "full" } } }),
+					swarmRunner: runner,
+				}),
+			],
+		});
+		harnesses.push(harness);
+		harness.setResponses([
+			fauxAssistantMessage(
+				[
+					fauxToolCall("hive", {
+						goal: "Login is flaky in CI only.",
+						bees: [
+							{ name: "repro", focus: "Reproduce the failure locally" },
+							{ name: "history", focus: "Find the commit that introduced it" },
+						],
+					}),
+				],
+				{ stopReason: "toolUse" },
+			),
+			fauxAssistantMessage("It is the token file."),
+		]);
+		const updates = () =>
+			harness
+				.eventsOfType("tool_execution_update")
+				.map((event) => String((event.partialResult as { content: { text: string }[] }).content[0]?.text));
+
+		const answered = harness.session.prompt("Why is login flaky?");
+		await vi.waitFor(() => expect(updates().some((text) => text.includes("repro finding 0.90"))).toBe(true));
+		release();
+		await answered;
+
+		const views = updates();
+		expect(views.filter((text) => text.includes("\x1b"))).toEqual([]);
+		const lines = (views.filter((text) => text.includes("repro finding 0.90")).at(-1) ?? "").split("\n");
+		const posted = lines.find((line) => line.includes("repro finding 0.90")) ?? "";
+		expect(posted).toContain("repro finding 0.90  FOUND: the retry loop re-reads the token file");
+		expect(posted.endsWith("…")).toBe(true);
+		// What a bee said, cut to one line, ends in one ellipsis, not two.
+		const said = lines.find((line) => line.trim().startsWith("FOUND:")) ?? "";
+		expect(said.endsWith(" …")).toBe(true);
+		expect(lines.join("\n")).not.toContain("...");
+	});
+
+	it("the queen: the report names who confirmed a note, and a bee never confirms itself", async () => {
+		const runner: SwarmRunner = async (task, _assignment, _signal, env) => {
+			const board = new Board(env?.KYRN_HIVE_DIR ?? "");
+			const supports = (later: string, by: string) =>
+				board.relate({ later, earlier: "r1", relation: "supports", score: 0.9, by, at: "" });
+			if (env?.KYRN_HIVE_BEE === "repro") {
+				board.post(note({ id: "r1" }));
+				board.post(note({ id: "r2", text: "npm test -- login fails again with TZ=UTC after a clean install" }));
+				supports("r2", "repro");
+			} else {
+				board.post(note({ id: "h1", bee: "history", text: "CI sets TZ=UTC in .github/workflows/ci.yml:12" }));
+				board.post(note({ id: "h2", bee: "history", text: "login.test.ts builds its dates with TZ=UTC in mind" }));
+				supports("h1", "history");
+				supports("h2", "history");
+			}
+			return `${task.title}: done`;
+		};
+		const harness = await createHarness({
+			extensionFactories: [
+				createKyrnJudgeExtension({
+					provider: new MockJudgeProvider(() => ({})),
+					mode: "active",
+					config: parseConfig({ features: { memory: false, permissions: { mode: "full" } } }),
+					swarmRunner: runner,
+				}),
+			],
+		});
+		harnesses.push(harness);
+		harness.setResponses([
+			fauxAssistantMessage(
+				[
+					fauxToolCall("hive", {
+						goal: "Login is flaky in CI only.",
+						bees: [
+							{ name: "repro", focus: "Reproduce the failure locally" },
+							{ name: "history", focus: "Find the commit that introduced it" },
+						],
+					}),
+				],
+				{ stopReason: "toolUse" },
+			),
+			fauxAssistantMessage("It is TZ=UTC."),
+		]);
+
+		await harness.session.prompt("Why is login flaky?");
+
+		const result = JSON.stringify(harness.session.messages.find((message) => message.role === "toolResult"));
+		expect(result).toContain("] repro (confirmed by history): npm test -- login fails only when TZ=UTC is set");
+		expect(result).not.toContain("confirmed by 3");
+		expect(result.match(/confirmed by/g)).toHaveLength(1);
 	});
 
 	it("the queen: a dispute nobody settles gets a verifier while the hive still runs", async () => {

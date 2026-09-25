@@ -180,6 +180,7 @@
       "details": "Flow and records",
       "pending": "Waiting for bee status",
       "unknown": "Status unavailable",
+      "lastStep": "{{status}} · last step: {{step}}",
       "runs": "Hive runs",
       "graph": "Collaboration map",
       "graphHint": "The thicker a line, the more went along it. Pick a bee to open its row; point at a line to read what it carried.",

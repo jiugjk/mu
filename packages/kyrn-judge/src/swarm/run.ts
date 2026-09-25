@@ -8,6 +8,8 @@ import {
 	type BeeState,
 	type Coded,
 	codeOf,
+	type Draft,
+	followDraft,
 	isOver,
 	isRunning,
 	newBee,
@@ -43,7 +45,10 @@ export interface SwarmLimits {
 	concurrency: number;
 	/** Minutes a bee may work before it is told to wrap up and report. 0 means no budget. */
 	beeMinutes: number;
-	/** Seconds a bee has to hand in its report once told to. */
+	/**
+	 * Seconds a bee has to hand in its report once it has heard it is to. A bee hears it at the end of the step it
+	 * is in, so one that has not heard it within this long gets as long again, and no longer.
+	 */
 	graceSeconds: number;
 	/** Seconds without a sign of life before a bee is shown as quiet. */
 	quietSeconds: number;
@@ -190,6 +195,8 @@ export class SwarmRun<Assignment> {
 	private readonly now: () => number;
 	private runner?: BeeRunner<Assignment>;
 	private outcomes: BeeOutcome[] = [];
+	/** Per bee, the message it is writing, whole: the report of one cut off halfway is in it. */
+	private readonly drafts: (Draft | undefined)[] = [];
 	/** Slots at work; each one takes the next bee that has not been started until there is none. */
 	private workers: Promise<void>[] = [];
 	private next = 0;
@@ -334,20 +341,23 @@ export class SwarmRun<Assignment> {
 				continue;
 			}
 			if (bee.wrapUp) {
-				if (now - bee.wrapUp.at >= this.limits.graceSeconds * 1000) {
-					this.kill(
-						bee.name,
-						`${bee.wrapUp.reason}; no report within ${this.limits.graceSeconds}s of being asked`,
-						"timed-out",
-						{
-							code: "no_report_in_time",
-							// What the wrap-up was for, so "time budget reached; no report in time" can be said whole.
-							params: {
-								seconds: this.limits.graceSeconds,
-								...(bee.wrapUp.code ? { after: bee.wrapUp.code } : {}),
-							},
+				// From when it heard, not from when it was asked: a model that thinks for a minute before its next
+				// tool call would otherwise spend the grace period finding out, and be cut off halfway through its report.
+				const grace = this.limits.graceSeconds * 1000;
+				const deadline = Math.min(
+					(bee.wrapUp.heardAt ?? Number.POSITIVE_INFINITY) + grace,
+					bee.wrapUp.at + 2 * grace,
+				);
+				if (now >= deadline) {
+					const seconds = Math.round((now - bee.wrapUp.at) / 1000);
+					this.kill(bee.name, `${bee.wrapUp.reason}; no report within ${seconds}s of being asked`, "timed-out", {
+						code: "no_report_in_time",
+						// What the wrap-up was for, so "time budget reached; no report in time" can be said whole.
+						params: {
+							seconds,
+							...(bee.wrapUp.code ? { after: bee.wrapUp.code } : {}),
 						},
-					);
+					});
 				}
 			} else if (this.limits.beeMinutes > 0 && now - (bee.startedAt ?? now) >= this.limits.beeMinutes * 60_000) {
 				this.wrapUp(bee.name, `time budget of ${this.limits.beeMinutes} min reached`, {
@@ -386,8 +396,13 @@ export class SwarmRun<Assignment> {
 			bee.status === "failed" ? "FAILED" : bee.status === "timed-out" ? "STOPPED BY THE WATCHDOG" : "STOPPED";
 		const lines = [`${label}: ${bee.error ?? "unknown reason"} (${spent}).`];
 		// A bee that was asked to wrap up and did has a real report; one that was cut off has at most its last words.
+		const draft = this.drafts[index];
+		const heardAt = bee.wrapUp?.heardAt;
 		if (report) lines.push(`What it had reported by then:\n${report}`);
-		else if (bee.said) lines.push(`The last thing it said: ${bee.said}`);
+		// Told to report, and cut off while it wrote: what it had written is most of a report.
+		else if (draft?.text.trim() && heardAt !== undefined && draft.at >= heardAt)
+			lines.push(`What it had written of its report when it was stopped:\n${draft.text.trim()}`);
+		else if (draft?.text.trim() || bee.said) lines.push(`The last thing it said: ${draft?.text.trim() || bee.said}`);
 		return { state: bee, report: lines.join("\n") };
 	}
 
@@ -411,6 +426,7 @@ export class SwarmRun<Assignment> {
 				event: (event) => {
 					if (isOver(bee.status)) return;
 					applyEvent(bee, event, this.now());
+					this.drafts[index] = followDraft(this.drafts[index], event, this.now());
 					if (event.type !== "message_update" && event.type !== "tool_execution_update" && bee.transcript) {
 						try {
 							appendFileSync(bee.transcript, `${JSON.stringify({ at: this.now(), ...event })}\n`);

@@ -47,7 +47,8 @@ export async function runScenario(link, label) {
       }, timeoutMs);
       if (!check()) watchers.add(check);
     });
-  const kind = (entry) => (entry.source === 'kyrn' ? `kyrn:${entry.event.kind}` : `${entry.source}:${entry.event.type ?? entry.event.kind}`);
+  const kind = (entry) =>
+    entry.source === 'kyrn' ? `kyrn:${entry.event.kind}` : `${entry.source}:${entry.event.type ?? entry.event.kind}`;
   const isKind = (name) => (entry) => kind(entry) === name;
 
   const checks = [];
@@ -70,25 +71,43 @@ export async function runScenario(link, label) {
   const turn1 = events.slice(mark);
   const order = turn1.map(kind);
   const at = (name) => order.indexOf(name);
-  check('sequence numbers are gapless and increasing', events.every((entry, index) => entry.seq === index + 1), `${events.length} events`);
+  check(
+    'sequence numbers are gapless and increasing',
+    events.every((entry, index) => entry.seq === index + 1),
+    `${events.length} events`
+  );
   check(
     'judgment events are interleaved in the same stream, before the turn they gate',
-    at('kyrn:preflight.pending') >= 0 && at('kyrn:preflight.pending') < at('kyrn:preflight.verdict') && at('kyrn:preflight.verdict') < at('session:agent_start'),
+    at('kyrn:preflight.pending') >= 0 &&
+      at('kyrn:preflight.pending') < at('kyrn:preflight.verdict') &&
+      at('kyrn:preflight.verdict') < at('session:agent_start'),
     `pending@${at('kyrn:preflight.pending')} verdict@${at('kyrn:preflight.verdict')} agent_start@${at('session:agent_start')}`
   );
   check(
     'the prompt call resolves only after agent_settled (no get_state polling to find the end of a turn)',
-    order.includes('session:agent_settled') && order.lastIndexOf('session:agent_settled') >= order.lastIndexOf('session:message_end'),
+    order.includes('session:agent_settled') &&
+      order.lastIndexOf('session:agent_settled') >= order.lastIndexOf('session:message_end'),
     `last events: ${order.slice(-4).join(', ')}`
   );
-  const thinkingDeltas = turn1.filter((entry) => entry.event.type === 'message_update' && String(entry.event.kind).startsWith('thinking')).length;
-  check('thinking streams as typed deltas with an explicit end', thinkingDeltas > 0 && turn1.some((entry) => entry.event.kind === 'thinking_end'), `${thinkingDeltas} thinking events`);
+  const thinkingDeltas = turn1.filter(
+    (entry) => entry.event.type === 'message_update' && String(entry.event.kind).startsWith('thinking')
+  ).length;
+  check(
+    'thinking streams as typed deltas with an explicit end',
+    thinkingDeltas > 0 && turn1.some((entry) => entry.event.kind === 'thinking_end'),
+    `${thinkingDeltas} thinking events`
+  );
 
   // 2. Cancel is definitive: the stream itself says the turn is over and how it ended.
   await call({
     type: 'script',
     judge: [{ turnType: 'chat' }],
-    model: [{ thinking: 'Let me think about this for a long while. '.repeat(40), text: 'This text should never arrive in full. '.repeat(40) }],
+    model: [
+      {
+        thinking: 'Let me think about this for a long while. '.repeat(40),
+        text: 'This text should never arrive in full. '.repeat(40),
+      },
+    ],
   });
   mark = events.length;
   const aborted = call({ type: 'prompt', text: 'write something long' });
@@ -100,7 +119,11 @@ export async function runScenario(link, label) {
   const abortMs = Math.round(performance.now() - abortAt);
   const afterAbort = await call({ type: 'entries' });
   const lastAssistant = afterAbort.findLast((entry) => entry.role === 'assistant');
-  check('abort ends the turn in the stream (agent_settled) and the stored message says why', Boolean(settled) && lastAssistant?.stopReason === 'aborted', `stopReason=${lastAssistant?.stopReason}, settled ${abortMs} ms after abort`);
+  check(
+    'abort ends the turn in the stream (agent_settled) and the stored message says why',
+    Boolean(settled) && lastAssistant?.stopReason === 'aborted',
+    `stopReason=${lastAssistant?.stopReason}, settled ${abortMs} ms after abort`
+  );
 
   // 3. A verdict that arrives after the next message began is filed under the turn that asked.
   await call({
@@ -146,14 +169,20 @@ export async function runScenario(link, label) {
   await call({ type: 'ui_response', request: request.event.request, value: 'ada' });
   await asking;
   const greeting = await until((entry) => entry.source === 'ui' && entry.event.kind === 'notify', mark);
-  check('an extension `input` dialog round-trips through the host', request.event.method === 'input' && greeting.event.message === 'hello ada', `${request.event.method} → "${greeting.event.message}"`);
+  check(
+    'an extension `input` dialog round-trips through the host',
+    request.event.method === 'input' && greeting.event.message === 'hello ada',
+    `${request.event.method} → "${greeting.event.message}"`
+  );
 
   // 6. Reload: a fresh reader of the session file sees messages and judgments, with the asking turn on each judgment.
   const reloaded = await call({ type: 'reload' });
   const ledger = reloaded.filter((entry) => entry.customType === 'kyrn.decision');
   check(
     'the session file alone rebuilds the view: messages, abort reason and judgments with their asking turn',
-    reloaded.some((entry) => entry.stopReason === 'aborted') && ledger.length >= 3 && ledger.every((entry) => typeof entry.origin?.turn === 'number'),
+    reloaded.some((entry) => entry.stopReason === 'aborted') &&
+      ledger.length >= 3 &&
+      ledger.every((entry) => typeof entry.origin?.turn === 'number'),
     `${reloaded.length} entries in the file, ${ledger.length} judgments, origins: ${ledger.map((entry) => entry.origin?.turn).join(',')}`
   );
 
@@ -165,7 +194,12 @@ export async function runScenario(link, label) {
     versions,
     sessionFile: opened.sessionFile ? 'file-backed' : 'in-memory',
     timings: { hostBootMs: bootMs, openSessionMs: openMs, abortToSettledMs: abortMs },
-    events: { total: events.length, bySource: Object.fromEntries(['session', 'kyrn', 'ui'].map((source) => [source, events.filter((entry) => entry.source === source).length])) },
+    events: {
+      total: events.length,
+      bySource: Object.fromEntries(
+        ['session', 'kyrn', 'ui'].map((source) => [source, events.filter((entry) => entry.source === source).length])
+      ),
+    },
     deliveryMs: { p50: pct(0.5), p95: pct(0.95), max: pct(1) },
     checks,
     passed: checks.every((entry) => entry.pass),

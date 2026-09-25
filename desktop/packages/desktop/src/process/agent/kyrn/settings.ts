@@ -21,6 +21,13 @@ import {
 const defaults: Record<string, Partial<JudgeSettings>> = {
   jev: { type: 'jev', model: 'jev-latest', apiKeyEnv: 'TYPESAFE_API_KEY' },
   'jev-direct': { type: 'typesafe', model: 'jev-latest', apiKeyEnv: 'TYPESAFE_API_KEY' },
+  // OpenRouter serves Jev over the same System One protocol, with a key kept for Jev alone.
+  'jev-openrouter': {
+    type: 'typesafe',
+    baseUrl: 'https://openrouter.ai/api/v1/systemone',
+    model: '~typesafe/jev-latest',
+    apiKeyEnv: 'MU_JUDGE_OPENROUTER_API_KEY',
+  },
   'jev-gateway': { type: 'gateway', model: 'typesafe-ai/jev', apiKeyEnv: 'AI_GATEWAY_API_KEY' },
   laya: { type: 'local', baseUrl: 'http://127.0.0.1:47823' },
   mock: { type: 'mock' },
@@ -29,6 +36,11 @@ const types = new Set(['jev', 'typesafe', 'gateway', 'local', 'http', 'llm', 'mo
 const modes = new Set<string>(DECISION_MODES);
 /** What a judge may name as its credential. A provider's key is deliberately not among them. */
 const variable = /^(?:TYPESAFE_API_KEY|AI_GATEWAY_API_KEY|(?:MU|KYRN)_JUDGE_[A-Z0-9_]+)$/;
+/**
+ * Keys for Jev at a service other than TypeSafe. The harness refuses a System One judge keyed by one of them that has
+ * no address of its own (KEYS_FOR_ELSEWHERE in kyrn-judge's registry), so such a key never goes to TypeSafe.
+ */
+const keysForElsewhere = new Set(['MU_JUDGE_OPENROUTER_API_KEY', 'MU_JUDGE_CUSTOM_API_KEY']);
 /** Keys of custom model providers, referenced from models.json as `"$MU_PROVIDER_<ID>_API_KEY"`. */
 const providerVariable = /^MU_PROVIDER_[A-Z0-9_]{1,80}_API_KEY$/;
 /** The .env is sourced by a shell (`kyrn/bin/mu`), so nothing a shell would interpret may get into a value. */
@@ -180,6 +192,16 @@ export class SettingsStore {
       if (judge.apiKeyEnv && !variable.test(judge.apiKeyEnv))
         throw new KyrnError('keyVariable', 'Invalid credential variable', { name: judge.apiKeyEnv });
       if (judge.baseUrl) assertEndpoint(judge.baseUrl);
+    }
+    // A judge this save puts in the order, or changes there, must be one the harness runs. One the order already had
+    // as it is stays the business of whoever wrote it: refusing it would block every other change.
+    for (const name of input.tiers) {
+      const judge = input.judges[name];
+      if (current.tiers.includes(name) && sameJudge(current.judges[name], judge)) continue;
+      if (judge.type === 'typesafe' && keysForElsewhere.has(judge.apiKeyEnv) && !judge.baseUrl)
+        throw new KyrnError('judgeEndpoint', `Judge ${name} has no base URL, and its key is not sent to TypeSafe`, {
+          name,
+        });
     }
     const credentials: Credential[] = [...(input.credential ? [input.credential] : []), ...(input.credentials ?? [])];
     for (const credential of credentials) {

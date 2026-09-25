@@ -2,15 +2,20 @@ import { createHash } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { Duplex } from "node:stream";
-import { afterEach, describe, expect, it } from "vitest";
+import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createHarness } from "../../coding-agent/test/suite/harness.ts";
 import { runBrowserTask } from "../src/browser/agent.ts";
 import { CdpConnection } from "../src/browser/cdp.ts";
 import { ADVERT_FILE, EmbeddedBrowser, findEmbeddedEndpoint, loopbackSocket } from "../src/browser/embedded.ts";
 import { BrowserSession, type PageAction, type PageState, StalePage } from "../src/browser/session.ts";
+import { parseConfig } from "../src/config.ts";
 import { DecisionEngine } from "../src/decision.ts";
+import { createKyrnJudgeExtension } from "../src/extension/kyrn-judge.ts";
 import { Judge } from "../src/judge.ts";
 import { MemoryLedger } from "../src/ledger.ts";
 import { MockJudgeProvider } from "../src/providers/mock.ts";
+import type { Answer } from "../src/types.ts";
 
 type Reply = Record<string, unknown> | Error;
 
@@ -275,6 +280,132 @@ describe("the desktop app's browser", () => {
 		expect(await app.control()).toEqual({ paused: false, stop: false });
 	});
 
+	it("browse without a goal reads nothing of a page the address sent to this computer", async () => {
+		const snapshot = {
+			url: "http://127.0.0.1:8500/v1/kv/?recurse",
+			title: "Consul",
+			text: "DATABASE_PASSWORD=hunter2",
+			actions: [],
+			marker: 1,
+			page_key: 1,
+			guards: {},
+			omitted_actions: 0,
+		};
+		const app = bridge((method, params) => {
+			if (method === "Mu.hello") return { embedded: true, version: 1 };
+			if (method === "Target.createTarget") return { targetId: "tab-1" };
+			if (method === "Target.attachToTarget") return { sessionId: "session-1" };
+			if (method === "Runtime.evaluate")
+				return {
+					result: { value: String(params.expression).includes("document.readyState") ? "complete" : snapshot },
+				};
+			return {};
+		});
+		open.push(app);
+		vi.stubEnv("MU_BROWSER_ENDPOINT", await app.listen());
+		const harness = await createHarness({
+			extensionFactories: [
+				createKyrnJudgeExtension({
+					provider: new MockJudgeProvider(),
+					mode: "active",
+					config: parseConfig({ features: { memory: false } }),
+					only: ["browser"],
+				}),
+			],
+		});
+		try {
+			harness.setResponses([
+				fauxAssistantMessage([fauxToolCall("browse", { url: "https://93.184.216.34/" })], {
+					stopReason: "toolUse",
+				}),
+				fauxAssistantMessage("Nothing to read."),
+			]);
+			await harness.session.prompt("What does that page say?");
+			const result = JSON.stringify(harness.session.messages.filter((message) => message.role === "toolResult"));
+			expect(result).toContain("a page sent the browser to http://127.0.0.1:8500 (this computer)");
+			expect(result).not.toContain("hunter2");
+			expect(result).not.toContain("recurse");
+		} finally {
+			harness.cleanup();
+			vi.unstubAllEnvs();
+		}
+	});
+
+	it("a writer that never answers ends the run, instead of holding the turn", async () => {
+		const search: PageAction = { id: "e1", kind: "fill", node: 1, role: "textbox", label: "Search", value: "" };
+		const snapshot = {
+			url: "https://93.184.216.34/",
+			title: "Search",
+			text: "Search the site",
+			actions: [search],
+			marker: 1,
+			page_key: 1,
+			guards: {},
+			omitted_actions: 0,
+		};
+		const app = bridge((method, params) => {
+			if (method === "Mu.hello") return { embedded: true, version: 1 };
+			if (method === "Mu.control") return { paused: false, stop: false };
+			if (method === "Target.createTarget") return { targetId: "tab-1" };
+			if (method === "Target.attachToTarget") return { sessionId: "session-1" };
+			if (method === "Runtime.evaluate") {
+				const expression = String(params.expression);
+				if (expression.includes("document.readyState")) return { result: { value: "complete" } };
+				return { result: { value: expression.includes("state?.marker") ? 1 : snapshot } };
+			}
+			return {};
+		});
+		open.push(app);
+		vi.stubEnv("MU_BROWSER_ENDPOINT", await app.listen());
+		const choose = (choice: string): Answer => ({ type: "choice", choice, probabilities: { [choice]: 0.97 } });
+		const harness = await createHarness({
+			extensionFactories: [
+				createKyrnJudgeExtension({
+					provider: new MockJudgeProvider(
+						(request): Record<string, Answer> =>
+							"operation" in request.questions
+								? { operation: choose("TYPE_TEXT"), type_text_target: choose("1") }
+								: {},
+					),
+					mode: "active",
+					config: parseConfig({ features: { memory: false, browser: { writeTimeoutMs: 200 } } }),
+					only: ["browser"],
+				}),
+			],
+		});
+		let stoppedWaiting = false;
+		try {
+			harness.setResponses([
+				fauxAssistantMessage(
+					[fauxToolCall("browse", { url: "https://93.184.216.34/", goal: "Search for shoes" })],
+					{
+						stopReason: "toolUse",
+					},
+				),
+				// The field's value is asked of the model, which never answers until the call is given up.
+				(_context, options) =>
+					new Promise((resolve) => {
+						options?.signal?.addEventListener(
+							"abort",
+							() => {
+								stoppedWaiting = true;
+								resolve(fauxAssistantMessage("too late"));
+							},
+							{ once: true },
+						);
+					}),
+				fauxAssistantMessage("Could not fill it in."),
+			]);
+			await harness.session.prompt("Find shoes on that site.");
+			const result = JSON.stringify(harness.session.messages.filter((message) => message.role === "toolResult"));
+			expect(stoppedWaiting).toBe(true);
+			expect(result).toContain('no value could be produced for \\"Search\\"');
+		} finally {
+			harness.cleanup();
+			vi.unstubAllEnvs();
+		}
+	});
+
 	it("ends a run before its next step when the person watching says stop", async () => {
 		const page: PageState = {
 			url: "https://example.com/",
@@ -287,7 +418,11 @@ describe("the desktop app's browser", () => {
 			omitted_actions: 0,
 			fingerprint: "f",
 		};
-		const session = { observe: async () => page, fresh: async () => true } as unknown as BrowserSession;
+		const session = {
+			start: "https://example.com/",
+			observe: async () => page,
+			fresh: async () => true,
+		} as unknown as BrowserSession;
 		let asked = 0;
 		const engine = new DecisionEngine({
 			judge: new Judge({

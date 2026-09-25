@@ -9,7 +9,7 @@
   "apiKey": "API 金鑰",
   "keyHelp": "儲存後不再顯示。只存在這台電腦上，只有你的帳戶能讀取。",
   "keyKeep": "留空則保留已儲存的金鑰",
-  "endpointRule": "請使用 HTTPS；只有本機位址（127.0.0.1、localhost）可以用 HTTP。位址裡不能帶使用者名稱、密碼、查詢參數或片段。",
+  "endpointRule": "請使用 HTTPS；只有本機（127.0.0.1、localhost）或區域網路 IP 位址（例如 192.168.1.20）可以用 HTTP。位址裡不能帶使用者名稱、密碼、查詢參數或片段。",
   "sections": {
     "judges": "判定器",
     "judgeTiers": "判定層級",
@@ -112,30 +112,53 @@
     "order": "順序",
     "orderHelp": "排在第一的就是上面選的那個。",
     "tierTitle": "第 {{index}} 級：{{name}}",
-    "type": "連線方式",
-    "access": {
-      "jev": "自動",
-      "typesafe": "直連 TypeSafe",
-      "gateway": "經 Vercel AI Gateway"
+    "service": "服務",
+    "services": {
+      "auto": {
+        "name": "自動",
+        "help": "設定了 TypeSafe 金鑰就用 TypeSafe，否則設定了 OpenRouter 金鑰就用 OpenRouter，都沒有則走 Vercel AI Gateway。",
+        "key": "TypeSafe API 金鑰"
+      },
+      "typesafe": {
+        "name": "TypeSafe",
+        "help": "始終直連 TypeSafe。",
+        "key": "TypeSafe API 金鑰"
+      },
+      "openrouter": {
+        "name": "OpenRouter",
+        "help": "始終經由 OpenRouter，用 OpenRouter 的 API 金鑰。它單獨給 Jev 保存，設定它不會改動 OpenRouter 聊天模型的金鑰。",
+        "key": "OpenRouter API 金鑰"
+      },
+      "gateway": {
+        "name": "Vercel AI Gateway",
+        "help": "始終經由 Vercel AI Gateway。",
+        "key": "Vercel AI Gateway API 金鑰"
+      },
+      "custom": {
+        "name": "自訂服務",
+        "help": "任何支援 TypeSafe System One 協定的服務：你自己執行的、區域網路裡的中繼，或其他提供 Jev 的服務商。",
+        "key": "該服務的 API 金鑰"
+      }
     },
     "model": "判定模型",
+    "baseUrl": "介面位址",
+    "baseUrlHelp": "留空則使用 TypeSafe 的官方位址",
+    "customUrlHelp": "該服務的 System One 位址。它的金鑰只會送到這裡。",
+    "baseUrlNeeded": "自訂服務需要填寫位址。",
     "customTier": "你自己加的判定器，要改它請編輯 mu 的設定檔。",
     "endpointDefault": "使用服務的預設位址",
     "types": {
-      "jevHelp": "設定了 TypeSafe 金鑰就直連，否則走 Vercel AI Gateway。",
-      "typesafeHelp": "始終直連 TypeSafe。",
-      "gatewayHelp": "始終經由 Vercel AI Gateway。",
       "localHelp": "在這台電腦上執行。"
     },
     "intro": "mu 工作時要做很多小判斷：這則訊息該怎麼處理、這一步會不會違反你定的規則……判定器負責回答。選一個就行。",
     "choose": "選擇判定器",
     "custom": "現在排在第一位的是自訂的判定器，可以在下面的「判定層級」裡查看和修改。",
-    "keyPlaceholder": "貼上 TypeSafe 或 Vercel AI Gateway 的金鑰",
+    "keyPlaceholder": "貼上金鑰",
     "choices": {
       "jev": {
         "title": "Jev",
         "tag": "推薦",
-        "description": "又快又準，按次計費。需要 TypeSafe 或 Vercel AI Gateway 的金鑰。"
+        "description": "又快又準，按次計費。需要 TypeSafe、OpenRouter、Vercel AI Gateway 或你自己服務的金鑰。"
       },
       "local": {
         "title": "本機 Laya",
@@ -376,7 +399,9 @@
     "tagImage": "視覺",
     "noId": "新模型",
     "show": "檢視 {{name}}",
-    "addListed": "新增 {{name}}"
+    "addListed": "新增 {{name}}",
+    "levels": "思考等級",
+    "levelsHelp": "勾選的等級才會提供給這個模型。極高和最高預設關閉，勾選後才會打開。"
   },
   "test": {
     "run": "測試連線",
@@ -458,7 +483,7 @@
         "modelPlaceholder": "例如 claude-sonnet-5"
       },
       "problems": {
-        "baseUrl": "請填寫 https:// 開頭的位址（本機服務可以用 http://）。",
+        "baseUrl": "請填寫 https:// 開頭的位址（本機或區域網路位址可以用 http://）。",
         "key": "請填寫 API 金鑰。",
         "model": "請填寫模型名稱。"
       },
@@ -574,6 +599,7 @@
   "errors": {
     "credential": "金鑰中有不允許的字元（如空格、引號或換行），請重新貼上。",
     "keyVariable": "{{name}} 不能用來存判定器的金鑰。請用 TYPESAFE_API_KEY、AI_GATEWAY_API_KEY，或以 MU_JUDGE_ 開頭的變數名稱。",
+    "judgeEndpoint": "Jev 的服務沒有位址，它的金鑰無處可送。請填寫位址，或換一個服務。",
     "sharedKey": "{{providers}} 會共用同一個金鑰變數，請修改其中一個 ID。",
     "pickBoth": "請同時選擇供應商和模型。",
     "modelsUnreadable": "無法解析 models.json，請先手動修復，再儲存供應商。",

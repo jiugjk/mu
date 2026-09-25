@@ -103,6 +103,15 @@ export interface RelateInput {
 export type RelateOutcome = { readonly relation: Relation | null; readonly score: number };
 
 /**
+ * How sure the judge must be that one investigator's note replaces another's. Calibrated 2026-09-24 on 153
+ * hand-labelled note pairs from 11 real hives: across investigators no "supersedes" reading was right (0 of 6 at
+ * the 0.6 bar, the highest at 0.87; the later note agreed and added, or was about something else), and each
+ * one takes another bee's finding off the board and tells everyone who heard it that it no longer holds. A bee
+ * revising its own note is routine and keeps the common bar (5 of 12 right there).
+ */
+const ACROSS_BEES_SUPERSEDES = 0.9;
+
+/**
  * H3, the board's memory. A board that only grows keeps a conclusion after
  * it stopped being true: "the tests cannot run" stays up next to "they run
  * once the inherited env is cleared", and whoever heard the first keeps
@@ -113,7 +122,7 @@ export type RelateOutcome = { readonly relation: Relation | null; readonly score
  */
 export const hiveRelate = defineDecision({
 	id: "hive.relate",
-	version: 1,
+	version: 2,
 	cacheImpact: "none",
 	latency: "background",
 	capabilities: "classify",
@@ -142,9 +151,11 @@ export const hiveRelate = defineDecision({
 		const choice = pickChoice(answers.relation);
 		const score = answers.relation.probabilities?.[answers.relation.choice] ?? 1;
 		if (!choice) return { relation: null, score };
+		const ownNote = input.earlier.bee === input.later.bee;
 		// A worker that now says the opposite of what it said before has changed its mind: its later word
 		// replaces its earlier one. Nobody votes on which of its own words to keep.
-		if (choice === "contradicts" && input.earlier.bee === input.later.bee) return { relation: "supersedes", score };
+		if (choice === "contradicts" && ownNote) return { relation: "supersedes", score };
+		if (choice === "supersedes" && !ownNote && score < ACROSS_BEES_SUPERSEDES) return { relation: null, score };
 		return { relation: choice, score };
 	},
 	fallback(): RelateOutcome {

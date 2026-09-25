@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { type FieldContext, runBrowserTask } from "../../browser/agent.ts";
+import { Bounds, refusalReason } from "../../browser/bounds.ts";
 import { CdpConnection } from "../../browser/cdp.ts";
 import { type LaunchedChrome, launchChrome } from "../../browser/chrome.ts";
 import { EmbeddedBrowser, findEmbeddedEndpoint } from "../../browser/embedded.ts";
@@ -45,6 +46,8 @@ export function registerBrowser(runtime: KyrnRuntime): void {
 		profileDir: "",
 		/** Use the desktop app's browser panel when the app offers one. */
 		embedded: true,
+		/** How long the model may take to say what goes into a field. Past it the run ends: it does not hold the turn. */
+		writeTimeoutMs: 60_000,
 	});
 	if (!options.enabled) return;
 	const { pi } = runtime;
@@ -83,12 +86,24 @@ export function registerBrowser(runtime: KyrnRuntime): void {
 		return cdp;
 	};
 
-	const writeText = async (context: FieldContext): Promise<string | undefined> => {
+	/** The value for a field, or undefined: the run then ends there, also when the model does not answer in time. */
+	const writeText = async (context: FieldContext, signal: AbortSignal | undefined): Promise<string | undefined> => {
 		const model = runtime.ctx?.model;
 		const complete =
 			runtime.writer() ?? (model ? runtime.llm(`${model.provider}/${model.id}`, { thinking: "off" }) : undefined);
 		if (!complete) return undefined;
-		const reply = await complete({ system: TEXT_RULES, user: JSON.stringify(context) });
+		const limit = AbortSignal.timeout(options.writeTimeoutMs);
+		let reply: Awaited<ReturnType<typeof complete>>;
+		try {
+			reply = await complete({
+				system: TEXT_RULES,
+				user: JSON.stringify(context),
+				// Stopping the run stops the question too; without either, a stalled model would hold the turn.
+				signal: signal ? AbortSignal.any([signal, limit]) : limit,
+			});
+		} catch {
+			return undefined;
+		}
 		try {
 			const parsed = JSON.parse(reply.text.slice(reply.text.indexOf("{"), reply.text.lastIndexOf("}") + 1)) as {
 				text?: unknown;
@@ -163,6 +178,15 @@ export function registerBrowser(runtime: KyrnRuntime): void {
 		try {
 			if (!params.goal?.trim()) {
 				const page = await session.observe();
+				// The address may have redirected where the browser does not go unasked; then nothing of it is read.
+				const refused = await new Bounds(session.start).refuse(page.url);
+				if (refused) {
+					status = "blocked";
+					code = "off_the_web";
+					codeParams = { where: refused.where };
+					reason = refusalReason(refused);
+					return { text: `status: blocked (${reason})`, status, url: refused.where };
+				}
 				const text = `${page.title}\n${page.url}\n\n${UNTRUSTED}\n\n${page.text.slice(0, textChars)}`;
 				status = "read";
 				code = "read";
@@ -172,7 +196,7 @@ export function registerBrowser(runtime: KyrnRuntime): void {
 				session,
 				engine: runtime.engine,
 				goal: params.goal,
-				writeText,
+				writeText: (context) => writeText(context, signal),
 				// In the app the person watching the page answers, in the app's own dialog.
 				confirm: app
 					? (label, url) => app.confirm(label, url)

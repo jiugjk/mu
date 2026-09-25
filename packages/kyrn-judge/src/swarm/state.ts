@@ -1,5 +1,14 @@
 import { type Coded, codedError, codeOf } from "../language.ts";
-import { CHECKPOINT, HIVE_MESSAGE, LAST_CALL, NO_CHANGE, NOTES_HEADER, SWARM_MESSAGE, WRAP_UP } from "./markers.ts";
+import {
+	CHECKPOINT,
+	HIVE_MESSAGE,
+	LAST_CALL,
+	NO_CHANGE,
+	NOTES_HEADER,
+	SWARM_MESSAGE,
+	TOOLS_CLOSED,
+	WRAP_UP,
+} from "./markers.ts";
 
 /**
  * What one sub-agent is doing, derived from the JSON event stream of its pi
@@ -62,7 +71,10 @@ export interface BeeState {
 	toolErrors: number;
 	/** The tool call in flight. */
 	tool?: { name: string; summary: string; startedAt: number };
-	/** The latest thing it said in words, complete or still streaming. */
+	/**
+	 * The beginning of the latest thing it said in words, complete or still streaming. Every view shows a message
+	 * from its start (a finished bee's row, "the first of what it reported"), so only the start is kept.
+	 */
 	said?: string;
 	retry?: { attempt: number; maxAttempts: number; delayMs: number; message: string };
 	usage: BeeUsage;
@@ -76,8 +88,17 @@ export interface BeeState {
 	errorParams?: Readonly<Record<string, string | number>>;
 	/** Set by the watchdog when nothing has come out of the process for a while. */
 	quietMs?: number;
-	/** A wrap-up was requested: stop investigating, report now. */
-	wrapUp?: { at: number; reason: string; code?: string; params?: Readonly<Record<string, string | number>> };
+	/**
+	 * A wrap-up was requested: stop investigating, report now. `heardAt` is when its own stream showed it had
+	 * been told (a wrap-up message, or a tool call turned away), which is the end of the step it was in.
+	 */
+	wrapUp?: {
+		at: number;
+		reason: string;
+		code?: string;
+		params?: Readonly<Record<string, string | number>>;
+		heardAt?: number;
+	};
 	/** The last few things it did, newest last. */
 	recent: BeeActivity[];
 	/** Messages that ended a run of work: an assistant message with no tool call in it. */
@@ -112,6 +133,18 @@ function flat(text: string, length: number): string {
 	return line.length <= length ? line : `${line.slice(0, length - 1)}…`;
 }
 
+/**
+ * The start of a finished message, as `said` keeps it: cut after a word or a sentence (a space, or the punctuation
+ * that ends a Chinese or Japanese clause) when one is near the end, and marked as cut.
+ */
+function opening(text: string): string {
+	if (text.length <= MAX_SAID) return text;
+	const head = text.slice(0, MAX_SAID - 1);
+	let end = head.length;
+	while (end > MAX_SAID * 0.75 && !/[\s，。；：！？、]/.test(head[end - 1])) end--;
+	return `${(end > MAX_SAID * 0.75 ? head.slice(0, end) : head).trimEnd()}…`;
+}
+
 function note(state: BeeState, at: number, text: string, coded?: Coded): void {
 	state.recent.push({
 		at,
@@ -119,6 +152,12 @@ function note(state: BeeState, at: number, text: string, coded?: Coded): void {
 		...(coded ? { code: coded.code, ...(coded.params ? { params: coded.params } : {}) } : {}),
 	});
 	if (state.recent.length > MAX_RECENT) state.recent.splice(0, state.recent.length - MAX_RECENT);
+}
+
+function told(state: BeeState, now: number): void {
+	if (state.wrapUp?.heardAt !== undefined) return;
+	if (state.wrapUp) state.wrapUp.heardAt = now;
+	note(state, now, "← told to wrap up and report", { code: "told_wrap_up" });
 }
 
 function textOf(content: unknown): string {
@@ -203,28 +242,35 @@ export function applyEvent(state: BeeState, event: BeeEvent, now: number): boole
 				const type = event.message.customType;
 				const text = type === HIVE_MESSAGE || type === SWARM_MESSAGE ? textOf(event.message.content) : "";
 				const notes = text.split("\n").filter((line) => line.startsWith("- ")).length;
-				if (text.startsWith(NOTES_HEADER))
+				if (text.startsWith(NOTES_HEADER)) {
 					note(state, now, `← ${notes} note${notes === 1 ? "" : "s"} from the others`, {
 						code: "notes_received",
 						params: { count: notes },
 					});
-				else if (text.startsWith(LAST_CALL))
+					// A checkpoint due at the same step comes in the same message.
+					if (text.endsWith(CHECKPOINT))
+						note(state, now, "← asked what it has found so far", { code: "asked_findings" });
+				} else if (text.startsWith(LAST_CALL))
 					note(state, now, `← last call: ${notes} late note${notes === 1 ? "" : "s"}`, {
 						code: "late_notes",
 						params: { count: notes },
 					});
 				else if (text === CHECKPOINT)
 					note(state, now, "← asked what it has found so far", { code: "asked_findings" });
-				else if (text.startsWith(WRAP_UP))
-					note(state, now, "← told to wrap up and report", { code: "told_wrap_up" });
+				else if (text.startsWith(WRAP_UP)) told(state, now);
+			} else if (event.message?.role === "toolResult" && textOf(event.message.content).startsWith(TOOLS_CLOSED)) {
+				// A bee asked mid-step hears it from the first tool call it makes after.
+				told(state, now);
 			}
 			break;
 		case "message_update":
 			if (
 				event.assistantMessageEvent?.type === "text_delta" &&
-				typeof event.assistantMessageEvent.delta === "string"
+				typeof event.assistantMessageEvent.delta === "string" &&
+				(state.said?.length ?? 0) < MAX_SAID
 			) {
-				state.said = `${state.said ?? ""}${event.assistantMessageEvent.delta}`.slice(-MAX_SAID);
+				// Past the start, the rest of the message only reaches the draft (followDraft): no view reads it here.
+				state.said = `${state.said ?? ""}${event.assistantMessageEvent.delta}`.slice(0, MAX_SAID);
 			}
 			break;
 		case "message_end": {
@@ -238,7 +284,7 @@ export function applyEvent(state: BeeState, event: BeeEvent, now: number): boole
 				state.usage.cost += usage.cost?.total ?? 0;
 			}
 			const text = textOf(message.content).trim();
-			if (text) state.said = text.slice(-MAX_SAID);
+			if (text) state.said = opening(text);
 			if (message.stopReason === "error" || message.stopReason === "aborted") {
 				state.error = message.errorMessage ?? `the model request was ${message.stopReason}`;
 				state.errorCode = "model_error";
@@ -316,6 +362,38 @@ export function applyEvent(state: BeeState, event: BeeEvent, now: number): boole
 			break;
 	}
 	return false;
+}
+
+/** The longest draft kept: a report is rarely a tenth of this. */
+const MAX_DRAFT = 40_000;
+
+/** A message a bee is writing, whole: `said` keeps only its start, for the view. */
+export interface Draft {
+	text: string;
+	/** When the message began. */
+	at: number;
+}
+
+/**
+ * Follows the message a bee is writing, token by token, so that one cut off
+ * halfway through its report still hands back what it had written.
+ */
+export function followDraft(draft: Draft | undefined, event: BeeEvent, now: number): Draft | undefined {
+	if (event.type === "message_start" && event.message?.role === "assistant") return { text: "", at: now };
+	if (
+		draft &&
+		event.type === "message_update" &&
+		event.assistantMessageEvent?.type === "text_delta" &&
+		typeof event.assistantMessageEvent.delta === "string" &&
+		draft.text.length < MAX_DRAFT
+	) {
+		return { ...draft, text: draft.text + event.assistantMessageEvent.delta };
+	}
+	if (event.type === "message_end" && event.message?.role === "assistant") {
+		const text = textOf(event.message.content).trim();
+		return text ? { text: text.slice(0, MAX_DRAFT), at: draft?.at ?? now } : draft;
+	}
+	return draft;
 }
 
 /**

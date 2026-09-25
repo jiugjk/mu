@@ -48,7 +48,7 @@ export class GatewayJudgeProvider implements JudgeProvider {
 	constructor(options: GatewayJudgeProviderOptions) {
 		this.apiKey = options.apiKey;
 		this.model = options.model ?? DEFAULT_MODEL;
-		this.baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
+		this.baseUrl = (options.baseUrl || DEFAULT_BASE_URL).replace(/\/+$/, "");
 		this.fetchImpl = options.fetch ?? fetch;
 		this.id = `gateway:${this.model}`;
 	}

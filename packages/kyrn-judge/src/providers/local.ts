@@ -51,7 +51,7 @@ export class LocalJudgeProvider implements JudgeProvider {
 
 	constructor(options: LocalJudgeProviderOptions = {}) {
 		this.id = options.id ?? "local:laya";
-		this.baseUrl = (options.baseUrl ?? DEFAULT_LOCAL_JUDGE_URL).replace(/\/+$/, "");
+		this.baseUrl = (options.baseUrl || DEFAULT_LOCAL_JUDGE_URL).replace(/\/+$/, "");
 		this.path = options.path ?? "/evaluate";
 		this.headers = options.headers;
 		this.fetchImpl = options.fetch ?? fetch;
