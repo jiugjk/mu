@@ -544,7 +544,9 @@ describe('the save bar', () => {
     fireEvent.click(screen.getByRole('switch', { name: '自动压缩' }));
     // The common module is the English one in this setup.
     fireEvent.click(screen.getByText('Save'));
-    expect(await screen.findByText('保存失败：a-b 和 a.b 会共用同一个密钥变量，请修改其中一个 ID。')).toBeInTheDocument();
+    expect(
+      await screen.findByText('保存失败：a-b 和 a.b 会共用同一个密钥变量，请修改其中一个 ID。')
+    ).toBeInTheDocument();
     bridge.save.mockResolvedValueOnce({
       ok: false,
       code: 'contextLimit',

@@ -64,6 +64,34 @@ describe('font selects', () => {
   });
 });
 
+describe('the font family select', () => {
+  // A long family name chosen in one row made that row's select wider than the others'.
+  const family = 'Hiragino Kaku Gothic StdN W8 Extra Condensed';
+  const view = () =>
+    screen.getByRole('combobox', { name: 'settings.fontFamilyLabel' }).querySelector('.arco-select-view-value > span')!;
+
+  it('keeps the width of the default’s words whatever is chosen: a chosen family fills it and adds none', () => {
+    render(<FontFamilySelect value={family} onChange={vi.fn()} />);
+    const [holder, chosen] = [...view().children];
+    expect(holder.textContent).toBe('settings.fontFamilySystemDefault');
+    expect(hasClass(holder, 'invisible')).toBe(true);
+    expect(holder.getAttribute('aria-hidden')).toBe('true');
+    expect(chosen.textContent).toBe(family);
+    for (const name of ['w-0', 'min-w-full', 'truncate']) expect(hasClass(chosen, name)).toBe(true);
+    // Cut, it is whole on hover, and shown in its own face.
+    expect(chosen.getAttribute('title')).toBe(family);
+    expect((chosen as HTMLElement).style.fontFamily).toContain(family);
+  });
+
+  it('shows the default’s words when nothing is chosen', () => {
+    render(<FontFamilySelect value='' onChange={vi.fn()} />);
+    const shown = [...view().children];
+    expect(shown.map((part) => part.textContent)).toEqual(['settings.fontFamilySystemDefault']);
+    expect(hasClass(shown[0], 'invisible')).toBe(false);
+    expect(shown[0].getAttribute('aria-hidden')).toBeNull();
+  });
+});
+
 describe('FontSizeStepper', () => {
   it('renders the current value and steps within bounds', () => {
     const onChange = vi.fn();

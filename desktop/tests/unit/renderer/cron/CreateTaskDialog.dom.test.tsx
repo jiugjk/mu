@@ -152,6 +152,13 @@ describe('CreateTaskDialog', () => {
     expect(screen.queryByText('cron.page.form.description')).not.toBeInTheDocument();
   });
 
+  it('names the queue switch by its title and describes it by the sentence under it', async () => {
+    render(<CreateTaskDialog visible onClose={() => {}} />);
+
+    const queue = await screen.findByRole('switch', { name: 'cron.page.form.queue' });
+    expect(queue).toHaveAccessibleDescription('cron.page.form.queueHint');
+  });
+
   it('offers custom frequency when creating a task', async () => {
     const user = userEvent.setup();
 

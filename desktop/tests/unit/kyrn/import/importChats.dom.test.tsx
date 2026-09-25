@@ -9,6 +9,7 @@ import mu from '@/renderer/services/i18n/locales/en-US/mu.json';
 import { emitter } from '@/renderer/utils/emitter';
 import ImportChatsModal from '@/renderer/pages/settings/SystemSettings/ImportChats/ImportChatsModal';
 import ImportedChatNotice from '@/renderer/pages/conversation/platforms/acp/ImportedChat';
+import ImportedHistoryModal from '@/renderer/pages/conversation/platforms/acp/ImportedChat/ImportedHistoryModal';
 
 type Answer<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -266,5 +267,23 @@ describe('an imported conversation', () => {
     expect(steps[2].textContent).toContain('Claude Code');
     expect(steps[2].textContent).toContain('Used: Bash ×2 and Edit');
     expect(screen.getByText('2 earlier steps are not shown.')).toBeInTheDocument();
+  });
+
+  it('reads it back in a dialog framed as the settings dialogs are: the title at the start and a close button', async () => {
+    history.mockResolvedValue({
+      ok: true,
+      data: { tool: 'claude-code', source: '/t/0001.jsonl', earlier: 0, items: [{ kind: 'user', text: 'Hello' }] },
+    });
+    const onClose = vi.fn();
+    render(
+      <I18nextProvider i18n={i18n}>
+        <ImportedHistoryModal conversationId='conv-1' tool='Claude Code' visible onClose={onClose} />
+      </I18nextProvider>
+    );
+    await settle();
+    const title = screen.getByRole('heading', { name: 'Earlier, in Claude Code' });
+    expect(title.closest('.arco-modal')?.classList.contains('aionui-modal-standard')).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(onClose).toHaveBeenCalled();
   });
 });

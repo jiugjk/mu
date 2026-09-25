@@ -38,7 +38,12 @@ describe('asking a CLM server how it is', () => {
     });
     for (const address of [url, `${url}/`, `${url}/v1`, `${url}/v1/systemone`]) {
       const state = await checkClmServer(address);
-      expect(state).toMatchObject({ status: 'ready', models: ['clm-latest', 'clm-raw'], mock: false, keyRequired: false });
+      expect(state).toMatchObject({
+        status: 'ready',
+        models: ['clm-latest', 'clm-raw'],
+        mock: false,
+        keyRequired: false,
+      });
       expect(state.status !== 'down' && state.latencyMs).toBeGreaterThanOrEqual(0);
     }
     // No key goes with the check, saved or not.

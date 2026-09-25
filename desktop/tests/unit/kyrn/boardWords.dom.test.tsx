@@ -110,6 +110,22 @@ describe('a fixed board in the app’s language', () => {
     expect(screen.getByTestId('mu-board-now')).toHaveTextContent('(On: tests for the login page)');
     expect(screen.getByTestId('mu-board-progress')).toHaveTextContent('3 of 5 things on the checklist are done.');
   });
+
+  it('says how a run that ended ended, with no stage under it that reads as still going on', () => {
+    show([fixed({ ended: true, phase: 'wrapping_up', focusText: undefined, done: 5, total: 5 })]);
+    expect(screen.getByTestId('mu-board-state')).toHaveAttribute('data-state', 'done');
+    expect(screen.queryByTestId('mu-board-now')).toBeNull();
+    expect(screen.getByTestId('mu-board-progress')).toHaveTextContent('清单上的 5 件事都做完了。');
+    cleanup();
+    // Stopped in the middle of a stage, from a harness that sends no codes too.
+    show([fixed({ ended: true, confirmCodes: undefined })]);
+    expect(screen.getByTestId('mu-board-state')).toHaveAttribute('data-state', 'stopped');
+    expect(screen.queryByTestId('mu-board-now')).toBeNull();
+    cleanup();
+    // The model's summing up at the end is its own words.
+    show([fixed({ ended: true, by: 'model', now: 'All five are in; the login tests pass.' })]);
+    expect(screen.getByTestId('mu-board-now')).toHaveTextContent('All five are in; the login tests pass.');
+  });
 });
 
 describe('reading a fixed board’s codes', () => {
