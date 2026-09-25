@@ -6,7 +6,7 @@
 
 | 部分 | 文件 | 说明 |
 | --- | --- | --- |
-| 启动器 | `kyrn/bin/mu.mjs`（新）、`mu.d.mts`（类型，给测试用） | 原 bash 启动器的全部分支搬到纯 Node（ESM、无依赖、不用 TypeScript：它在找到 tsx 之前就要跑）。每个决定都是导出的纯函数，平台、环境变量、文件系统都是参数 |
+| 启动器 | `kyrn/bin/mu.mjs`（新）、`mu.d.mts`（类型，给测试用） | 原 bash 启动器的全部分支搬到纯 Node（ESM、无依赖、不用 TypeScript：它在找到能跑 TypeScript 的东西之前就要跑）。每个决定都是导出的纯函数，平台、环境变量、文件系统都是参数 |
 | 转发器 | `kyrn/bin/mu`（bash，重写）、`mu.cmd`、`mu.ps1`（新） | 只剩一件事：确认有 Node >= 22.19，然后交给 `mu.mjs`。`kyrn`、`kyrn-dev` 照旧转发到 `mu` |
 | 平台判断 | `packages/kyrn-judge/src/platform.ts`（新） | WSL 识别、`wslpath` 式路径互转、`/etc/wsl.conf` 的挂载根、进程树终止方案 |
 | 浏览器 | `src/browser/chrome.ts`（重写发现部分） | Windows、Linux（含 snap / flatpak）、WSL 的发现与启动命令行 |
@@ -16,9 +16,11 @@
 ## 2. 启动器
 
 ```
-macOS / Linux / WSL：  kyrn/bin/mu（bash：选 Node）→ exec node mu.mjs → execve 成 tsx 的 cli.mjs → pi
-Windows：             kyrn\bin\mu.cmd（查 Node 版本）→ node mu.mjs → spawn node tsx\dist\cli.mjs → pi
+macOS / Linux / WSL：  kyrn/bin/mu（bash：选 Node）→ exec node mu.mjs → execve 成 node（自带类型擦除）→ pi
+Windows：             kyrn\bin\mu.cmd（查 Node 版本）→ node mu.mjs → spawn node（自带类型擦除）→ pi
 ```
+
+- **检出直接用 Node 自带的类型擦除跑源码（2026-09-26）。** Node 22.18 起默认能擦除 TypeScript 类型，`mu.mjs` 的 `sourceRuntime` 就用 `node --import compile-cache.mjs --import <pi 的 source-resolver.ts> cli.ts` 启动：pi 自己的 `packages/coding-agent/src/experimental/source-resolver.ts` 按根 `tsconfig.json` 的 paths 把各工作区包解析到源码，`compile-cache.mjs` 打开 Node 的编译缓存（npm 包的 bundle 入口也这么做）。原来经 tsx：tsx 的加载器在单独线程上，每个文件都要从那边转一手。M 系列 Mac 上 pi 加判断层从 2.0 s 降到约 0.85 s（有负载时 2.1–2.6 s 对 1.0–1.35 s），`mu auth status` 从 1.65 s 降到 0.85 s；桌面端每开一个对话都要启动一次 mu，开发版的第一条回复因此快一秒多。`--import` 给的是 file URL：Windows 路径 `C:\...` 会被当成协议为 `c:` 的 URL。Node 不擦除类型（`process.features.typescript` 为假，比如把 mu 当 Node 跑的 Electron）或检出里还没有这个解析器时，照旧走 tsx。能这么跑的前提是源码只用可擦除语法、类型导入都写了 `type`：根配置加 `--verbatimModuleSyntax` 跑 tsgo，1908 个文件 0 错。
 
 - **选 Node 留在 bash 里。** 默认 Node 比 22.19 旧的机器（本机默认就是 20）不能指望它跑得动启动器本身，所以在任何 JavaScript 运行之前先从 PATH、再从 nvm 里挑。现在精确到 22.19（原来只看主版本 >= 22）。用 `node --version`（约 15 ms）代替 `node -p`（约 29 ms）。`mu.mjs` 自己还会再查一次，给出同样清楚的提示。
 - **不经过 `.cmd` 垫片。** Windows 上 `node_modules/.bin/tsx` 是 `.cmd`，只能经 shell 启动，带引号或 `&` 的 prompt 会被二次解析。所有平台都改成：读 `node_modules/tsx/package.json` 的 `bin`，拿到真正的 `dist/cli.mjs`，用 `process.execPath` 加参数数组启动，从不拼命令行字符串。`node_modules/tsx` 按 Node 解析 import 的规则找：先看仓库根，再逐级往上看父目录。放在主检出下面的 git worktree（本仓库的代理 worktree 都是）自己没有 `node_modules`，靠主检出的跑，和它里面的 import 一样（合并时补的，两个平台都有用例）。
