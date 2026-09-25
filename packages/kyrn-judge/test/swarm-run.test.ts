@@ -76,6 +76,35 @@ describe("bee state", () => {
 		expect(bee.recent.map((entry) => entry.text)).toEqual(["bash npm test", "bash failed"]);
 	});
 
+	it("keeps the start of a long message, so a finished bee's row begins where its report does", () => {
+		// It used to keep the last 600 characters: the row of a bee back with a long report began mid-sentence.
+		const start = "**Found** - the parser fails on empty files.";
+		const report = `${start} ${"The evidence is in src/parser.ts and in its tests. ".repeat(20)}`.trim();
+		const bee = newBee("repro", 0);
+		applyEvent(bee, { type: "message_start", message: { role: "assistant" } }, 1);
+		for (const delta of report.split(/(?<= )/)) {
+			applyEvent(bee, { type: "message_update", assistantMessageEvent: { type: "text_delta", delta } }, 2);
+		}
+		expect(bee.said?.startsWith(start)).toBe(true);
+		expect(bee.said?.length).toBeLessThanOrEqual(600);
+
+		applyEvent(bee, assistant(report), 3);
+		const kept = bee.said?.slice(0, -1) ?? "";
+		expect(bee.said?.endsWith("…")).toBe(true);
+		expect(bee.said?.length).toBeLessThanOrEqual(600);
+		// Cut between two words, not inside one.
+		expect(report.startsWith(kept)).toBe(true);
+		expect(report[kept.length]).toBe(" ");
+
+		const chinese = `发现：空文件会让解析器崩溃。${"证据在解析器的代码和测试里，复现步骤已经写好。".repeat(30)}`;
+		applyEvent(bee, assistant(chinese), 4);
+		expect(bee.said?.startsWith("发现：空文件会让解析器崩溃。")).toBe(true);
+		expect(bee.said).toMatch(/[，。]…$/);
+
+		applyEvent(bee, assistant("Done: nothing to change."), 5);
+		expect(bee.said).toBe("Done: nothing to change.");
+	});
+
 	it("shows a rate-limited bee as retrying, and forgets the error once a request goes through", () => {
 		const bee = newBee("web", 0);
 		applyEvent(bee, { type: "agent_start" }, 0);

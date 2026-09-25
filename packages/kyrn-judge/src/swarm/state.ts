@@ -71,7 +71,10 @@ export interface BeeState {
 	toolErrors: number;
 	/** The tool call in flight. */
 	tool?: { name: string; summary: string; startedAt: number };
-	/** The latest thing it said in words, complete or still streaming. */
+	/**
+	 * The beginning of the latest thing it said in words, complete or still streaming. Every view shows a message
+	 * from its start (a finished bee's row, "the first of what it reported"), so only the start is kept.
+	 */
 	said?: string;
 	retry?: { attempt: number; maxAttempts: number; delayMs: number; message: string };
 	usage: BeeUsage;
@@ -128,6 +131,18 @@ export function newBee(name: string, now: number, details: Partial<BeeState> = {
 function flat(text: string, length: number): string {
 	const line = text.replace(/\s+/g, " ").trim();
 	return line.length <= length ? line : `${line.slice(0, length - 1)}…`;
+}
+
+/**
+ * The start of a finished message, as `said` keeps it: cut after a word or a sentence (a space, or the punctuation
+ * that ends a Chinese or Japanese clause) when one is near the end, and marked as cut.
+ */
+function opening(text: string): string {
+	if (text.length <= MAX_SAID) return text;
+	const head = text.slice(0, MAX_SAID - 1);
+	let end = head.length;
+	while (end > MAX_SAID * 0.75 && !/[\s，。；：！？、]/.test(head[end - 1])) end--;
+	return `${(end > MAX_SAID * 0.75 ? head.slice(0, end) : head).trimEnd()}…`;
 }
 
 function note(state: BeeState, at: number, text: string, coded?: Coded): void {
@@ -251,9 +266,11 @@ export function applyEvent(state: BeeState, event: BeeEvent, now: number): boole
 		case "message_update":
 			if (
 				event.assistantMessageEvent?.type === "text_delta" &&
-				typeof event.assistantMessageEvent.delta === "string"
+				typeof event.assistantMessageEvent.delta === "string" &&
+				(state.said?.length ?? 0) < MAX_SAID
 			) {
-				state.said = `${state.said ?? ""}${event.assistantMessageEvent.delta}`.slice(-MAX_SAID);
+				// Past the start, the rest of the message only reaches the draft (followDraft): no view reads it here.
+				state.said = `${state.said ?? ""}${event.assistantMessageEvent.delta}`.slice(0, MAX_SAID);
 			}
 			break;
 		case "message_end": {
@@ -267,7 +284,7 @@ export function applyEvent(state: BeeState, event: BeeEvent, now: number): boole
 				state.usage.cost += usage.cost?.total ?? 0;
 			}
 			const text = textOf(message.content).trim();
-			if (text) state.said = text.slice(-MAX_SAID);
+			if (text) state.said = opening(text);
 			if (message.stopReason === "error" || message.stopReason === "aborted") {
 				state.error = message.errorMessage ?? `the model request was ${message.stopReason}`;
 				state.errorCode = "model_error";
@@ -350,7 +367,7 @@ export function applyEvent(state: BeeState, event: BeeEvent, now: number): boole
 /** The longest draft kept: a report is rarely a tenth of this. */
 const MAX_DRAFT = 40_000;
 
-/** A message a bee is writing, whole: `said` keeps only its end, for the view. */
+/** A message a bee is writing, whole: `said` keeps only its start, for the view. */
 export interface Draft {
 	text: string;
 	/** When the message began. */
