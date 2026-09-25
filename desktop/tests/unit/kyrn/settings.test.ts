@@ -85,7 +85,8 @@ describe('native mu settings', () => {
         credential: { name: 'TYPESAFE_API_KEY', value: 'fixture-secret' },
       });
       expect(JSON.stringify(saved)).not.toContain('fixture-secret');
-      expect(statSync(join(f.root, '.env')).mode & 0o777).toBe(0o600);
+      // Windows has no mode bits: a file in the user's profile is theirs through the folder's access rules.
+      if (process.platform !== 'win32') expect(statSync(join(f.root, '.env')).mode & 0o777).toBe(0o600);
       expect(() => f.store.save({ ...saved, credential: { name: 'NODE_OPTIONS', value: 'execute' } })).toThrow(
         'Invalid credential'
       );

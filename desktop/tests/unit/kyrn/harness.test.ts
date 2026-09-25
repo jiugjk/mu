@@ -219,11 +219,12 @@ describe('files of an npm-installed harness', () => {
   });
 
   it('finds the Core ML judge’s venv and weights in mu’s home', async () => {
-    const state = '/home/someone/.mu/local-judge';
+    // Spelled by this machine's join, as the judge builds its paths whatever platform it is told it runs on.
+    const state = join('/home/someone', '.mu', 'local-judge');
     const files = new Set([
-      '/home/someone/.local/bin/uv',
-      `${state}/.venv/bin/python`,
-      `${state}/models/laya-multilingual-coreml/coreml_config.json`,
+      join('/home/someone', '.local', 'bin', 'uv'),
+      join(state, '.venv', 'bin', 'python'),
+      join(state, 'models', 'laya-multilingual-coreml', 'coreml_config.json'),
     ]);
     const local = new LocalJudge('/g/mu-agent', {
       platform: 'darwin',

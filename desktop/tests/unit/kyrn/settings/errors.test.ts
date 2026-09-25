@@ -133,8 +133,9 @@ describe('the store names what went wrong with a stable code', () => {
       message: expect.stringContaining('JSON'),
     });
     rmSync(join(dir, 'mu.json'));
-    // A file nobody may read (root may read anything, so this only holds for an ordinary user).
-    if (process.getuid?.() === 0) return;
+    // A file nobody may read (root may read anything, so this only holds for an ordinary user). Windows has no mode
+    // bits: chmod there only sets the read-only flag.
+    if (process.getuid?.() === 0 || process.platform === 'win32') return;
     writeFileSync(join(dir, 'settings.json'), '{}');
     chmodSync(join(dir, 'settings.json'), 0o000);
     expect(failure(() => store.read())).toMatchObject({
@@ -146,8 +147,9 @@ describe('the store names what went wrong with a stable code', () => {
   });
 
   it('names a configuration file it cannot write, with the OS words as the message', () => {
-    // Root may write anywhere, so this only holds for an ordinary user.
-    if (process.getuid?.() === 0) return;
+    // Root may write anywhere, so this only holds for an ordinary user. Windows has no mode bits, and a folder's
+    // read-only flag does not keep files from being written in it.
+    if (process.getuid?.() === 0 || process.platform === 'win32') return;
     const { dir, store } = fixture();
     const read = store.read();
     chmodSync(dir, 0o500);

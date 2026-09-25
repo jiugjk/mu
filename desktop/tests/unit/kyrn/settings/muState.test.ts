@@ -78,7 +78,10 @@ describe('the permission mode of a new conversation', () => {
       const saved = f.store.save({ ...f.store.read(), permissions: { mode: 'full' } });
       expect(saved.permissions).toEqual({ mode: 'full', from: 'picked' });
       expect(f.json('mu/permissions.json')).toEqual({ version: 1, mode: 'full' });
-      expect(statSync(join(f.dir, 'mu', 'permissions.json')).mode & 0o777).toBe(0o600);
+      // Windows has no mode bits: a file in the user's profile is theirs through the folder's access rules.
+      if (process.platform !== 'win32') {
+        expect(statSync(join(f.dir, 'mu', 'permissions.json')).mode & 0o777).toBe(0o600);
+      }
       // mu.json is not where it goes.
       expect(f.json('mu.json')).toEqual({ tiers: ['jev'], modes: { default: 'off' } });
 

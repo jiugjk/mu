@@ -19,7 +19,8 @@ const ports: PiRpc[] = [];
 afterEach(() => {
   vi.restoreAllMocks();
   for (const port of ports.splice(0)) port.close();
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  // On Windows mu is ended through taskkill, which takes a moment: until then its folder cannot be removed.
+  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 /** Starts `script` as mu and collects what it sends. */
@@ -44,7 +45,9 @@ createInterface({ input: process.stdin }).on('line', (line) => {
 `;
 
 describe('PiRpc, the adapter’s line to mu', () => {
-  it('survives a mu that stopped reading: an answer to it ends nothing but that mu', async () => {
+  // Node cannot close its own input on Windows (libuv keeps descriptors 0 to 2 open): this mu cannot be played there.
+  const windows = process.platform === 'win32';
+  it.skipIf(windows)('survives a mu that stopped reading: an answer to it ends nothing but that mu', async () => {
     const logged: string[] = [];
     vi.spyOn(process.stderr, 'write').mockImplementation((chunk: string | Uint8Array) => {
       logged.push(String(chunk));
