@@ -3,14 +3,14 @@ import { Button, Collapse, Empty, Pagination, Select, Tabs, Tag } from '@arco-de
 import { ArrowRight, Bee } from '@icon-park/react';
 import { useTranslation } from 'react-i18next';
 import type { Activity } from '@/common/kyrn/types';
-import { isBeeActive } from '@/common/kyrn/hive';
 import type { HiveFocusRequest } from '../focus';
 import { str } from '../activity';
-import { buildHiveRuns } from './activity';
+import { buildHiveRuns, endedRuns } from './activity';
 import BeeAvatar from './BeeAvatar';
 import BeeInspector from './BeeInspector';
 import styles from './Hive.module.css';
 import { useClock } from '../clock';
+import { settledBee, swarmSummary } from './HiveToolCard';
 
 export { default as HiveToolCard } from './HiveToolCard';
 
@@ -18,6 +18,7 @@ export default function Hive({ events, focus }: { events: Activity[]; focus?: Hi
   const { t } = useTranslation();
   const clock = useClock();
   const runs = useMemo(() => buildHiveRuns(events), [events]);
+  const ended = useMemo(() => endedRuns(events), [events]);
   const [runId, setRunId] = useState<string>();
   const [beeName, setBeeName] = useState<string>();
   const [tab, setTab] = useState('flow');
@@ -30,7 +31,8 @@ export default function Hive({ events, focus }: { events: Activity[]; focus?: Hi
     setPage(1);
   }, [focus]);
   const run = runId ? runs.find((item) => item.id === runId) : runs[0];
-  const bees = run?.snapshot?.bees ?? [];
+  const running = run ? !ended.has(run.id) : false;
+  const bees = (run?.snapshot?.bees ?? []).map((bee) => settledBee(bee, running));
   const selected = bees.find((bee) => bee.name === beeName);
   const deliveries =
     run?.deliveries.filter((delivery) => !beeName || delivery.from === beeName || delivery.to === beeName) ?? [];
@@ -70,13 +72,7 @@ export default function Hive({ events, focus }: { events: Activity[]; focus?: Hi
             <div className='min-w-0 flex-1'>
               <h3 className={styles.beeName}>{t('common.kyrn.hiveView.title')}</h3>
               <div className={styles.hint}>
-                {run.snapshot
-                  ? t('common.kyrn.hiveView.summary', {
-                      active: bees.filter((bee) => isBeeActive(bee.status)).length,
-                      done: bees.filter((bee) => bee.status === 'done').length,
-                      total: bees.length,
-                    })
-                  : t('common.kyrn.hiveView.pending')}
+                {run.snapshot ? swarmSummary(t, bees, running) : t('common.kyrn.hiveView.pending')}
               </div>
             </div>
           </div>

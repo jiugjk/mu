@@ -138,6 +138,11 @@ describe('ToolsModalContent image model guide', () => {
     await waitFor(() => expect(navigateToTab).toHaveBeenCalledWith('providers'));
   });
 
+  it('names the image generation switch after its row', async () => {
+    render(<ToolsModalContent />);
+    expect(await screen.findByRole('switch', { name: 'settings.imageGeneration' })).toBeInTheDocument();
+  });
+
   it('renders the guide text as plain text (no link) when no tab navigator is provided', async () => {
     const { container } = render(<ToolsModalContent />);
 

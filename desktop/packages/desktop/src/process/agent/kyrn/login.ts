@@ -9,7 +9,7 @@ import {
   type LoginStatus,
   type SubscriptionProvider,
 } from '../../../common/kyrn/login';
-import { launchCommand } from './piRpc';
+import { endTree, launchCommand } from './piRpc';
 
 /**
  * What the manager needs of the runner process: lines out, lines in, and a way to end it. Its end is read from
@@ -75,6 +75,18 @@ const toModels = (value: unknown): LoginModel[] =>
 export class LoginManager {
   private current: LoginState = { id: 0, phase: 'idle' };
   private child: RunnerProcess | undefined;
+  /** The runs of `status` and `logout` still going, which end with the app (see dispose). */
+  private readonly runs = new Set<RunnerProcess>();
+  /**
+   * The look at who is signed in that runs now. Every screen that opens asks; the ones that ask while it runs get its
+   * answer. Two runners at once fought over mu's model store: the first could exit holding its lock, and the second,
+   * and the conversation started next, waited half a minute for it.
+   */
+  private looking: Promise<LoginStatus> | undefined;
+  /** The `status` or `logout` runner going now, if any: the next one starts when it has ended. */
+  private running: Promise<unknown> | undefined;
+  /** The app quits: no runner starts any more. */
+  private disposed = false;
   private limit: ReturnType<typeof setTimeout> | undefined;
   private readonly spawnRunner: SpawnRunner;
   private readonly openUrl: (url: string) => void;
@@ -166,20 +178,67 @@ export class LoginManager {
     return this.current;
   }
 
-  /** Who is signed in already. Nothing is known when the runner cannot start: then nobody is. */
+  /**
+   * Ends every run still going: the app quits, and nothing it started may outlive it. A `status` run through a
+   * checkout's tsx can take half a minute on a busy machine; left alone, it kept running after the quit. At a quit
+   * there is no time for a sign-in to wind down: it is ended at once too.
+   */
+  dispose(): void {
+    this.disposed = true;
+    clearTimeout(this.limit);
+    this.limit = undefined;
+    const child = this.child;
+    this.child = undefined;
+    for (const run of [...(child ? [child] : []), ...this.runs]) {
+      try {
+        run.kill();
+      } catch {
+        // Already gone.
+      }
+    }
+    this.runs.clear();
+  }
+
+  /**
+   * Who is signed in already. Nothing is known when the runner cannot start: then nobody is. One look at a time: a
+   * look asked for while one runs gets that one's answer.
+   */
   status(timeoutMs = 20000): Promise<LoginStatus> {
-    return this.statusAfter(['status'], timeoutMs).catch((): LoginStatus => ({ signedIn: [] }));
+    if (this.looking) return this.looking;
+    const nobody: LoginStatus = { signedIn: [] };
+    const look = this.oneAtATime(() => this.statusAfter(['status'], timeoutMs)).catch(() => nobody);
+    this.looking = look;
+    void look.finally(() => {
+      if (this.looking === look) this.looking = undefined;
+    });
+    return look;
   }
 
   /** Signs out of a subscription (its OAuth credential only) and says who is still signed in. */
   logout(provider: SubscriptionProvider, timeoutMs = 20000): Promise<LoginStatus> {
     if (!isSubscriptionProvider(provider)) return Promise.reject(new Error('Unknown provider'));
-    return this.statusAfter(['logout', provider], timeoutMs);
+    return this.oneAtATime(() => this.statusAfter(['logout', provider], timeoutMs));
+  }
+
+  /** Starts `work` now when no runner is going, else once the one going has ended. */
+  private oneAtATime<T>(work: () => Promise<T>): Promise<T> {
+    const before = this.running;
+    const next = before ? before.then(work, work) : work();
+    const settled = next.catch((): void => {});
+    this.running = settled;
+    void settled.finally(() => {
+      if (this.running === settled) this.running = undefined;
+    });
+    return next;
   }
 
   /** Runs the runner once and reads the status line it ends with; its error, if it says one, is the failure. */
   private statusAfter(args: string[], timeoutMs: number): Promise<LoginStatus> {
     return new Promise((resolve, reject) => {
+      if (this.disposed) {
+        reject(new Error('The app is quitting'));
+        return;
+      }
       let child: RunnerProcess;
       try {
         child = this.spawnRunner(args);
@@ -187,6 +246,7 @@ export class LoginManager {
         reject(error instanceof Error ? error : new Error(String(error)));
         return;
       }
+      this.runs.add(child);
       let settled = false;
       let failure = '';
       const finish = (status?: LoginStatus) => {
@@ -219,8 +279,12 @@ export class LoginManager {
             : { signedIn }
         );
       });
-      child.on('close', () => finish());
+      child.on('close', () => {
+        this.runs.delete(child);
+        finish();
+      });
       child.on('error', (error) => {
+        this.runs.delete(child);
         failure ||= error.message;
         finish();
       });
@@ -251,10 +315,32 @@ export class LoginManager {
 export function spawnAuth(launcher: string, agentDir: string): SpawnRunner {
   return (args) => {
     const start = launchCommand(launcher, ['auth', ...args]);
-    return spawn(start.command, start.args, {
+    const child = spawn(start.command, start.args, {
       env: { ...process.env, ...start.env, MU_AGENT_DIR: agentDir },
       stdio: ['pipe', 'pipe', 'pipe'],
+      // A process group of its own on POSIX, so that ending it ends what it started too (a checkout runs pi through
+      // tsx, which starts a second Node). Windows ends the tree with taskkill (see endTree).
+      detached: process.platform !== 'win32',
       windowsHide: true,
     });
+    return {
+      stdout: child.stdout,
+      stdin: child.stdin,
+      on: child.on.bind(child),
+      kill: () => {
+        if (child.exitCode !== null || child.signalCode !== null) return;
+        try {
+          endTree(child.pid, 'SIGTERM', process.platform, {
+            group: (leader, signal) => process.kill(-leader, signal),
+            taskkill: (taskArgs) => {
+              spawn('taskkill', taskArgs, { stdio: 'ignore', windowsHide: true }).on('error', () => child.kill());
+            },
+            own: (signal) => child.kill(signal),
+          });
+        } catch {
+          // Gone already.
+        }
+      },
+    };
   };
 }

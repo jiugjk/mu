@@ -1,7 +1,7 @@
 import type { TFunction } from 'i18next';
 import type { Activity } from '@/common/kyrn/types';
 import { formatNumber } from '@/renderer/services/i18n/format';
-import { isTurnType } from '@/renderer/pages/conversation/Messages/acp/jevLine';
+import { fallbackKind, isTurnType, judgeName } from '@/renderer/pages/conversation/Messages/acp/jevLine';
 import { record, str } from '../activity';
 import { judgeCards, LESSON_FIELDS, runtimeEvents, type JudgeCard } from './activity';
 import { eventLines } from './eventLine';
@@ -9,12 +9,14 @@ import { eventLines } from './eventLine';
 /**
  * The judge tab as a log: one line per judgment and per runtime event, oldest first, so the newest is at the bottom
  * where the eye follows it. A judgment is one line however many records it took (a preflight's wait, verdict and
- * ledger entry fold into one), and each line says what happened in a short sentence of the app language.
+ * ledger entry fold into one), and each line says what happened in a short sentence of the app language. The same
+ * line many times over in a row is one line with a count (`foldRepeats`).
  */
 
 export type LogItem =
   | { type: 'judgment'; id: string; at: number; card: JudgeCard }
-  | { type: 'event'; id: string; at: number; event: Activity };
+  /** `about`: for an answer to a permission question, the call the question named (its `summary`). */
+  | { type: 'event'; id: string; at: number; event: Activity; about?: string };
 
 /**
  * Kinds another tab shows (the board, and the cache ring above it), or the context line above the log: the log leaves
@@ -82,12 +84,45 @@ export function logItems(events: Activity[]): LogItem[] {
   const judgments = judgeCards(once).map(
     (card): LogItem => ({ type: 'judgment', id: `judgment:${card.id}`, at: card.at, card })
   );
+  // An answer names its question by id, which counts within one harness process; the question names the call.
+  const question = (event: Activity): string => JSON.stringify([event.runtimeId ?? '', str(event.payload.id)]);
+  const asked = new Map(
+    once
+      .filter((event) => event.kind === 'permissions.request' && str(event.payload.summary))
+      .map((event) => [question(event), str(event.payload.summary)])
+  );
   const listed = new Set(runtimeEvents(once));
   const others = changes(once)
     .filter((event) => (listed.has(event) || event.kind === 'artifact.image') && !SHOWN_ELSEWHERE.has(event.kind))
-    .map((event): LogItem => ({ type: 'event', id: `event:${event.id}`, at: event.at, event }));
+    .map((event): LogItem => {
+      const item: Extract<LogItem, { type: 'event' }> = { type: 'event', id: `event:${event.id}`, at: event.at, event };
+      const about = event.kind === 'permissions.resolved' ? asked.get(question(event)) : undefined;
+      if (about) item.about = about;
+      return item;
+    });
   // A stable sort: records of the same moment keep the order they came in.
   return [...others, ...judgments].toSorted((a, b) => a.at - b.at);
+}
+
+/** One line of the log: `item` is the latest of `count` records in a row that said the same. */
+export type LogRow = { key: string; item: LogItem; count: number };
+
+/**
+ * The same line many times over in a row ("What the agent is doing · fallback" at every look of the board) is one line
+ * with a count. The row keeps the first record's key, so an opened line stays open as the count grows, and shows the
+ * latest record. Only neighbours fold: a line in between keeps the order of what happened.
+ */
+export function foldRepeats(items: readonly LogItem[], sentence: (item: LogItem) => string): LogRow[] {
+  const rows: LogRow[] = [];
+  let previous = '';
+  for (const item of items) {
+    const said = JSON.stringify([itemCode(item), sentence(item)]);
+    const last = rows.at(-1);
+    if (last && said === previous) rows[rows.length - 1] = { key: last.key, item, count: last.count + 1 };
+    else rows.push({ key: item.id, item, count: 1 });
+    previous = said;
+  }
+  return rows;
 }
 
 /** Whether the agent is working on a turn: it started one and has not settled since. */
@@ -110,14 +145,27 @@ export function pinnedVerdict(items: readonly LogItem[], running: boolean): Judg
 /** The code a line shows: the decision point a judgment answered, or the kind of a runtime event. */
 export const itemCode = (item: LogItem): string => (item.type === 'judgment' ? item.card.specId : item.event.kind);
 
-/** A classification in the words the conversation uses for it ("Classified by Jev: Multi-step task"). */
+/**
+ * A classification in the words the conversation uses for it ("Classified by Jev: Multi-step task"), naming the judge
+ * that answered. One that came to nothing says why: no judge set up, the judge not answering, switched off, skipped.
+ */
 function verdictSentence(t: TFunction, card: JudgeCard): string {
-  if (card.state === 'pending') return t('common.kyrn.jevLine.classifying');
-  if (card.state === 'fallback') return t('common.kyrn.jevLine.fallback');
+  const judge = judgeName(card.model);
+  if (card.state === 'pending') return t('common.kyrn.jevLine.classifying', { judge });
+  if (card.state === 'fallback') {
+    // A wait that ran out (`timeout`) is the judge not answering in time.
+    const kind = fallbackKind(card.reason);
+    if (kind === 'noJudge') return t('common.kyrn.jevLine.noJudge');
+    if (kind === 'quiet') return t(card.reason === 'off' ? 'common.kyrn.jevLine.off' : 'common.kyrn.jevLine.skipped');
+    return t(kind === 'unanswered' ? 'common.kyrn.jevLine.unanswered' : 'common.kyrn.jevLine.fallback', { judge });
+  }
   if (card.state === 'ended') return t('common.kyrn.event.preflight.wait_end');
   const turnType = str(record(card.outcome).turnType);
   const type = t(`common.kyrn.judgeView.values.${isTurnType(turnType) ? turnType : 'other'}`);
-  const said = t(card.state === 'rule' ? 'common.kyrn.jevLine.byRule' : 'common.kyrn.jevLine.classified', { type });
+  const said =
+    card.state === 'rule'
+      ? t('common.kyrn.jevLine.byRule', { type })
+      : t('common.kyrn.jevLine.classified', { type, judge });
   if (card.state === 'shadow') return t('common.kyrn.jevLine.shadow', { line: said });
   if (card.state === 'late') return t('common.kyrn.jevLine.late', { line: said });
   return said;
@@ -134,7 +182,8 @@ export function itemSentence(t: TFunction, item: LogItem, language?: string | nu
       .join(' · ');
   }
   const { kind, payload } = item.event;
-  const lines = eventLines(t, kind, payload, language);
+  // An answer is worded with the call its question named; the record itself stays as it came.
+  const lines = eventLines(t, kind, item.about ? { ...payload, summary: item.about } : payload, language);
   if (lines?.length) return lines.join(' · ');
   const label = t(`common.kyrn.event.${kind}`, { defaultValue: kind });
   const text = str(payload.text) || str(payload.lesson) || str(payload.head) || str(payload.step);

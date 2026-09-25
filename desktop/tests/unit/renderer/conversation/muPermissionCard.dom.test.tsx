@@ -25,6 +25,9 @@ const { acpInvoke, words } = vi.hoisted(() => ({
       'mu.permissionsCard.answer.once': '[ja] once',
       'mu.permissionsCard.answer.sessionFor': '[ja] this conversation ({{grant}})',
       'mu.permissionsCard.answer.deny': '[ja] deny',
+      'mu.permissionsCard.decided.once': '[ja] allowed once: {{summary}}',
+      'mu.permissionsCard.decided.session': '[ja] allowed for this conversation: {{summary}}',
+      'mu.permissionsCard.decided.deny': '[ja] not allowed: {{summary}}',
     } as Record<string, string>,
   },
 }));
@@ -86,6 +89,18 @@ describe('mu’s permission card', () => {
     await vi.waitFor(() =>
       expect(acpInvoke).toHaveBeenCalledWith(expect.objectContaining({ confirm_key: 'mu:session' }))
     );
+  });
+
+  it.each([
+    ['mu:once', 'allow', '[ja] allowed once: git push --force'],
+    ['mu:session', 'allow', '[ja] allowed for this conversation: git push --force'],
+    ['mu:deny', 'deny', '[ja] not allowed: git push --force'],
+  ])('says what the answer %s decided about the call, once it went through', async (optionId, outcome, said) => {
+    render(<MessageAcpPermission message={card(FLAGGED)} />);
+    fireEvent.click(screen.getByTestId(`message-acp-permission-option-${optionId}`));
+    const status = await screen.findByTestId('message-acp-permission-status');
+    expect(status).toHaveTextContent(said);
+    expect(status).toHaveAttribute('data-outcome', outcome);
   });
 
   it('reads mu’s codes as AionCore relays them, with the keys snake-cased', () => {
@@ -150,13 +165,22 @@ describe('the wording of mu’s permission card', () => {
     for (const rawInput of [undefined, null, 'text', { command: 'ls' }, { mu: 'shell' }, { mu: ['shell'] }])
       expect(muPermissionWording(rawInput, translate, has)).toBeUndefined();
   });
+
+  it('says what an answer decided only for mu’s answers, and only about a call it names', () => {
+    const wording = muPermissionWording({ mu: { kind: 'shell' } }, translate, has);
+    expect(wording?.decided('mu:deny', 'rm -rf build')).toBe('[ja] not allowed: rm -rf build');
+    expect(wording?.decided('mu:deny', undefined)).toBeUndefined();
+    expect(wording?.decided('reject', 'rm -rf build')).toBeUndefined();
+    expect(wording?.decided('mu:always', 'rm -rf build')).toBeUndefined();
+  });
 });
 
 describe('the wording of mu’s permission card in the app’s own languages', () => {
   // Every code the harness sends (its presentation-codes.md, permissions.request), in the three languages that must
   // not lag: the English fallback would otherwise stand in for mu's own Chinese.
   const KINDS = ['edit', 'shell', 'run', 'outside', 'delegate', 'other'];
-  const REASONS = ['ask', 'unsure', 'beyond', 'unrelated', 'protected'];
+  // `nojudge` and `judgedown`: Jev mode without a verdict (no judge could answer, or the judge did not this time).
+  const REASONS = ['ask', 'unsure', 'beyond', 'unrelated', 'protected', 'nojudge', 'judgedown'];
   const FLAGS = [
     'recursive_or_forced_delete',
     'discards_git_work',
@@ -194,5 +218,7 @@ describe('the wording of mu’s permission card in the app’s own languages', (
     for (const id of ['once', 'session', 'deny']) expect(answers?.answer(`mu:${id}`)).toBeTruthy();
     expect(answers?.answer('mu:session')).toContain('git push');
     expect(worded({ kind: 'shell' })?.answer('mu:session')).toBeTruthy();
+    for (const id of ['once', 'session', 'deny'])
+      expect(answers?.decided(`mu:${id}`, 'rm -rf build')).toContain('rm -rf build');
   });
 });

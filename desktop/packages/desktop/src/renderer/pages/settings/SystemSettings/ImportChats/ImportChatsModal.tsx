@@ -1,15 +1,18 @@
 /**
  * Picking Claude Code and Codex conversations to bring into mu (common/kyrn/importChats.ts): every one found on this
  * computer, under its tool, newest first, with its project folder, date and first message. The chosen ones become mu
- * conversations in the conversation list; one alone opens right away.
+ * conversations in the conversation list; one alone opens right away. The settings dialogs' frame (AionModal's
+ * standard variant, as the theme and MCP import dialogs): the title at the start, hairlines between title, body and
+ * buttons.
  */
-import { Button, Checkbox, Input, Message, Modal, Spin } from '@arco-design/web-react';
+import { Button, Checkbox, Input, Message, Spin } from '@arco-design/web-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import type { TFunction } from 'i18next';
 import { kyrnBridge, unwrap } from '@/common/kyrn/bridge';
 import { groupChats, IMPORT_TOOL_NAMES, type FoundChat, type ImportOutcome } from '@/common/kyrn/importChats';
+import AionModal from '@/renderer/components/base/AionModal';
 import { emitter } from '@/renderer/utils/emitter';
 import { formatByteSize, formatDateTime } from '@/renderer/services/i18n/format';
 import { getWorkspaceDisplayName } from '@/renderer/utils/workspace/workspace';
@@ -169,17 +172,18 @@ const ImportChatsModal: React.FC<Props> = ({ visible, onClose }) => {
     }
   };
 
-  const body = (() => {
+  // Instead of the list, one line where the description starts: what is happening, or why there is nothing to choose.
+  const status = (() => {
     if (state.phase === 'loading')
       return (
-        <div className='flex items-center gap-8px py-24px text-13px text-t-secondary'>
+        <div className='flex items-center gap-8px py-8px text-13px leading-20px text-t-secondary'>
           <Spin size={16} />
           {t('mu.importChats.dialog.loading')}
         </div>
       );
     if (state.phase === 'failed')
       return (
-        <div className='flex flex-col items-start gap-8px py-16px' role='alert'>
+        <div className='flex flex-col items-start gap-8px py-8px' role='alert'>
           <span className='text-13px leading-20px text-t-primary'>{state.error.text}</span>
           {state.error.detail ? (
             <pre className='m-0 max-w-full whitespace-pre-wrap break-words text-12px text-t-tertiary'>
@@ -192,73 +196,85 @@ const ImportChatsModal: React.FC<Props> = ({ visible, onClose }) => {
         </div>
       );
     if (state.chats.length === 0)
-      return <div className='py-24px text-13px text-t-secondary'>{t('mu.importChats.dialog.empty')}</div>;
+      return <p className='m-0 py-8px text-13px leading-20px text-t-secondary'>{t('mu.importChats.dialog.empty')}</p>;
     if (groups.length === 0)
-      return <div className='py-24px text-13px text-t-secondary'>{t('mu.importChats.dialog.noMatch')}</div>;
-    return groups.map((group) => (
-      <section key={group.tool} className='flex flex-col' data-testid='import-chat-group' data-tool={group.tool}>
-        <h3 className='m-0 px-8px pt-12px pb-4px text-12px font-600 leading-18px text-t-secondary'>
-          {IMPORT_TOOL_NAMES[group.tool]}
-          <span className='ms-6px font-400 text-t-tertiary'>{group.chats.length}</span>
-        </h3>
-        {group.chats.map((chat) => (
-          <ChatRow
-            key={chat.path}
-            chat={chat}
-            checked={selected.has(chat.path)}
-            failure={failures.get(chat.path)}
-            onToggle={toggle}
-            onOpen={open}
-          />
-        ))}
-      </section>
-    ));
+      return <p className='m-0 py-8px text-13px leading-20px text-t-secondary'>{t('mu.importChats.dialog.noMatch')}</p>;
+    return null;
   })();
+  // A search box only once there is something to search.
+  const searchable = state.phase === 'ready' && state.chats.length > 0;
 
   return (
-    <Modal
-      title={t('mu.importChats.dialog.title')}
+    <AionModal
+      variant='standard'
+      header={{ title: t('mu.importChats.dialog.title'), showClose: true }}
       visible={visible}
       onCancel={onClose}
-      alignCenter
-      style={{ width: 720, maxWidth: 'calc(100vw - 32px)', borderRadius: '12px' }}
-      getPopupContainer={() => document.body}
-      footer={
-        <div className='flex items-center justify-between gap-12px'>
-          <span className='text-13px text-t-secondary'>
-            {selected.size > 0 ? t('mu.importChats.dialog.selected', { count: selected.size }) : ''}
-          </span>
-          <span className='flex gap-8px'>
-            <Button onClick={onClose}>{t('common.cancel')}</Button>
-            <Button
-              type='primary'
-              loading={importing}
-              disabled={selected.size === 0}
-              onClick={() => void start()}
-              data-testid='import-chats-start'
-            >
-              {importing ? t('mu.importChats.dialog.importing') : t('mu.importChats.dialog.import')}
-            </Button>
-          </span>
-        </div>
-      }
+      style={{ width: 720 }}
+      footer={{
+        render: () => (
+          <div className='flex items-center justify-between gap-12px'>
+            <span className='text-13px text-t-secondary'>
+              {selected.size > 0 ? t('mu.importChats.dialog.selected', { count: selected.size }) : ''}
+            </span>
+            <span className='flex gap-10px'>
+              <Button onClick={onClose} className='px-20px min-w-80px' style={{ borderRadius: 8 }}>
+                {t('common.cancel')}
+              </Button>
+              <Button
+                type='primary'
+                loading={importing}
+                disabled={selected.size === 0}
+                onClick={() => void start()}
+                className='px-20px min-w-80px'
+                style={{ borderRadius: 8 }}
+                data-testid='import-chats-start'
+              >
+                {importing ? t('mu.importChats.dialog.importing') : t('mu.importChats.dialog.import')}
+              </Button>
+            </span>
+          </div>
+        ),
+      }}
     >
-      <div className='flex flex-col gap-12px'>
+      <div className='flex flex-col gap-12px' data-testid='import-chats-body'>
         <p className='m-0 text-13px leading-20px text-t-secondary' style={{ textWrap: 'balance' }}>
           {t('mu.importChats.dialog.hint')}
         </p>
-        <Input
-          allowClear
-          value={query}
-          onChange={setQuery}
-          placeholder={t('mu.importChats.dialog.search')}
-          disabled={state.phase !== 'ready'}
-        />
-        <div className='max-h-[52vh] overflow-y-auto -mx-8px' data-testid='import-chats-list'>
-          {body}
-        </div>
+        {searchable ? (
+          <Input allowClear value={query} onChange={setQuery} placeholder={t('mu.importChats.dialog.search')} />
+        ) : null}
+        {status ?? (
+          // The rows reach 8px past the column on both sides: their hover fills a little beyond the words, which line
+          // up with the description.
+          <div className='max-h-[52vh] overflow-y-auto -mx-8px' data-testid='import-chats-list'>
+            {groups.map((group) => (
+              <section
+                key={group.tool}
+                className='flex flex-col'
+                data-testid='import-chat-group'
+                data-tool={group.tool}
+              >
+                <h3 className='m-0 px-8px pt-12px pb-4px text-12px font-600 leading-18px text-t-secondary'>
+                  {IMPORT_TOOL_NAMES[group.tool]}
+                  <span className='ms-6px font-400 text-t-tertiary'>{group.chats.length}</span>
+                </h3>
+                {group.chats.map((chat) => (
+                  <ChatRow
+                    key={chat.path}
+                    chat={chat}
+                    checked={selected.has(chat.path)}
+                    failure={failures.get(chat.path)}
+                    onToggle={toggle}
+                    onOpen={open}
+                  />
+                ))}
+              </section>
+            ))}
+          </div>
+        )}
       </div>
-    </Modal>
+    </AionModal>
   );
 };
 

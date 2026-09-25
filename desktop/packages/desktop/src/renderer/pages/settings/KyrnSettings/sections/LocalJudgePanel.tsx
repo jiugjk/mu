@@ -22,8 +22,10 @@ const UV_URL = 'https://docs.astral.sh/uv/getting-started/installation/';
  * On an Apple Silicon Mac (coreml) one click installs it after the person agrees to the download. Elsewhere (onnx) the
  * app never downloads the model: it links to Hugging Face, shows the folder the files go in, and checks and starts
  * them once they are there.
+ *
+ * `guide`: in the first-run guide, which sets Laya up; stopping it is for the settings.
  */
-export default function LocalJudgePanel() {
+export default function LocalJudgePanel({ guide = false }: { guide?: boolean } = {}) {
   const { t, i18n } = useTranslation();
   const [modal, modalHolder] = Modal.useModal();
   const [state, setState] = useState<LocalJudgeState>();
@@ -191,7 +193,7 @@ export default function LocalJudgePanel() {
             {t('mu.judges.laya.start')}
           </Button>
         ) : null}
-        {state.running || (onnx && busy && task.action === 'start') ? (
+        {!guide && (state.running || (onnx && busy && task.action === 'start')) ? (
           <Button
             size='small'
             loading={busy && task.action === 'stop'}

@@ -29,7 +29,7 @@
   "resumeSuccess": "任務已恢復",
   "message.badge": "定時任務",
   "allScheduledTasks": "全部定時任務",
-  "noTasks": "暫無定時任務",
+  "noTasks": "還沒有定時任務。",
   "runNowSuccess": "任務已觸發執行",
   "detail": {
     "backToAll": "全部定時任務",
@@ -62,6 +62,7 @@
     "keepAwakeTooltip": "開啟後，mu 將阻止電腦進入休眠狀態",
     "searchPlaceholder": "搜尋定時任務...",
     "noSearchResults": "沒有匹配的定時任務。",
+    "emptyHint": "點上方的「{{button}}」建立一個。",
     "createTask": "建立定時任務",
     "editTask": "編輯定時任務",
     "createSuccess": "任務建立成功",

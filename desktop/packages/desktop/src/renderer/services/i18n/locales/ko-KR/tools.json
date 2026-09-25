@@ -31,7 +31,8 @@
     "executing": "실행 중",
     "success": "성공",
     "error": "오류",
-    "canceled": "취소됨"
+    "canceled": "취소됨",
+    "denied": "허용되지 않음"
   },
   "titles": {
     "web_search_started": "웹 검색 시작됨",
@@ -75,6 +76,7 @@
     "loadError": "전체 출력을 불러올 수 없습니다.",
     "retry": "다시 시도",
     "callAria": "{{name}} · {{status}}",
+    "denied": "실행하지 않음: 허용하지 않았습니다.",
     "showMore": "더 보기",
     "showLess": "접기"
   },

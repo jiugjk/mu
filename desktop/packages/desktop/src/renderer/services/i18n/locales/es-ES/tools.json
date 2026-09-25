@@ -31,7 +31,8 @@
     "executing": "Ejecutando",
     "success": "Exitoso",
     "error": "Error",
-    "canceled": "Cancelado"
+    "canceled": "Cancelado",
+    "denied": "No permitido"
   },
   "titles": {
     "web_search_started": "Búsqueda web iniciada",
@@ -75,6 +76,7 @@
     "loadError": "No se pudo cargar la salida completa.",
     "retry": "Reintentar",
     "callAria": "{{name}} · {{status}}",
+    "denied": "No se ha ejecutado: no lo has permitido.",
     "showMore": "Mostrar más",
     "showLess": "Mostrar menos"
   },

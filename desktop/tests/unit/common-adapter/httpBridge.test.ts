@@ -309,6 +309,21 @@ describe('httpBridge', () => {
       expect(result).toBe(42);
       expect(warnSpy).toHaveBeenCalledWith('[httpBridge] stub: test not yet implemented in backend');
     });
+
+    // macOS QA, 2026-09-25: googleAuth.status is asked again at every window focus, and warned 52 times in one pass.
+    it('warns once per stub, however often it is asked', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const provider = stubProvider('googleAuth.status', { success: false });
+      const answers = await Promise.all([provider.invoke(), provider.invoke(), provider.invoke()]);
+      expect(answers).toEqual([{ success: false }, { success: false }, { success: false }]);
+      await stubProvider('other.stub', 0).invoke();
+
+      expect(warnSpy.mock.calls.map((call) => call[0])).toEqual([
+        '[httpBridge] stub: googleAuth.status not yet implemented in backend',
+        '[httpBridge] stub: other.stub not yet implemented in backend',
+      ]);
+    });
   });
 
   describe('withResponseMap', () => {

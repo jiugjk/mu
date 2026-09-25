@@ -135,6 +135,11 @@ describe('MyAssistantCard', () => {
     expect(onOpenDetail).toHaveBeenCalledWith(expect.objectContaining({ id: 'card-1' }));
   });
 
+  it('names its enable switch after the assistant it shows', () => {
+    renderCard(makeAssistant({ id: 'card-1', name: 'Fallback', name_i18n: { 'en-US': 'Localized Name' } }));
+    expect(screen.getByRole('switch', { name: 'Localized Name' })).toBe(screen.getByTestId('switch-enabled-card-1'));
+  });
+
   it('toggles enabled state without opening the detail view', () => {
     const { onToggleEnabled, onOpenDetail } = renderCard(makeAssistant({ id: 'card-1', enabled: true }));
     fireEvent.click(screen.getByTestId('switch-enabled-card-1'));

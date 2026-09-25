@@ -5,7 +5,7 @@
  */
 
 import { Button, Card, Typography } from '@arco-design/web-react';
-import { Attention, CheckOne, Info } from '@icon-park/react';
+import { Attention, CheckOne, Forbid, Info } from '@icon-park/react';
 import classNames from 'classnames';
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -44,7 +44,16 @@ type PermissionRequestPanelProps = {
   detailLabelKey?: string;
   options: PermissionPanelOption[];
   onConfirm: (optionValue: string) => Promise<void>;
+  /**
+   * What was decided, said after the answer went through (e.g. "You said no: rm -rf build"), or undefined to name the
+   * answer that was picked.
+   */
+  decision?: (option: PermissionPanelOption) => string | undefined;
 };
+
+/** How an answer reads once given: it let the call run, it refused it, or it chose something else. */
+const outcomeOf = (option: PermissionPanelOption): 'allow' | 'deny' | 'other' =>
+  option.intent.startsWith('allow') ? 'allow' : option.intent.startsWith('reject') ? 'deny' : 'other';
 
 export const PermissionRequestPanel: React.FC<PermissionRequestPanelProps> = ({
   requestKey,
@@ -56,11 +65,14 @@ export const PermissionRequestPanel: React.FC<PermissionRequestPanelProps> = ({
   detailLabelKey,
   options,
   onConfirm,
+  decision,
 }) => {
   const { t } = useTranslation();
   const optionsIdentity = getPermissionOptionsIdentity(options);
   const [isResponding, setIsResponding] = useState(false);
-  const [hasResponded, setHasResponded] = useState(false);
+  /** The answer that went through; the card then says what it decided. */
+  const [answered, setAnswered] = useState<PermissionPanelOption | null>(null);
+  const hasResponded = answered !== null;
   const [hasError, setHasError] = useState(false);
   /** The question is gone: its buttons go too. */
   const [isGone, setIsGone] = useState(false);
@@ -74,7 +86,7 @@ export const PermissionRequestPanel: React.FC<PermissionRequestPanelProps> = ({
     requestEpochRef.current += 1;
     respondingRef.current = false;
     setIsResponding(false);
-    setHasResponded(false);
+    setAnswered(null);
     setHasError(false);
     setIsGone(false);
     setSubmittingId(null);
@@ -83,7 +95,7 @@ export const PermissionRequestPanel: React.FC<PermissionRequestPanelProps> = ({
   useEffect(() => {
     optionsEpochRef.current += 1;
     setHasError(false);
-    setHasResponded(false);
+    setAnswered(null);
     setIsGone(false);
   }, [optionsIdentity]);
 
@@ -106,7 +118,7 @@ export const PermissionRequestPanel: React.FC<PermissionRequestPanelProps> = ({
       try {
         await onConfirm(option.value);
         if (requestEpochRef.current === requestEpoch && optionsEpochRef.current === optionsEpoch) {
-          setHasResponded(true);
+          setAnswered(option);
         }
       } catch (error) {
         if (requestEpochRef.current === requestEpoch && optionsEpochRef.current === optionsEpoch) {
@@ -197,15 +209,23 @@ export const PermissionRequestPanel: React.FC<PermissionRequestPanelProps> = ({
           </div>
         )}
 
-        {hasResponded && (
+        {answered && (
+          // What the answer decided, not only that it was sent: allowed (once, or for longer) or refused.
           <div
-            className={classNames(styles.feedback, styles.success)}
+            className={classNames(styles.feedback, outcomeOf(answered) === 'allow' && styles.success)}
             role='status'
             aria-live='polite'
             data-testid={`${testIdPrefix}-status`}
+            data-outcome={outcomeOf(answered)}
           >
-            <CheckOne theme='outline' size='16' aria-hidden='true' />
-            <span>{t('messages.responseSentSuccessfully')}</span>
+            {outcomeOf(answered) === 'deny' ? (
+              <Forbid theme='outline' size='16' aria-hidden='true' />
+            ) : (
+              <CheckOne theme='outline' size='16' aria-hidden='true' />
+            )}
+            <span className={styles.decision}>
+              {decision?.(answered) ?? t('messages.permissionAnswered', { option: answered.label })}
+            </span>
           </div>
         )}
       </div>

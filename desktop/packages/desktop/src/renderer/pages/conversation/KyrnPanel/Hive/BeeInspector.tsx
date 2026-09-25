@@ -4,10 +4,11 @@ import { Terminal } from '@icon-park/react';
 import { useTranslation } from 'react-i18next';
 import type { HiveBee } from '@/common/kyrn/hive';
 import type { Activity } from '@/common/kyrn/types';
-import { thinkingLevelLabel } from '@/renderer/utils/model/thinkingLevel';
+import { useModelNames } from '@/renderer/hooks/agent/useModelNames';
 import { beeRecords } from './activity';
 import BeeAvatar from './BeeAvatar';
 import { beeErrorText } from './codes';
+import { beeModel } from './HiveToolCard';
 import styles from './Hive.module.css';
 import { useClock } from '../clock';
 import { beeCounters, ErrorNotice, quietLabel } from '../text';
@@ -33,6 +34,7 @@ function RecordText({ text, dir }: { text: string; dir?: 'ltr' }) {
 export default function BeeInspector({ bee, focus, events }: { bee: HiveBee; focus?: string; events: Activity[] }) {
   const { t, i18n } = useTranslation();
   const clock = useClock();
+  const names = useModelNames();
   const [page, setPage] = useState(1);
   const records = useMemo(() => beeRecords(events, bee.name).reverse(), [events, bee.name]);
   const status = t(bee.status === 'unknown' ? 'common.kyrn.hiveView.unknown' : `common.kyrn.beeStatus.${bee.status}`);
@@ -47,9 +49,7 @@ export default function BeeInspector({ bee, focus, events }: { bee: HiveBee; foc
       </div>
       <div className='flex flex-wrap gap-6px my-8px'>
         <Tag>{status}</Tag>
-        <span className={styles.hint}>
-          {[bee.model, bee.thinking && thinkingLevelLabel(t, bee.thinking)].filter(Boolean).join(' · ')}
-        </span>
+        <span className={styles.hint}>{beeModel(t, bee, names)}</span>
       </div>
       <p className={styles.hint}>{beeCounters(t, bee)}</p>
       {bee.quietMs > 0 && <p className={styles.hint}>{quietLabel(t, bee.quietMs, i18n.language)}</p>}

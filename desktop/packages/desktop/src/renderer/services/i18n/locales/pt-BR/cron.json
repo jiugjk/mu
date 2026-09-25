@@ -28,7 +28,7 @@
   "resumeSuccess": "Tarefa retomada",
   "message.badge": "Agendado",
   "allScheduledTasks": "Todas as Tarefas Agendadas",
-  "noTasks": "Sem tarefas agendadas",
+  "noTasks": "Ainda não há tarefas agendadas.",
   "runNowSuccess": "Execução da tarefa iniciada",
   "detail": {
     "backToAll": "Todas as tarefas agendadas",
@@ -158,7 +158,8 @@
     "createFailed": "Não foi possível criar a tarefa: {{error}}",
     "updateFailed": "Não foi possível salvar a tarefa: {{error}}",
     "searchPlaceholder": "Pesquisar tarefas...",
-    "noSearchResults": "Nenhuma tarefa agendada correspondente."
+    "noSearchResults": "Nenhuma tarefa agendada correspondente.",
+    "emptyHint": "Crie uma com “{{button}}”, acima."
   },
   "trigger": {
     "runScheduledTask": "Executar tarefa agendada: {{name}}"

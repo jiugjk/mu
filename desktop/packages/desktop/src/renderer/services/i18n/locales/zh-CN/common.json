@@ -68,6 +68,7 @@
   "tray.showWindow": "显示 mu",
   "tray.newChat": "新建对话",
   "tray.closeToTray": "隐藏到托盘",
+  "tray.hideToMenuBar": "隐藏到菜单栏",
   "tray.about": "关于 mu",
   "tray.restart": "重启应用",
   "tray.quit": "退出",
@@ -175,6 +176,8 @@
       "open": "打开蜂群",
       "inspect": "查看 {{name}}",
       "summary": "{{active}} 个进行中 · 已完成 {{done}} / 共 {{total}}",
+      "summaryEnded": "已完成 {{done}} / 共 {{total}}",
+      "summaryUnfinished": "已完成 {{done}} / 共 {{total}} · {{unfinished}} 个没做完",
       "counts": "运行中 {{running}} · 已完成 {{done}} · 失败 {{failed}}",
       "none": "本会话还没有子智能体。",
       "details": "信息流与记录",
@@ -890,7 +893,8 @@
       "log": {
         "thisTurn": "本轮",
         "earlier": "显示更早的记录",
-        "latest": "跳到最新"
+        "latest": "跳到最新",
+        "times": "{{times}} 次"
       }
     },
     "empty": "当前会话还没有这类记录。",
@@ -945,10 +949,14 @@
         "switched": "看板开关已切换"
       },
       "permissions": {
-        "mode": "权限模式"
+        "mode": "权限模式",
+        "request": "请求授权",
+        "resolved": "授权已答复",
+        "approved": "未询问即运行"
       },
       "checkpoint": {
-        "taken": "已保存检查点"
+        "taken": "已保存检查点",
+        "off": "检查点已关闭"
       },
       "rewind": {
         "proposed": "建议回滚",
@@ -1070,6 +1078,7 @@
       "empty": "等代理做一会儿，这里会用大白话告诉你进展",
       "checks": "验收 {{done}}/{{total}}",
       "ended": "已停下",
+      "done": "已完成",
       "brief": "简要版",
       "briefHelp": "这次模型没来得及写，先用固定的简短说明。",
       "needsYou": "需要你确认",
@@ -1236,12 +1245,17 @@
     "compactionDropped_one": "移除 {{count}} 次调用",
     "compactionDropped_other": "移除 {{count}} 次调用",
     "jevLine": {
-      "classifying": "Jev 正在归类…",
-      "classified": "Jev 归类为{{type}}",
+      "classifying": "{{judge}} 正在归类…",
+      "classified": "{{judge}} 归类为{{type}}",
       "byRule": "按规则归类为{{type}}",
       "shadow": "{{line}}（仅观察，没有生效）",
       "late": "{{line}}（来晚了，这一轮没用上）",
-      "fallback": "Jev 这次没给出分类，按默认方式继续"
+      "fallback": "{{judge}} 这次没给出明确分类，按默认方式继续",
+      "unanswered": "{{judge}} 这次没有回答，按默认方式继续",
+      "noJudge": "还没有可用的判定器，消息不会被归类。",
+      "setUp": "设置判定器",
+      "skipped": "已跳过归类",
+      "off": "归类已关闭"
     },
     "eventLine": {
       "detail": "详情：{{detail}}",
@@ -1338,7 +1352,19 @@
         }
       },
       "permissions": {
-        "mode": "权限模式：{{mode}}"
+        "mode": "权限模式：{{mode}}",
+        "request": "等你授权：{{summary}}",
+        "waiting": "等你授权",
+        "answers": {
+          "once": "你允许了一次",
+          "session": "这次对话都允许",
+          "deny": "你没允许"
+        },
+        "about": "{{answer}}：{{summary}}",
+        "approved": {
+          "judge": "判定器放行了，没有问你：{{summary}}",
+          "grant": "这次对话已允许，没有再问：{{summary}}"
+        }
       },
       "board": {
         "on": "看板：打开",
@@ -1355,11 +1381,15 @@
   },
   "menu": {
     "about": "关于 {{name}}",
+    "settings": "设置…",
     "services": "服务",
     "hide": "隐藏 {{name}}",
     "hideOthers": "隐藏其他",
     "unhide": "全部显示",
     "quit": "退出 {{name}}",
+    "file": "文件",
+    "newChat": "新会话",
+    "closeWindow": "关闭窗口",
     "edit": "编辑",
     "undo": "撤销",
     "redo": "重做",
@@ -1377,8 +1407,13 @@
     "zoomIn": "放大",
     "zoomOut": "缩小",
     "toggleFullScreen": "切换全屏",
+    "window": "窗口",
+    "minimize": "最小化",
+    "zoomWindow": "缩放",
+    "bringAllToFront": "前置全部窗口",
     "help": "帮助",
-    "checkForUpdates": "检查更新…"
+    "checkForUpdates": "检查更新…",
+    "projectPage": "GitHub 上的 {{name}}"
   },
   "trayMenu": {
     "runningTasks": "运行中的任务：{{count}}"

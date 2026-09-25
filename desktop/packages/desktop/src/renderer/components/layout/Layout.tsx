@@ -10,13 +10,20 @@ import Titlebar from '@/renderer/components/layout/Titlebar';
 import MuMark from '@renderer/components/brand/MuMark';
 import { Layout as ArcoLayout, Message, Tooltip } from '@arco-design/web-react';
 import classNames from 'classnames';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { setGlobalNavigate } from '@/renderer/utils/navigation';
 import { usePreviewContext } from '@renderer/pages/conversation/Preview';
-import WorkPanelHost from '@renderer/components/layout/WorkPanel';
+import WorkPanelHost, { panelGeometry } from '@renderer/components/layout/WorkPanel';
 import { useWorkPanelMemory } from '@renderer/components/layout/WorkPanel/workPanelStore';
+import {
+  isSiderCrowded,
+  isSiderFolded,
+  SIDER_RAIL_WIDTH,
+  siderChoiceAfterRoomChange,
+  type SiderChoice,
+} from '@renderer/components/layout/Sider/siderRoom';
 import { useBrowserMaximized } from '@renderer/pages/conversation/Preview/browser/browserStore';
 import { setCurrentProject } from '@renderer/pages/conversation/explorer/currentProjectStore';
 import {
@@ -34,6 +41,7 @@ import { cleanupSiderTooltips } from '@renderer/utils/ui/siderTooltip';
 import { useConversationShortcuts } from '@renderer/hooks/ui/useConversationShortcuts';
 import { isElectronDesktop } from '@renderer/utils/platform';
 import { deferredRuntimeNeeds } from '@renderer/services/runtime/deferredNodeRuntime';
+import { SETTINGS_HOME } from '@renderer/pages/settings/settingsNav';
 import '@renderer/styles/layout.css';
 
 const SidebarIcon: React.FC<{ size?: number; strokeWidth?: number }> = ({ size = 18, strokeWidth = 4 }) => (
@@ -86,11 +94,6 @@ const useDebug = () => {
 };
 
 const DEFAULT_SIDER_WIDTH = 260;
-/**
- * Collapsed on a desktop, the sidebar is a rail of its icons: the mark, a new conversation, search, the scheduled
- * tasks, the settings and the theme, each with its tooltip. On a phone it slides away entirely.
- */
-const DESKTOP_COLLAPSED_WIDTH = 56;
 // 桌面侧栏连续可调：下限 200；低于此值拖拽即吸附收起（消灭旧 130 死区）。
 // 上限 = 窗口宽 50%（动态随窗口）。
 const SIDER_MIN_WIDTH = 200;
@@ -100,9 +103,9 @@ const MOBILE_SIDER_MAX_WIDTH = 420;
 
 const detectMobileViewportOrTouch = (): boolean => {
   if (typeof window === 'undefined') return false;
-  if (isElectronDesktop()) {
-    return window.innerWidth < 768;
-  }
+  // A desktop window is never a phone, however narrow: its sidebar folds to the rail and the work panel docks or takes
+  // the row, with no overlay or scrim (the window's minimum width keeps a usable transcript beside the rail).
+  if (isElectronDesktop()) return false;
   const width = window.innerWidth;
   const byWidth = width < 768;
   // 仅在小屏时才将 coarse/touch 视为移动端，避免触控笔记本被误判
@@ -113,12 +116,28 @@ const detectMobileViewportOrTouch = (): boolean => {
   return byWidth || (smallScreen && (byMedia || byTouchPoints));
 };
 
+/** Whether the window a layout mounts in is already too narrow for the open sidebar (see `isSiderCrowded`). */
+const startsCrowded = (): boolean =>
+  typeof window !== 'undefined' &&
+  isSiderCrowded(false, {
+    viewportWidth: window.innerWidth,
+    siderWidth: DEFAULT_SIDER_WIDTH,
+    panelOpen: false,
+    isMobile: detectMobileViewportOrTouch(),
+  });
+
 const Layout: React.FC<{
   sider: React.ReactNode;
   onSessionClick?: () => void;
 }> = ({ sider, onSessionClick: _onSessionClick }) => {
-  const [collapsed, setCollapsed] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
+  // The sidebar folds to its rail while the window has no room for it beside a readable conversation (and the work
+  // panel, when that is open), and opens again once there is. The person's own choice stands over that: a sidebar they
+  // folded stays folded however wide the window gets, and one they opened in a crowded window stays open until the room
+  // changes.
+  const [siderChoice, setSiderChoice] = useState<SiderChoice>(null);
+  const [siderCrowded, setSiderCrowded] = useState(startsCrowded);
+  const collapsed = isSiderFolded(siderChoice, siderCrowded);
+  const [isMobile, setIsMobile] = useState(detectMobileViewportOrTouch);
   const [viewportWidth, setViewportWidth] = useState<number>(() =>
     typeof window === 'undefined' ? 390 : window.innerWidth
   );
@@ -130,9 +149,11 @@ const Layout: React.FC<{
   const location = useLocation();
   const workspaceAvailable =
     location.pathname.startsWith('/conversation/') || (TEAM_MODE_ENABLED && location.pathname.startsWith('/team/'));
-  const toggleSider = useCallback(() => {
-    setCollapsed((previous) => !previous);
-  }, []);
+  // The person folding or opening the sidebar: the titlebar button, ⌘B, dragging or double-clicking its edge.
+  const setSiderCollapsed = useCallback((next: boolean) => setSiderChoice(next ? 'folded' : 'open'), []);
+  const toggleSider = useCallback(() => setSiderCollapsed(!collapsed), [collapsed, setSiderCollapsed]);
+  // On a phone the sidebar is a sheet over the page, and putting it away after a pick is no wish to keep it folded.
+  const putAwayPhoneSider = useCallback(() => setSiderChoice(null), []);
   useConversationShortcuts({ navigate, toggleSider });
   // Expose navigate to code running outside the Router tree (e.g. dialogs
   // mounted above the Router in the provider tree).
@@ -144,6 +165,11 @@ const Layout: React.FC<{
   // The mu wordmark acts as Home / Back-to-Chat, but only from settings routes.
   // In non-settings routes the user is already "home", so it is a no-op (and not actionable).
   const isSettingsRoute = location.pathname.startsWith('/settings');
+  // The page the menu's commands arrive on, without re-subscribing to them on every navigation.
+  const pathnameRef = useRef(location.pathname);
+  useEffect(() => {
+    pathnameRef.current = location.pathname;
+  }, [location.pathname]);
   // Only wired to the wordmark in the isSettingsRoute branch below, so the
   // "no-op outside settings" contract is enforced structurally — no internal
   // route guard needed (the chat-route wordmark is a plain, inert div).
@@ -205,8 +231,6 @@ const Layout: React.FC<{
     }
   }, [location.pathname, workspaceAvailable, closePreviewOnRouteChange]);
 
-  const collapsedRef = useRef(collapsed);
-
   // 桌面侧栏连续可调宽 + 记忆宽度 + 收起吸附。复用 useResizableSplit
   // 的 pointer/rAF 拖拽管线：拖到 <200 吸附收起（onCollapsedChange→collapsed），
   // ≥200 跟手且写盘，双击分隔线恢复 260。上限动态跟随窗口 50%。移动端不使用。
@@ -217,10 +241,30 @@ const Layout: React.FC<{
     maxWidth: Math.max(SIDER_MIN_WIDTH, Math.round(viewportWidth * 0.5)),
     storageKey: 'sider-width-px',
     collapseThreshold: SIDER_MIN_WIDTH,
-    collapsedWidth: DESKTOP_COLLAPSED_WIDTH,
+    collapsedWidth: SIDER_RAIL_WIDTH,
     collapsed,
-    onCollapsedChange: setCollapsed,
+    onCollapsedChange: setSiderCollapsed,
   });
+
+  // The open sidebar's width as the person left it: read when the room changes, not while they drag its edge (a
+  // sidebar dragged wider does not fold under the pointer).
+  const siderWidthRef = useRef(desktopSiderWidth);
+  useEffect(() => {
+    siderWidthRef.current = desktopSiderWidth;
+  }, [desktopSiderWidth]);
+  const panelBeside = !isMobile && workspaceAvailable && Boolean(currentConversation) && workPanel.open;
+  // Before the paint, so a window that opens narrow or a panel that opens in a narrow one shows the rail at once.
+  useLayoutEffect(() => {
+    const crowded = isSiderCrowded(siderCrowded, {
+      viewportWidth,
+      siderWidth: siderWidthRef.current,
+      panelOpen: panelBeside,
+      isMobile,
+    });
+    if (crowded === siderCrowded) return;
+    setSiderCrowded(crowded);
+    setSiderChoice(siderChoiceAfterRoomChange);
+  }, [viewportWidth, isMobile, panelBeside, siderCrowded]);
 
   // 检测移动端并响应窗口大小变化
   useEffect(() => {
@@ -238,12 +282,11 @@ const Layout: React.FC<{
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // 进入移动端后立即折叠 / Collapse immediately when switching to mobile
-  useEffect(() => {
-    if (!isMobile || collapsedRef.current) {
-      return;
-    }
-    setCollapsed(true);
+  // The phone layout's own styles (layout.css) hold under this mark only: a narrow desktop window keeps the desktop's.
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    root.toggleAttribute('data-phone-layout', isMobile);
+    return () => root.removeAttribute('data-phone-layout');
   }, [isMobile]);
 
   // 清理侧栏 Tooltip 残留节点，避免移动端路由切换后浮层卡在左上角
@@ -316,6 +359,16 @@ const Layout: React.FC<{
       void navigate('/settings/about');
       void ipcBridge.update.run.invoke({ action: 'check' });
     });
+    // The application menu's 新会话 (⌘N), as the sidebar's button, and 设置… (⌘,), which stays on the settings page
+    // already open.
+    const removeMenuCommandListener = ipcBridge.application.menuCommand.on(({ command }) => {
+      cleanupSiderTooltips();
+      if (command === 'newChat') {
+        void navigate('/guid', { state: { resetAssistant: true } });
+      } else if (command === 'openSettings' && !pathnameRef.current.startsWith('/settings')) {
+        void navigate(SETTINGS_HOME);
+      }
+    });
 
     return () => {
       window.removeEventListener('tray:navigate-to-guid', handleNavigateToGuid as EventListener);
@@ -323,6 +376,7 @@ const Layout: React.FC<{
       window.removeEventListener('tray:open-about', handleOpenAbout as EventListener);
       window.removeEventListener('tray:pause-all-tasks', handlePauseAllTasks as EventListener);
       removeUpdateOpenListener();
+      removeMenuCommandListener();
     };
   }, [navigate]);
 
@@ -332,9 +386,15 @@ const Layout: React.FC<{
         Math.min(MOBILE_SIDER_MAX_WIDTH, Math.round(viewportWidth * MOBILE_SIDER_WIDTH_RATIO))
       )
     : desktopSiderWidth;
-  useEffect(() => {
-    collapsedRef.current = collapsed;
-  }, [collapsed]);
+  // The [content | panel] row: as measured, or as it is about to be while the sidebar's width is still easing toward
+  // the rail, so a panel opened in a narrow window docks beside the conversation at once instead of first filling it.
+  const panelRowWidth = isMobile
+    ? mainRowWidth
+    : Math.max(mainRowWidth, viewportWidth - (collapsed ? SIDER_RAIL_WIDTH : siderWidth));
+  // A row too narrow for the panel beside a readable conversation: the panel takes the row, and the conversation is
+  // set aside (mounted) until the panel is closed or the window is wide enough again. Nothing lies over its text.
+  const panelFillsRow =
+    panelBeside && panelGeometry(panelRowWidth, viewportWidth, isMobile, workPanel.width).mode === 'fill';
 
   const siderStyle = isMobile
     ? {
@@ -351,18 +411,18 @@ const Layout: React.FC<{
       };
 
   return (
-    <LayoutContext.Provider value={{ isMobile, siderCollapsed: collapsed, setSiderCollapsed: setCollapsed }}>
+    <LayoutContext.Provider value={{ isMobile, siderCollapsed: collapsed, setSiderCollapsed }}>
       <NavigationHistoryProvider>
         <div className='app-shell flex flex-col size-full min-h-0'>
           <Titlebar workspaceAvailable={workspaceAvailable} />
           {/* 移动端左侧边栏蒙板 / Mobile left sider backdrop */}
           {isMobile && !collapsed && (
-            <div className='fixed inset-0 bg-black/30 z-90' onClick={() => setCollapsed(true)} aria-hidden='true' />
+            <div className='fixed inset-0 bg-black/30 z-90' onClick={putAwayPhoneSider} aria-hidden='true' />
           )}
 
           <ArcoLayout className={'size-full layout flex-1 min-h-0'}>
             <ArcoLayout.Sider
-              collapsedWidth={isMobile ? 0 : DESKTOP_COLLAPSED_WIDTH}
+              collapsedWidth={isMobile ? 0 : SIDER_RAIL_WIDTH}
               collapsed={collapsed}
               width={siderWidth}
               className={classNames('!bg-2 layout-sider', {
@@ -410,7 +470,7 @@ const Layout: React.FC<{
                   <button
                     type='button'
                     className='app-titlebar__button app-titlebar__button--mobile'
-                    onClick={() => setCollapsed(true)}
+                    onClick={putAwayPhoneSider}
                     title={t('common.collapseSidebar')}
                     aria-label={t('common.collapseSidebar')}
                   >
@@ -424,7 +484,7 @@ const Layout: React.FC<{
                   ? React.cloneElement(sider, {
                       onSessionClick: () => {
                         cleanupSiderTooltips();
-                        if (isMobile) setCollapsed(true);
+                        if (isMobile) putAwayPhoneSider();
                       },
                       collapsed,
                     } as any)
@@ -447,23 +507,24 @@ const Layout: React.FC<{
               <ArcoLayout.Content
                 className={'bg-1 layout-content flex flex-col min-h-0 flex-1'}
                 onClick={() => {
-                  if (isMobile && !collapsed) setCollapsed(true);
+                  if (isMobile && !collapsed) putAwayPhoneSider();
                 }}
                 style={
                   isMobile
                     ? {
                         width: '100%',
                       }
-                    : previewMaximized
+                    : previewMaximized || panelFillsRow
                       ? // 最大化时聊天区隐藏（保持挂载不卸载，还原后即刻恢复）
-                        // Hidden while maximized (kept mounted so restoring is instant)
+                        // Hidden while maximized or while the panel fills the row (kept mounted so coming back is
+                        // instant)
                         { display: 'none' }
                       : undefined
                 }
               >
                 <Outlet />
               </ArcoLayout.Content>
-              {workspaceAvailable && <WorkPanelHost rowWidth={mainRowWidth} isMobile={isMobile} />}
+              {workspaceAvailable && <WorkPanelHost rowWidth={panelRowWidth} isMobile={isMobile} />}
             </div>
           </ArcoLayout>
         </div>

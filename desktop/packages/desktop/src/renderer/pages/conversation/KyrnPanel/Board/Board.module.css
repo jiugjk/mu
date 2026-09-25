@@ -97,24 +97,50 @@
   line-height: 18px;
 }
 
-.phase {
+.state {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   color: var(--text-primary);
 }
 
-.phaseDot {
+/* The state told by its words and a mark, never by a colour. */
+.stateMark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 11px;
+  height: 18px;
+}
+
+.stateMark[data-mark='dot']::before,
+.stateMark[data-mark='hollow']::before,
+.stateMark[data-mark='dash']::before {
+  content: '';
+  display: block;
+}
+
+.stateMark[data-mark='dot']::before {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: currentColor;
 }
 
-/* Stuck: told by the words and a hollow dot, never by a colour. */
-.stuck .phaseDot {
-  background: transparent;
+/* Stuck, or waiting for the person. */
+.stateMark[data-mark='hollow']::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
   box-shadow: inset 0 0 0 1.5px currentColor;
+}
+
+/* Stopped. */
+.stateMark[data-mark='dash']::before {
+  width: 7px;
+  height: 1.5px;
+  background: currentColor;
 }
 
 .brief {

@@ -9,6 +9,7 @@ import { availableModels } from '../agent/kyrn/config/available';
 import { LoginManager, openable, spawnAuth } from '../agent/kyrn/login';
 import { testProvider } from '../agent/kyrn/config/connection';
 import { envFileOf, expectedHarness, findHarness, launcherOf, manifestOf } from '../agent/kyrn/harness';
+import { checkClmServer } from '../agent/kyrn/clmServer';
 import { LocalJudge } from '../agent/kyrn/localJudge';
 import { OnnxLocalJudge, openFolder, usesOnnxJudge } from '../agent/kyrn/localJudgeOnnx';
 import { importCli, importService } from '../agent/kyrn/importChats';
@@ -111,6 +112,8 @@ export function initKyrnBridge(): void {
   kyrnBridge.loginCancel.provider(() => result(() => login.cancel()));
   kyrnBridge.loginStatus.provider(() => result(() => login.status()));
   kyrnBridge.loginLogout.provider(({ provider }) => result(() => login.logout(provider)));
+  // A sign-in, or a look at who is signed in, still running when the app quits is ended with it.
+  app.once('will-quit', () => login.dispose());
   // Core ML on Apple Silicon Macs, the app's own ONNX judge on Windows and Linux: the same state and actions.
   const localJudge = usesOnnxJudge(process.platform, process.arch, process.env)
     ? new OnnxLocalJudge({
@@ -126,6 +129,9 @@ export function initKyrnBridge(): void {
     void localJudge.autoStart(agentDir).catch((error: unknown) => console.warn('[mu] local judge autostart:', error));
   kyrnBridge.localJudgeState.provider(() => result(() => localJudge.state()));
   kyrnBridge.localJudgeRun.provider(({ action, consent }) => result(() => localJudge.run(action, consent === true)));
+  kyrnBridge.clmCheck.provider(({ baseUrl }) =>
+    result(() => checkClmServer(typeof baseUrl === 'string' ? baseUrl : ''))
+  );
   kyrnBridge.activity.provider((input) =>
     result(async () => {
       const kinds = activityKinds(input.kinds);

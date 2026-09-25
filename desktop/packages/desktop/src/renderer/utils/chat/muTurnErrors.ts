@@ -14,6 +14,12 @@
 const MU_TURN_ERROR_TEXTS = [
   // Longer texts first: "mu process exited during the turn" also contains "mu process exited".
   ['processExited', 'mu process exited during the turn'],
+  ['noModel', 'mu has no model to answer with'],
+  // pi's own words for it, as conversations from before the bridge named it stored them. Before `modelFailed`: a
+  // request that failed for want of a key is the same trouble, and has the same way out.
+  ['noModel', 'No API key found for'],
+  ['noModel', 'No models available'],
+  ['noModel', 'No model selected'],
   ['modelFailed', 'Model request failed'],
   ['turnRunning', 'A mu turn is already running'],
   ['busyConfig', 'Wait for the current turn before changing configuration'],
@@ -41,3 +47,17 @@ export function findMuTurnError(texts: ReadonlyArray<string | undefined | null>)
 
 /** The i18n key of a mu bridge error's headline. */
 export const muTurnErrorKey = (code: MuTurnErrorCode): string => `mu.turnErrors.${code}`;
+
+/**
+ * pi's words about a missing model without what is meant for its terminal: the advice to run `/login` and the path of
+ * a harness doc, neither of which a desktop user can act on. What is left names the provider, if pi named one.
+ */
+export function noModelDetail(text: string): string {
+  return text
+    .replace(/^Agent internal error \(code -?\d+\):\s*/, '')
+    .replace(/mu has no model to answer with:?\s*/, '')
+    .split(/\n\s*\n/)[0]
+    .replace(/\s*Use \/login[\s\S]*$/, '')
+    .replace(/\s*See:?\s+\S+\.md\S*/g, '')
+    .trim();
+}

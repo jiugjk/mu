@@ -271,6 +271,39 @@ describe('the first-run guide', () => {
     expect(localStorage.getItem(ONBOARDING_KEY)).toBeTruthy();
   });
 
+  it('fills in the one model a connection test found, and leaves a model typed first alone', async () => {
+    bridge.testProvider.mockResolvedValue({
+      ok: true,
+      data: { ok: true, code: 'ok-models', status: 200, latencyMs: 7, detail: '', models: ['relay-large'] },
+    });
+    at('/welcome', <Welcome />);
+    fireEvent.click(await screen.findByTestId('mu-welcome-begin'));
+    fireEvent.click(await screen.findByTestId('mu-welcome-way-openai'));
+    fireEvent.change(screen.getByLabelText('Base URL'), { target: { value: 'https://relay.example.com/v1' } });
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk-relay' } });
+    fireEvent.click(screen.getByText('Test connection'));
+    await waitFor(() => expect(screen.getByLabelText('Model name')).toHaveValue('relay-large'));
+
+    fireEvent.change(screen.getByLabelText('Model name'), { target: { value: 'my-model' } });
+    fireEvent.click(screen.getByText('Test connection'));
+    await waitFor(() => expect(bridge.testProvider).toHaveBeenCalledTimes(2));
+    await screen.findByTestId('mu-test-result');
+    expect(screen.getByLabelText('Model name')).toHaveValue('my-model');
+  });
+
+  it('sets Laya up without its address or a Stop: those are for the settings', async () => {
+    at('/welcome', <Welcome />);
+    fireEvent.click(await screen.findByTestId('mu-welcome-begin'));
+    fireEvent.click(await screen.findByTestId('mu-welcome-skip'));
+    await screen.findByTestId('mu-welcome-step-judge');
+    // A new user's order starts with Laya: its tile is the chosen one, open.
+    const tile = screen.getByTestId('mu-judge-choice-local');
+    const panel = await within(tile).findByTestId('mu-laya');
+    expect(await within(panel).findByTestId('mu-laya-status')).toHaveTextContent(enMu.judges.laya.running);
+    expect(within(panel).queryByTestId('mu-laya-stop')).not.toBeInTheDocument();
+    expect(tile).not.toHaveTextContent('127.0.0.1');
+  });
+
   it('picks the service Jev is reached through, and keeps its key under that service’s own name', async () => {
     at('/welcome', <Welcome />);
     fireEvent.click(await screen.findByTestId('mu-welcome-begin'));

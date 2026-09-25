@@ -38,6 +38,7 @@ const MyAssistantCard: React.FC<MyAssistantCardProps> = ({
   const { t } = useTranslation();
   const enabled = assistant.enabled !== false;
   const canDelete = assistant.source === 'user';
+  const name = assistant.name_i18n?.[localeKey] || assistant.name;
 
   const actionMenu = (
     <Menu
@@ -73,6 +74,7 @@ const MyAssistantCard: React.FC<MyAssistantCardProps> = ({
         <span onClick={(e) => e.stopPropagation()}>
           <Switch
             size='small'
+            aria-label={name}
             data-testid={`switch-enabled-${assistant.id}`}
             checked={enabled}
             onChange={(checked) => onToggleEnabled(assistant, checked)}
@@ -80,9 +82,7 @@ const MyAssistantCard: React.FC<MyAssistantCardProps> = ({
         </span>
       </div>
       <div className={`mt-12px flex min-w-0 items-center gap-8px ${enabled ? '' : 'opacity-70'}`}>
-        <span className='truncate text-14px font-600 text-t-primary'>
-          {assistant.name_i18n?.[localeKey] || assistant.name}
-        </span>
+        <span className='truncate text-14px font-600 text-t-primary'>{name}</span>
         {assistant.agent_status !== 'online' && (
           <Tooltip
             content={

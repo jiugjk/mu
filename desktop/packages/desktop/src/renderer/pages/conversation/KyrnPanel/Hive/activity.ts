@@ -30,6 +30,20 @@ export type HiveRun = {
 
 const RELATIONS: readonly HiveRelationKind[] = ['supersedes', 'contradicts', 'supports'];
 
+/**
+ * The runs whose turn is over: mu's turn settled, or its process closed, after the run's last word. A run that mu's
+ * death cut short sends no last snapshot to say so, and its bees would read as at work for good.
+ */
+export function endedRuns(events: readonly Activity[]): ReadonlySet<string> {
+  const last = new Map<string, number>();
+  let end = -Infinity;
+  for (const event of events) {
+    if (event.kind === 'agent_settled' || event.kind === 'kyrn_rpc_closed') end = Math.max(end, event.at);
+    else if (event.run) last.set(event.run, Math.max(last.get(event.run) ?? -Infinity, event.at));
+  }
+  return new Set([...last].filter(([, at]) => at <= end).map(([run]) => run));
+}
+
 /** Join within a run, never across runs with coincidentally identical bee/note names. */
 export function buildHiveRuns(events: Activity[]): HiveRun[] {
   const runs = new Map<string, HiveRun>();

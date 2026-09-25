@@ -68,6 +68,7 @@
   "tray.showWindow": "mu'yu Göster",
   "tray.newChat": "Yeni Sohbet",
   "tray.closeToTray": "Tepsiye Gizle",
+  "tray.hideToMenuBar": "Menü Çubuğuna Gizle",
   "tray.about": "mu Hakkında",
   "tray.restart": "Uygulamayı Yeniden Başlat",
   "tray.quit": "Çıkış",
@@ -175,6 +176,8 @@
       "open": "Hive'ı aç",
       "inspect": "{{name}} öğesini incele",
       "summary": "{{active}} etkin · {{done}} tamamlandı / {{total}}",
+      "summaryEnded": "{{done}} tamamlandı / {{total}}",
+      "summaryUnfinished": "{{done}} tamamlandı / {{total}} · {{unfinished}} bitmedi",
       "counts": "{{running}} çalışıyor · {{done}} bitti · {{failed}} başarısız",
       "none": "Bu konuşmada henüz alt ajan yok.",
       "details": "Akış ve kayıtlar",
@@ -890,7 +893,8 @@
       "log": {
         "thisTurn": "Bu tur",
         "earlier": "Önceki satırları göster",
-        "latest": "En yeniye git"
+        "latest": "En yeniye git",
+        "times": "×{{times}}"
       }
     },
     "empty": "Bu oturumda henüz kaydedilmiş bir olay yok.",
@@ -945,10 +949,14 @@
         "switched": "Pano açıldı veya kapatıldı"
       },
       "permissions": {
-        "mode": "İzin modu"
+        "mode": "İzin modu",
+        "request": "İzin istendi",
+        "resolved": "İzin yanıtlandı",
+        "approved": "Sormadan çalıştı"
       },
       "checkpoint": {
-        "taken": "Kontrol noktası kaydedildi"
+        "taken": "Kontrol noktası kaydedildi",
+        "off": "Kontrol noktaları kapalı"
       },
       "rewind": {
         "proposed": "Geri sarma önerildi",
@@ -1070,6 +1078,7 @@
       "empty": "Ajana biraz zaman tanıyın; nasıl gittiği burada sade bir dille yazacak.",
       "checks": "{{total}} kontrolden {{done}} tanesi tamam",
       "ended": "Durdu",
+      "done": "Tamamlandı",
       "brief": "Kısa",
       "briefHelp": "Model bunu zamanında yazamadı; bu kısa, sabit bir özet.",
       "needsYou": "Size ihtiyaç var",
@@ -1236,12 +1245,17 @@
     "compactionDropped_one": "{{count}} çağrı kaldırıldı",
     "compactionDropped_other": "{{count}} çağrı kaldırıldı",
     "jevLine": {
-      "classifying": "Jev mesajı sınıflandırıyor…",
-      "classified": "Jev sınıflandırması: {{type}}",
+      "classifying": "{{judge}} mesajı sınıflandırıyor…",
+      "classified": "{{judge}} sınıflandırması: {{type}}",
       "byRule": "Kuralla sınıflandırıldı: {{type}}",
       "shadow": "{{line}} (yalnızca izleniyor, uygulanmadı)",
       "late": "{{line}} (bu tur için geç kaldı)",
-      "fallback": "Jev bu kez sınıflandırmadı; her zamanki gibi devam ediliyor"
+      "fallback": "{{judge}} bu kez net bir sınıf vermedi; her zamanki gibi devam ediliyor",
+      "unanswered": "{{judge}} bu kez yanıt vermedi; her zamanki gibi devam ediliyor",
+      "noJudge": "Henüz kullanılabilir bir hakem yok, bu yüzden mesajlar sınıflandırılmıyor.",
+      "setUp": "Hakem ayarla",
+      "skipped": "Sınıflandırma atlandı",
+      "off": "Sınıflandırma kapalı"
     },
     "eventLine": {
       "detail": "Ayrıntılar: {{detail}}",
@@ -1338,7 +1352,19 @@
         }
       },
       "permissions": {
-        "mode": "İzin modu: {{mode}}"
+        "mode": "İzin modu: {{mode}}",
+        "request": "İzninizi bekliyor: {{summary}}",
+        "waiting": "İzninizi bekliyor",
+        "answers": {
+          "once": "Bir kez izin verdiniz",
+          "session": "Bu konuşma için izin verildi",
+          "deny": "İzin vermediniz"
+        },
+        "about": "{{answer}}: {{summary}}",
+        "approved": {
+          "judge": "Hakem size sormadan geçirdi: {{summary}}",
+          "grant": "Bu konuşma için izin verildiğinden sormadan çalıştı: {{summary}}"
+        }
       },
       "board": {
         "on": "Pano: açık",
@@ -1355,11 +1381,15 @@
   },
   "menu": {
     "about": "{{name}} hakkında",
+    "settings": "Ayarlar…",
     "services": "Hizmetler",
     "hide": "{{name}} uygulamasını gizle",
     "hideOthers": "Diğerlerini gizle",
     "unhide": "Tümünü göster",
     "quit": "{{name}} uygulamasından çık",
+    "file": "Dosya",
+    "newChat": "Yeni sohbet",
+    "closeWindow": "Pencereyi kapat",
     "edit": "Düzen",
     "undo": "Geri al",
     "redo": "Yinele",
@@ -1377,8 +1407,13 @@
     "zoomIn": "Yakınlaştır",
     "zoomOut": "Uzaklaştır",
     "toggleFullScreen": "Tam ekranı aç/kapat",
+    "window": "Pencere",
+    "minimize": "Simge durumuna küçült",
+    "zoomWindow": "Büyüt",
+    "bringAllToFront": "Tümünü öne getir",
     "help": "Yardım",
-    "checkForUpdates": "Güncellemeleri kontrol et…"
+    "checkForUpdates": "Güncellemeleri kontrol et…",
+    "projectPage": "GitHub'da {{name}}"
   },
   "trayMenu": {
     "runningTasks": "Çalışan görevler: {{count}}"

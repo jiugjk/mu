@@ -67,6 +67,7 @@
   "noOptionsAvailable": "Nenhuma opção disponível",
   "processing": "Processando...",
   "responseSentSuccessfully": "Resposta enviada com sucesso",
+  "permissionAnswered": "Respondido: {{option}}",
   "permissionResponseFailed": "Não foi possível enviar a resposta. Tente novamente.",
   "permissionNoLongerPending": "Esta solicitação não está mais aguardando resposta.",
   "confirmation": {

@@ -148,7 +148,8 @@
     "customTier": "Kendi eklediğiniz bir hakem. Değiştirmek için mu'nun ayar dosyasını düzenleyin.",
     "endpointDefault": "Hizmetin varsayılan adresi",
     "types": {
-      "localHelp": "Bu bilgisayarda çalışır."
+      "localHelp": "Bu bilgisayarda çalışır.",
+      "clmHelp": "Kendi CLM sunucunuzda çalışır."
     },
     "intro": "mu çalışırken pek çok küçük soruyla karşılaşır: bu mesaj nasıl ele alınmalı, bu adım koyduğunuz bir kuralı çiğniyor mu? Bunları hakem yanıtlar. Birini seçin.",
     "choose": "Bir hakem seçin",
@@ -164,6 +165,11 @@
         "title": "Yerel Laya",
         "tag": "Ücretsiz · çevrimdışı",
         "description": "Bu bilgisayarda çalışır; ağ yok, ücret yok. Sınıflandırmada iyidir; ilişkilendirme ve puanlama daha az güvenilirdir."
+      },
+      "clm": {
+        "title": "CLM",
+        "tag": "Kendi sunucunuz",
+        "description": "Jev ile aynı soruları kendi sunucunuzda (clm-serve) yanıtlar. Kodlayıcısı GPU ister; çağrı başına ücret yoktur."
       }
     },
     "localAddress": "Adres: {{address}}",
@@ -210,6 +216,26 @@
           "foreign": "Burada mu'nun başlatmadığı bir Laya çalışıyor. Onu başlatıldığı yerden durdurun."
         }
       }
+    },
+    "clm": {
+      "address": "Sunucu adresi",
+      "addressHelp": "clm-serve sunucusunun dinlediği adres, örneğin http://192.168.1.20:8700. Boş bırakılırsa bu bilgisayar ({{address}}).",
+      "key": "Sunucu anahtarı",
+      "keyPlaceholder": "Yalnızca sunucu isterse",
+      "keyHelp": "Yalnızca CLM_API_KEY ile başlatılan bir sunucu anahtar ister: aynı değeri girin. Kaydedildikten sonra bir daha gösterilmez.",
+      "check": "Sunucuyu denetle",
+      "unmeasured": "CLM'nin mu'nun kararlarını ne kadar iyi verdiği henüz ölçülmedi.",
+      "status": {
+        "checking": "Sunucuya soruluyor…",
+        "ready": "Yanıt veriyor · {{models}} · {{ms}} ms",
+        "down": "{{address}} adresinde yanıt veren yok. Orada clm-serve komutunu çalıştırın veya adresi düzeltin.",
+        "encoderDown": "Sunucu yanıt veriyor ama kodlayıcısı vermiyor: gömme sunucusu (vLLM) çalışana kadar her soru başarısız olur.",
+        "model": "Sunucu {{model}} sunmuyor. Sunduğu modeller: {{models}}.",
+        "keyNeeded": "Sunucu anahtar istiyor: başlatılırken kullanılan anahtarı (CLM_API_KEY) girin.",
+        "keySaved": "Sunucu anahtar istiyor ve bir anahtar kayıtlı.",
+        "mock": "Bu sunucu CLM'nin sahte kodlayıcısıyla çalışıyor: yanıtları gürültüdür, CLM'nin değil.",
+        "failed": "Sunucuya sorulamadı."
+      }
     }
   },
   "keyState": {
@@ -255,13 +281,20 @@
       "unsure": "Jev bu adımın istediğiniz şey olduğundan emin değil.",
       "beyond": "Jev bunun istediğiniz şeyin ötesine geçtiğini düşünüyor.",
       "unrelated": "Jev bunun görevin bir parçası olmadığını düşünüyor.",
-      "protected": "Bu, mu'nun kendi ayarlarına dokunuyor; buna yalnızca siz izin verebilirsiniz."
+      "protected": "Bu, mu'nun kendi ayarlarına dokunuyor; buna yalnızca siz izin verebilirsiniz.",
+      "nojudge": "Henüz kullanılabilir bir hakem yok, bu yüzden mu her adımda size soruyor.",
+      "judgedown": "Hakem bu kez yanıt vermedi, bu yüzden mu size soruyor."
     },
     "answer": {
       "once": "Bir kez izin ver",
       "session": "Bu konuşma için izin ver",
       "sessionFor": "Bu konuşma için izin ver ({{grant}})",
       "deny": "İzin verme"
+    },
+    "decided": {
+      "once": "Bir kez izin verdiniz: {{summary}}",
+      "session": "Bu konuşma için izin verildi: {{summary}}",
+      "deny": "İzin vermediniz: {{summary}}"
     },
     "flag": {
       "recursive_or_forced_delete": "özyinelemeli veya zorla silme",
@@ -325,16 +358,16 @@
     "removeDefault": "Yeni oturumlar bununla başlıyor, bu yüzden varsayılan model de temizlenir."
   },
   "defaults": {
-    "summary": "What a new session starts with. You can still switch inside a conversation.",
+    "summary": "Yeni bir oturumun neyle başladığı. Bir sohbetin içinde yine de değiştirebilirsiniz.",
     "provider": "Sağlayıcı",
     "model": "Model",
     "level": "Düşünme düzeyi",
     "levelUnset": "Belirtme",
-    "levelHelp": "Levels this model does not take are disabled.",
-    "levelClamped": "Not set means medium. A level the model does not take becomes the nearest one it does.",
-    "noReasoning": "This model does not think, so a session with it always starts with thinking off.",
+    "levelHelp": "Bu modelin desteklemediği düzeyler devre dışıdır.",
+    "levelClamped": "“Belirtme” Orta anlamına gelir. Modelin desteklemediği bir düzey, desteklediği en yakın düzeye dönüşür.",
+    "noReasoning": "Bu model düşünmez; bu yüzden onunla açılan bir oturum her zaman düşünme kapalı başlar.",
     "notSet": "Belirtilmedi",
-    "pickProvider": "Choose a provider first."
+    "pickProvider": "Önce bir sağlayıcı seçin."
   },
   "accounts": {
     "signIn": "Giriş yap",
@@ -437,7 +470,7 @@
     "update": "mu'nun bu sürümünde panoyu yazan model buradan seçilemiyor. Önce mu'yu güncelleyin."
   },
   "levels": {
-    "off": "Kapalı",
+    "off": "Düşünme kapalı",
     "minimal": "En az",
     "low": "Düşük",
     "medium": "Orta",
@@ -469,7 +502,7 @@
       "signedIn": {
         "title": "Abonelikle giriş yap",
         "tag": "API anahtarı gerekmez",
-        "description": "ChatGPT, Claude veya Grok aboneliği"
+        "description": "ChatGPT, Claude, Grok ve diğer abonelikler"
       },
       "openai": {
         "title": "OpenAI uyumlu API",
@@ -590,9 +623,28 @@
     "timeout": "mu zamanında yanıt vermedi.",
     "processClosed": "mu durdu. Yeniden başlatmak için mesajı tekrar gönderin.",
     "modelFailed": "Model isteği başarısız oldu.",
-    "turnRunning": "mu hâlâ önceki mesaj üzerinde çalışıyor. Bekleyin ya da önce durdurun."
+    "turnRunning": "mu hâlâ önceki mesaj üzerinde çalışıyor. Bekleyin ya da önce durdurun.",
+    "noModel": "mu'nun yanıt verebileceği bir model yok."
+  },
+  "noModel": {
+    "title": "Yanıt verecek model yok",
+    "body": "mu'nun kullanabileceği bir modele ihtiyacı var. {{place}} bölümünde oturum açın veya bir anahtar ekleyin, ardından mesajınızı tekrar gönderin.",
+    "open": "{{page}} bölümünü aç",
+    "chip": "Model seçin"
   },
   "notices": {
+    "checkpointOff": "Bu konuşmada kontrol noktaları kapalı.",
+    "checkpointOffWhy": {
+      "gitMissing": "Bu konuşmada kontrol noktaları kapalı: Bu bilgisayarda Git bulunamadı. Git'i kurun, ardından kontrol noktaları için yeni bir konuşma başlatın.",
+      "xcodeLicense": "Bu konuşmada kontrol noktaları kapalı: Xcode lisansı kabul edilene kadar Git bu Mac'te çalışamaz. Terminal'de sudo xcodebuild -license ile kabul edin, ardından kontrol noktaları için yeni bir konuşma başlatın.",
+      "developerToolsMissing": "Bu konuşmada kontrol noktaları kapalı: Bu Mac'te Git'in ihtiyaç duyduğu komut satırı geliştirici araçları yok. Terminal'de xcode-select --install ile kurun, ardından kontrol noktaları için yeni bir konuşma başlatın.",
+      "homeFolder": "Bu konuşmada kontrol noktaları kapalı: Konuşmanın klasörü ana klasörünüz ya da onu içeriyor. Kontrol noktaları için bir proje klasöründe konuşma başlatın.",
+      "muFolder": "Bu konuşmada kontrol noktaları kapalı: Konuşmanın klasörü mu'nun kendi klasörünün içinde. Kontrol noktaları için bir proje klasöründe konuşma başlatın.",
+      "tooManyFiles": "Bu konuşmada kontrol noktaları kapalı: Konuşmanın klasöründe {{limit}} dosyadan fazlası var. Kontrol noktaları için bir proje klasöründe konuşma başlatın.",
+      "tooManyBytes": "Bu konuşmada kontrol noktaları kapalı: Konuşmanın klasöründeki dosyaların toplamı {{limitMb}} MB sınırını aşıyor. Kontrol noktaları için bir proje klasöründe konuşma başlatın.",
+      "tooSlow": "Bu konuşmada kontrol noktaları kapalı: Konuşmanın klasöründeki dosyaları listelemek {{seconds}} saniyeden uzun sürdü. Kontrol noktaları için bir proje klasöründe konuşma başlatın."
+    },
+    "stopped": "Bu yanıtı durdurdunuz.",
     "answerLost": "mu yanıtınızı alamadı; reddetmişsiniz gibi devam etti.",
     "bashMissing": "mu'nun komut çalıştırabilmesi için Git for Windows gerekiyor. Kurulduktan sonra mesajınızı tekrar gönderin. İndirme adresi:"
   },
@@ -673,5 +725,34 @@
       "earlier_other": "Önceki {{count}} adım gösterilmiyor.",
       "empty": "Gösterilecek bir şey yok."
     }
+  },
+  "commands": {
+    "frame": "Görev çerçevesi: hedef, koyduğunuz kesin kısıtlar ve bunları nerede söylediğiniz, alt hedef, kabul ölçütleri",
+    "remember": "Bu projedeki sonraki konuşmalar için bir ders kaydeder: /remember <ne yapılmalı>",
+    "lessons": "Bu projenin dersleri: /lessons id · tür · hatırlanma/uyulma · ders listesini verir, /lessons all her yerde geçerli olanları ve devre dışı bırakılanları da ekler",
+    "forget": "Bir dersi devre dışı bırakır, artık hatırlanmaz: /forget <id başlangıcı> (id’ler /lessons içinde)",
+    "capabilities": "Hangi yeteneklerin kurulu, hangilerinin açık olduğu: /capabilities, /capabilities open <id>",
+    "permissions": "mu’nun sormadan ne kadarını yapabileceği: /permissions full (Tam erişim) | jev (Jev onaylar) | ask (En az izin), bağımsız değişken olmadan bir seçici açılır. /permissions reset bu konuşmada izin verdiklerinizi unutur",
+    "lsp": "Dil sunucuları: hangileri kurulu, hangileri çalışıyor ve son hata",
+    "goal": "Hedef modu: ajan bir koşul sağlanana kadar çalışmaya devam eder. /goal <koşul>, /goal (gösterir ya da bir hedef sorar), /goal clear",
+    "board": "Sade dilde pano: /board (gösterir), /board on, /board off (bu proje için), /board model (kimin yazdığı)",
+    "checkpoints": "Bu konuşmanın kontrol noktaları: tur, zaman, o zamandan beri değişen dosyalar",
+    "rewind": "Bir kontrol noktasına döner: /rewind [no] [both|files|conversation], /rewind undo geri alır; both: dosyalar ve konuşma, files: yalnızca dosyalar, conversation: yalnızca konuşma",
+    "swarm": "Çalışan alt ajanlar: /swarm (her birinin ne yaptığı), /swarm stop [ad] (şimdi rapor versin), /swarm kill [ad] (hemen sonlandırır)",
+    "agents": "delegate aracının kullanabileceği alt ajan rolleri ve kendi rollerinizi nereye ekleyeceğiniz",
+    "hive": "Tek bir soruya aynı anda birkaç araştırmacı koyar: /hive <soru>. Soru olmadan /swarm ile aynıdır",
+    "browse": "Yerleşik tarayıcıyı bir adrese gönderip söylediğinizi yaptırır: /browse <url> [hedef]",
+    "inherit": "mu’nun Claude Code, Cursor ve Codex’ten neyi, nereden devraldığı",
+    "mcp": "MCP sunucuları: /mcp, /mcp open <id>, /mcp restart <id>",
+    "jobs": "Arka plan işleri: /jobs, /jobs stop <id|all>",
+    "commit": "Commit edilmemiş değişikliği commit’lere böler: önce planı gösterir, yalnızca onay verdiğinizde commit eder, asla push yapmaz",
+    "review": "Commit edilmemiş değişikliği ya da belirttiğinizi inceleyici alt ajanla gözden geçirir; bulgular P0’dan P3’e sıralanır",
+    "mu": "mu durumu. Ayrıca: /mu judge <kademeler> | /mu route <karar noktası> <kademeler|default> | /mu mode <karar noktası|default> <off|shadow|active>",
+    "status": "Model, hakem, karar noktalarının modları, tasarruf edilen bağlam ve son kararlar",
+    "help": "mu’nun neler yapabildiği ve bilinmeye değer tüm komutlar",
+    "ledger": "Hakemin son kararları ve süreleri: /ledger [n]",
+    "doctor": "Hakemin, modelin, tarayıcının ve alt ajanların bağlı olup olmadığını denetler",
+    "import-chat": "Bu projenin Claude Code ya da Codex konuşmasını mu’ya getirip sürdürür: /import-chat [dosya]",
+    "llama": "llama.cpp yönlendiricisinin modellerini yönetir"
   }
 }

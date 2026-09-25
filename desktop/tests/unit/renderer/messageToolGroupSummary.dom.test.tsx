@@ -68,7 +68,26 @@ describe('MessageToolGroupSummary', () => {
     expect(calls.getByRole('button', { name: 'read · tools.status.success' })).toHaveTextContent('src/app.ts');
     // No header naming the group, no counts, no second copy of the call.
     expect(screen.queryByTestId('tool-activity-group')).not.toBeInTheDocument();
-    expect(screen.getAllByText('src/app.ts')).toHaveLength(1);
+    expect(screen.getAllByTitle('src/app.ts')).toHaveLength(1);
+  });
+
+  // QA on macOS, 2026-09-25: a long path was cut at its end, which is the file's own name.
+  it("shows a path's folders and its name apart, so a narrow row cuts the folders and keeps the name", () => {
+    const path = '/Users/me/.codex/skills/information-collection/scripts/init_info_library.py';
+    render(<MessageToolGroupSummary messages={[tool('read', 'completed', { file_path: path })]} />);
+
+    const shown = screen.getByTestId('tool-call-path');
+    expect(shown).toHaveAttribute('title', path);
+    expect(shown).toHaveTextContent(path);
+    expect(within(shown).getByText('init_info_library.py')).toBeInTheDocument();
+    expect(within(shown).getByText('/Users/me/.codex/skills/information-collection/scripts/')).toBeInTheDocument();
+  });
+
+  it('keeps a command whole, cut at its end, with the whole of it on hover', () => {
+    render(<MessageToolGroupSummary messages={[tool('bash', 'completed', { command: 'npm run lint -- src/a.ts' })]} />);
+
+    expect(screen.queryByTestId('tool-call-path')).not.toBeInTheDocument();
+    expect(screen.getByText('npm run lint -- src/a.ts')).toHaveAttribute('title', 'npm run lint -- src/a.ts');
   });
 
   it('folds a run of calls into one line that names what is running', () => {
@@ -271,5 +290,117 @@ describe('MessageToolGroupSummary', () => {
 
     expect(await screen.findByText('recovered output')).toBeInTheDocument();
     expect(invoke).toHaveBeenCalledTimes(2);
+  });
+});
+
+/** mu's refusal of a call the person said no to, as the model reads it. */
+const REFUSAL =
+  'The user did not allow this (rm -rf build). Do not try another way around it: ask them, or carry on without it.';
+/** A bash call of mu's that ended with this output, marked by the bridge when the person said no to it. */
+const muCall = (id: string, command: string, output: string, denied: boolean): ToolMessage =>
+  ({
+    id,
+    conversation_id: 'conversation-1',
+    type: 'acp_tool_call',
+    content: {
+      update: {
+        session_update: 'tool_call_update',
+        tool_call_id: id,
+        status: 'failed',
+        title: 'bash',
+        kind: 'execute',
+        raw_input: { command },
+        content: [{ type: 'content', content: { type: 'text', text: output } }],
+        raw_output: { content: [{ type: 'text', text: output }], ...(denied ? { mu: { answer: 'deny' } } : {}) },
+      },
+    },
+  }) as unknown as ToolMessage;
+
+describe('a call the person did not allow', () => {
+  it('says quietly that it did not run, and never shows mu’s refusal to the model as its output', () => {
+    const { container } = render(
+      <MessageToolGroupSummary messages={[muCall('call-9', 'rm -rf build', REFUSAL, true)]} />
+    );
+
+    const row = screen.getByRole('button', { name: 'bash · tools.status.denied' });
+    expect(row).toHaveTextContent('rm -rf build');
+    expect(screen.getByTestId('tool-call-denied')).toHaveTextContent('tools.execution.denied');
+    // Not drawn as a failure: no red dot, no error line.
+    expect(container.querySelector('.arco-badge-status-error')).toBeNull();
+    fireEvent.click(row);
+    expect(screen.queryByText(/did not allow this/)).toBeNull();
+    expect(screen.queryByText('tools.execution.output')).toBeNull();
+  });
+
+  it('keeps the run folded as done, with the refused step as a quiet line of its own', () => {
+    render(
+      <MessageToolGroupSummary
+        messages={[
+          tool('read', 'completed', { path: 'src/app.ts' }),
+          muCall('call-9', 'rm -rf build', REFUSAL, true),
+          muCall('call-10', 'npm test', 'FAIL src/app.test.ts', false),
+        ]}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: /3 steps/ })).toHaveTextContent('3 steps · 1 failed');
+    expect(screen.getByTestId('tool-activity-denied')).toHaveTextContent('bash');
+    expect(screen.getByTestId('tool-activity-denied')).toHaveTextContent('rm -rf build · tools.execution.denied');
+    expect(screen.getAllByTestId('tool-activity-error')).toHaveLength(1);
+    expect(screen.getByTestId('tool-activity-error')).toHaveTextContent('FAIL src/app.test.ts');
+  });
+});
+
+/** A call of mu's still marked running, as the conversation stored it. */
+const runningCall = (id: string, command: string): ToolMessage =>
+  ({
+    id,
+    conversation_id: 'conversation-1',
+    type: 'acp_tool_call',
+    content: {
+      update: {
+        session_update: 'tool_call',
+        tool_call_id: id,
+        status: 'in_progress',
+        title: 'bash',
+        kind: 'execute',
+        raw_input: { command },
+      },
+    },
+  }) as unknown as ToolMessage;
+
+// QA on macOS, 2026-09-25: mu's process closed mid-call, and the row kept breathing for good.
+describe('a call still marked running', () => {
+  it('runs while the conversation is processing', () => {
+    const { container } = render(<MessageToolGroupSummary messages={[runningCall('call-1', 'npm test')]} live />);
+
+    expect(screen.getByRole('button', { name: 'bash · tools.status.executing' })).toBeInTheDocument();
+    expect(container.querySelector('.arco-badge-status-processing')).not.toBeNull();
+  });
+
+  it('is over in a conversation that is idle, with no failure drawn', () => {
+    const { container } = render(
+      <MessageToolGroupSummary messages={[runningCall('call-1', 'npm test')]} live={false} />
+    );
+
+    expect(screen.getByRole('button', { name: 'bash · tools.status.canceled' })).toBeInTheDocument();
+    expect(container.querySelector('.arco-badge-status-processing')).toBeNull();
+    expect(container.querySelector('.arco-badge-status-error')).toBeNull();
+  });
+
+  it('stays over when the next turn starts, once it was seen running while the conversation was idle', () => {
+    render(
+      <MessageToolGroupSummary
+        messages={[runningCall('call-1', 'npm test'), runningCall('call-2', 'npm run build')]}
+        live
+        stale={new Set(['call-1'])}
+      />
+    );
+
+    const header = screen.getByRole('button', { name: /2 steps/ });
+    expect(header).toHaveTextContent('2 steps · running bash npm run build');
+    fireEvent.click(header);
+    expect(screen.getByRole('button', { name: 'bash · tools.status.canceled' })).toHaveTextContent('npm test');
+    expect(screen.getByRole('button', { name: 'bash · tools.status.executing' })).toHaveTextContent('npm run build');
   });
 });

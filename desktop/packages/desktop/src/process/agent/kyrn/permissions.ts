@@ -32,21 +32,32 @@ export type PermissionRequest = {
    * The desktop words the buttons by these; the answers themselves are only in Chinese or English.
    */
   answerIds?: string[];
-  /** Why mu asks: `ask`, `unsure`, `beyond`, `unrelated`, `flagged` or `protected`. */
+  /**
+   * Why mu asks: `ask`, `unsure`, `beyond`, `unrelated`, `flagged`, `protected`, `nojudge` (no judge could be asked)
+   * or `judgedown` (the judge did not answer).
+   */
   reason?: string;
   /** For a flagged command, what makes it risky, as a code (`force_push`, `runs_as_root`, …). */
   flagCode?: string;
   /** What "for this conversation" would cover: a command's first words, `edit`, a path or a tool. Data, not words. */
   grantLabel?: string;
+  /** The tool call mu asks about, from a mu that names it: the conversation shows the card above that call. */
+  toolCallId?: string;
 };
 
 /** The codes a permission card carries for the desktop to word it: under `rawInput.mu`, beside the call. */
-export type PermissionCodes = Pick<PermissionRequest, 'kind' | 'reason' | 'flagCode' | 'grantLabel'>;
+export type PermissionCodes = Pick<PermissionRequest, 'kind' | 'reason' | 'flagCode' | 'grantLabel' | 'toolCallId'>;
+
+/** What mu says once a question is answered: the answer by id (`once`, `session`, `deny`) and the call it was about. */
+export type PermissionResolved = { answer?: string; toolCallId?: string };
 
 /** Codes are lowercase words joined by underscores; anything else is not passed on as one. */
 const CODE = /^[a-z][a-z_]{0,47}$/;
 const code = (value: unknown): string | undefined =>
   typeof value === 'string' && CODE.test(value) ? value : undefined;
+/** A tool call's id is pi's (the provider's) own: any short line of text. */
+const callId = (value: unknown): string | undefined =>
+  typeof value === 'string' && value && value.length <= 256 && !/[\r\n]/.test(value) ? value : undefined;
 
 /** A presentation event mu sends on its status channel, or undefined for any other event. */
 export function presentation(event: JsonRecord): { kind: string; payload: JsonRecord } | undefined {
@@ -95,6 +106,7 @@ export function readRequest(payload: JsonRecord): PermissionRequest | undefined 
   const reason = code(payload.reason);
   const flagCode = code(payload.flagCode);
   const grantLabel = text(asRecord(payload.grant).label);
+  const toolCallId = callId(payload.toolCallId);
   return {
     kind: text(payload.kind),
     summary: text(payload.summary),
@@ -103,7 +115,15 @@ export function readRequest(payload: JsonRecord): PermissionRequest | undefined 
     ...(reason ? { reason } : {}),
     ...(flagCode ? { flagCode } : {}),
     ...(grantLabel ? { grantLabel } : {}),
+    ...(toolCallId ? { toolCallId } : {}),
   };
+}
+
+/** mu's `permissions.resolved`: how the question was answered, and about which call (a mu that names it). */
+export function readResolved(payload: JsonRecord): PermissionResolved {
+  const answer = code(payload.answer);
+  const toolCallId = callId(payload.toolCallId);
+  return { ...(answer ? { answer } : {}), ...(toolCallId ? { toolCallId } : {}) };
 }
 
 /** The send box's permission picker. The category is what the app looks for; the names are mu's. */
@@ -139,6 +159,7 @@ export function permissionCall(request: PermissionRequest, title: string): Omit<
     ...(request.reason ? { reason: request.reason } : {}),
     ...(request.flagCode ? { flagCode: request.flagCode } : {}),
     ...(request.grantLabel ? { grantLabel: request.grantLabel } : {}),
+    ...(request.toolCallId ? { toolCallId: request.toolCallId } : {}),
   };
   return {
     title: lines[0] || request.summary,
@@ -166,6 +187,8 @@ export const answerOptionId = (request: PermissionRequest | undefined, index: nu
 export function answerIndex(request: PermissionRequest | undefined, optionId: string, count: number): number {
   if (request?.answerIds && optionId.startsWith(MU_ANSWER_PREFIX))
     return request.answerIds.indexOf(optionId.slice(MU_ANSWER_PREFIX.length));
+  // A position only as answerOptionId writes one: `Number` reads "" or " " as 0, and the first answer allows.
+  if (request?.answerIds || !/^(?:0|[1-9]\d*)$/.test(optionId)) return -1;
   const index = Number(optionId);
-  return Number.isInteger(index) && index >= 0 && index < count && !request?.answerIds ? index : -1;
+  return index < count ? index : -1;
 }

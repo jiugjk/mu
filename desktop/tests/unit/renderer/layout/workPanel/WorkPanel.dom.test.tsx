@@ -166,13 +166,8 @@ function Page({ isMobile = false }: { isMobile?: boolean }) {
   useConversationShortcuts({ navigate: vi.fn() as unknown as NavigateFunction, toggleSider: () => {} });
   return <WorkPanelHost rowWidth={1400} isMobile={isMobile} />;
 }
-/** The row the panel shares with the page, holding a composer zone the panel measures. */
-const Row = ({ rowWidth }: { rowWidth: number }) => (
-  <div data-testid='row'>
-    <div data-composer-zone='' />
-    <WorkPanelHost rowWidth={rowWidth} isMobile={false} />
-  </div>
-);
+/** The panel in a row of the given width, as the Layout measures it. */
+const Row = ({ rowWidth }: { rowWidth: number }) => <WorkPanelHost rowWidth={rowWidth} isMobile={false} />;
 const show = (props: { isMobile?: boolean } = {}) =>
   render(
     <I18nextProvider i18n={i18n}>
@@ -676,33 +671,19 @@ describe('the work panel', () => {
 });
 
 describe('where the panel sits', () => {
-  it('beside the transcript while both fit, over it when the window is narrow, as a sheet on a phone', () => {
+  it('beside the transcript while both fit, in its place when the row is too narrow, as a sheet on a phone', () => {
     // 60% of the window at most, 360px left to the transcript beside the panel's 1px edge, 270px at least.
     expect(panelGeometry(1400, 1024, false, 360)).toEqual({ mode: 'dock', width: 360, max: 614 });
     expect(panelGeometry(1400, 1024, false, 900)).toEqual({ mode: 'dock', width: 614, max: 614 });
     expect(panelGeometry(900, 1600, false, 600)).toEqual({ mode: 'dock', width: 539, max: 539 });
     // A 900px window with the sidebar open leaves the row 639px: the transcript shrinks, nothing is covered (B4).
     expect(panelGeometry(639, 900, false, 360)).toEqual({ mode: 'dock', width: 278, max: 278 });
-    expect(panelGeometry(600, 1024, false, 360)).toEqual({ mode: 'float', width: 360, max: 599 });
+    // 600px cannot hold 360 + 1 + 270: the panel takes the row instead of lying over the transcript.
+    expect(panelGeometry(600, 1024, false, 360)).toEqual({ mode: 'fill', width: 600, max: 600 });
     expect(panelGeometry(390, 390, true, 360)).toEqual({ mode: 'sheet', width: 332, max: 332 });
   });
 
-  describe('floating over a narrow transcript', () => {
-    /** The page's row as the panel measures it: 800px tall, the composer zone's top at `zoneTop`. */
-    let zoneTop = 650;
-    beforeEach(() => {
-      zoneTop = 650;
-      vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
-        const id = this.getAttribute('data-testid');
-        if (id === 'row') return DOMRect.fromRect({ x: 0, y: 0, width: 600, height: 800 });
-        if (this.hasAttribute('data-composer-zone'))
-          return DOMRect.fromRect({ x: 0, y: zoneTop, width: 560, height: 800 - 16 - zoneTop });
-        return DOMRect.fromRect({ x: 0, y: 0, width: 0, height: 0 });
-      });
-    });
-    afterEach(() => {
-      vi.restoreAllMocks();
-    });
+  describe('in a row too narrow for both', () => {
     const showRow = (rowWidth: number) =>
       render(
         <I18nextProvider i18n={i18n}>
@@ -711,45 +692,37 @@ describe('where the panel sits', () => {
           </MemoryRouter>
         </I18nextProvider>
       );
-
-    it('stops above the composer, with an edge of its own, and follows the composer growing', async () => {
-      showRow(600);
-      await settle();
+    const open = async () => {
       act(() => {
         dispatchWorkspaceToggleEvent();
       });
       await frame();
-      expect(panel()).toHaveAttribute('data-mode', 'float');
-      // From the composer zone's top (650) to the row's bottom (800), and an 8px gap.
-      expect(panel()).toHaveAttribute('data-lifted', 'true');
-      expect(panel().style.bottom).toBe('158px');
+    };
 
-      // The composer grows (a second line, the working line): the panel moves up with it.
-      zoneTop = 600;
-      act(() => {
-        screen.getByTestId('row').querySelector('[data-composer-zone]')?.append(document.createElement('span'));
-      });
-      await frame();
-      expect(panel().style.bottom).toBe('208px');
+    it('takes the whole row, and leads its strip with a named way back to the conversation', async () => {
+      showRow(600);
+      await settle();
+      await open();
+
+      expect(panel()).toHaveAttribute('data-mode', 'fill');
+      expect(panel().style.width).toBe('');
+      // Nothing to drag: the panel has the row.
+      expect(screen.queryByTestId('work-panel-resize')).not.toBeInTheDocument();
+
+      const back = screen.getByTestId('work-panel-back');
+      expect(back).toHaveTextContent('Back to Chat');
+      fireEvent.click(back);
+      expect(panel()).toHaveAttribute('data-open', 'false');
     });
 
-    it('sits on the whole height while closed or docked', async () => {
-      showRow(600);
-      await settle();
-      expect(panel()).toHaveAttribute('data-open', 'false');
-      expect(panel()).not.toHaveAttribute('data-lifted');
-      expect(panel().style.bottom).toBe('');
-      cleanup();
-
+    it('docks beside the transcript, without a way back of its own, once the row holds both', async () => {
       showRow(1400);
       await settle();
-      act(() => {
-        dispatchWorkspaceToggleEvent();
-      });
-      await frame();
+      await open();
+
       expect(panel()).toHaveAttribute('data-mode', 'dock');
-      expect(panel()).not.toHaveAttribute('data-lifted');
-      expect(panel().style.bottom).toBe('');
+      expect(screen.getByTestId('work-panel-resize')).toBeInTheDocument();
+      expect(screen.queryByTestId('work-panel-back')).not.toBeInTheDocument();
     });
   });
 });

@@ -31,7 +31,8 @@
     "executing": "Çalışıyor",
     "success": "Başarılı",
     "error": "Hata",
-    "canceled": "İptal Edildi"
+    "canceled": "İptal Edildi",
+    "denied": "İzin verilmedi"
   },
   "titles": {
     "web_search_started": "Web Araması Başlatıldı",
@@ -75,6 +76,7 @@
     "loadError": "Tam çıktı yüklenemedi.",
     "retry": "Yeniden dene",
     "callAria": "{{name}} · {{status}}",
+    "denied": "Çalıştırılmadı: izin vermediniz.",
     "showMore": "Daha fazla göster",
     "showLess": "Daha az göster"
   },

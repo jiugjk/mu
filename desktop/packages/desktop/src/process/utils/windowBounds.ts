@@ -22,7 +22,12 @@ export type WindowBounds = {
   height: number;
 };
 
-export const MIN_WINDOW_WIDTH = 400;
+/**
+ * The narrowest desktop window: the sidebar folded to its 56px rail beside the narrowest readable conversation
+ * (360px, the transcript's floor in the renderer's layout), with room left for the composer's controls to sit in
+ * at most two rows. Narrower, a desktop window would need the phone layout, which it never uses.
+ */
+export const MIN_WINDOW_WIDTH = 480;
 export const MIN_WINDOW_HEIGHT = 600;
 
 // Default window fills 80% of the primary display horizontally and 95%

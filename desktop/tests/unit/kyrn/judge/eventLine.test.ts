@@ -6,24 +6,28 @@ import twCommon from '@/renderer/services/i18n/locales/zh-TW/common.json';
 import enPreview from '@/renderer/services/i18n/locales/en-US/preview.json';
 import zhPreview from '@/renderer/services/i18n/locales/zh-CN/preview.json';
 import twPreview from '@/renderer/services/i18n/locales/zh-TW/preview.json';
+import enMu from '@/renderer/services/i18n/locales/en-US/mu.json';
+import zhMu from '@/renderer/services/i18n/locales/zh-CN/mu.json';
+import twMu from '@/renderer/services/i18n/locales/zh-TW/mu.json';
 import { eventLines } from '@/renderer/pages/conversation/KyrnPanel/Judge/eventLine';
 
 let en: TFunction;
 let zh: TFunction;
 let tw: TFunction;
 beforeAll(async () => {
-  const make = async (lng: string, common: unknown, preview: unknown) => {
+  // mu's words too: a checkpoint line says what the conversation's notice says.
+  const make = async (lng: string, common: unknown, preview: unknown, mu: unknown) => {
     const i18n = createInstance();
     await i18n.init({
       lng,
-      resources: { [lng]: { translation: { common, preview } } },
+      resources: { [lng]: { translation: { common, preview, mu } } },
       interpolation: { escapeValue: false },
     });
     return i18n.t;
   };
-  en = await make('en-US', enCommon, enPreview);
-  zh = await make('zh-CN', zhCommon, zhPreview);
-  tw = await make('zh-TW', twCommon, twPreview);
+  en = await make('en-US', enCommon, enPreview, enMu);
+  zh = await make('zh-CN', zhCommon, zhPreview, zhMu);
+  tw = await make('zh-TW', twCommon, twPreview, twMu);
 });
 
 type Payload = Record<string, unknown>;
@@ -610,6 +614,63 @@ describe('Odd payloads', () => {
     ).toEqual([`同一条命令已经失败了 3 次：${command}`]);
     expect(say(zh, 'mcp.failed', { name: 'a&b <srv>', code: 'denied', reason: 'x' })).toEqual([
       'a&b <srv>：你没有允许这个项目的服务器启动',
+    ]);
+  });
+});
+
+describe('Permission lines', () => {
+  it('says mu waits for the person’s permission, with the call it asks about as it came', () => {
+    expect(both('permissions.request', { id: 'p1', kind: 'shell', summary: 'rm -rf build', reason: 'unsure' })).toEqual(
+      [['Waiting for your permission: rm -rf build'], ['等你授权：rm -rf build']]
+    );
+    expect(say(tw, 'permissions.request', { id: 'p1', summary: 'rm -rf build' }, 'zh-TW')).toEqual([
+      '等你授權：rm -rf build',
+    ]);
+    expect(say(en, 'permissions.request', { id: 'p1' })).toEqual(['Waiting for your permission']);
+  });
+
+  it('says how the person answered, about the call the log found for it, and nothing for an answer it does not know', () => {
+    expect(both('permissions.resolved', { id: 'p1', answer: 'deny', summary: 'rm -rf build' })).toEqual([
+      ['You did not allow it: rm -rf build'],
+      ['你没允许：rm -rf build'],
+    ]);
+    expect(say(en, 'permissions.resolved', { id: 'p1', answer: 'once' })).toEqual(['You allowed it once']);
+    expect(say(zh, 'permissions.resolved', { id: 'p1', answer: 'session' }, 'zh-CN')).toEqual(['这次对话都允许']);
+    expect(say(en, 'permissions.resolved', { id: 'p1', answer: 'always' })).toBeUndefined();
+  });
+
+  it('says a call ran without asking and who let it: the judge, or the person for this conversation', () => {
+    expect(both('permissions.approved', { tool: 'bash', kind: 'shell', summary: 'npm test', by: 'jev' })).toEqual([
+      ['The judge let it run without asking you: npm test'],
+      ['判定器放行了，没有问你：npm test'],
+    ]);
+    expect(say(en, 'permissions.approved', { summary: 'npm test', by: 'grant', toolCallId: 'call-1' })).toEqual([
+      'Ran without asking, as allowed for this conversation: npm test',
+    ]);
+    expect(say(en, 'permissions.approved', { summary: 'npm test', by: 'someone' })).toBeUndefined();
+    expect(say(en, 'permissions.approved', { by: 'jev' })).toBeUndefined();
+  });
+});
+
+describe('Checkpoint lines', () => {
+  it('says why checkpoints are off by the code, in the words of the conversation’s notice, with its numbers', () => {
+    expect(say(en, 'checkpoint.off', { code: 'git_missing', params: {}, message: 'english words' })).toEqual([
+      enMu.notices.checkpointOffWhy.gitMissing,
+    ]);
+    expect(
+      say(zh, 'checkpoint.off', { code: 'too_many_files', params: { limit: 20000 }, message: 'english' }, 'zh-CN')
+    ).toEqual([zhMu.notices.checkpointOffWhy.tooManyFiles.replace('{{limit}}', '20,000')]);
+    expect(say(en, 'checkpoint.off', { code: 'too_many_bytes', params: { limit_mb: 512 }, message: 'x' })).toEqual([
+      enMu.notices.checkpointOffWhy.tooManyBytes.replace('{{limitMb}}', '512'),
+    ]);
+  });
+
+  it('keeps mu’s own line for a code without words, or one whose numbers did not come', () => {
+    expect(say(en, 'checkpoint.off', { code: 'melted', params: {}, message: 'mu: checkpoints are off.' })).toEqual([
+      'mu: checkpoints are off.',
+    ]);
+    expect(say(en, 'checkpoint.off', { code: 'too_slow', params: {}, message: 'mu: listing took too long.' })).toEqual([
+      'mu: listing took too long.',
     ]);
   });
 });

@@ -18,6 +18,11 @@ export interface NormalizedToolCall {
   hive?: HiveToolData;
   /** Delegate/hive: `output` said as a code before the first snapshot, so it can be shown in the app language. */
   swarmProgress?: Coded;
+  /**
+   * mu never ran the call because the person said no to it. Its output is mu's refusal, which is written for the model:
+   * the row says in the app's language that the call did not run, and shows no output.
+   */
+  denied?: true;
 }
 
 const formatValue = (value: unknown): string => {
@@ -140,6 +145,20 @@ type AcpToolCallUpdateCompat = IMessageAcpToolCall['content']['update'] & {
   raw_input?: Record<string, unknown>;
 };
 
+/**
+ * mu's refusal of a call the person said no to, as the model reads it (the harness's permissions feature). The mu
+ * bridge marks such a call (`rawOutput.mu.answer: "deny"`); a conversation from before the mark has only these words.
+ */
+const REFUSAL = 'The user did not allow this (';
+
+/** Whether mu said the person refused this call: the bridge's mark, or mu's refusal as the call's whole result. */
+function isDenied(status: NormalizedToolStatus, rawOutput: unknown, output: string | undefined): boolean {
+  const mu =
+    rawOutput !== null && typeof rawOutput === 'object' ? (rawOutput as { mu?: { answer?: unknown } }).mu : undefined;
+  if (mu && typeof mu === 'object' && mu.answer === 'deny') return true;
+  return status === 'error' && Boolean(output?.trimStart().startsWith(REFUSAL));
+}
+
 type AcpToolCallContentCompat = IMessageAcpToolCall['content'] & {
   _compact?: {
     truncated?: boolean;
@@ -171,11 +190,15 @@ export function normalizeAcpToolCall(message: IMessageAcpToolCall): NormalizedTo
   }
 
   const keyParam = buildParamSummary(update.kind, rawInput);
+  const status = normalizeAcpStatus(update.status);
+  const rawOutput = update.rawOutput ?? update.raw_output;
 
   return {
     key: update.tool_call_id,
-    name: update.title,
-    status: normalizeAcpStatus(update.status),
+    // A tool_call_update carries no title. A row built from one alone (its call's first frame never reached the list)
+    // is named by its kind, or not at all: never undefined, which the row's kind icon cannot read.
+    name: (typeof update.title === 'string' && update.title) || (typeof update.kind === 'string' ? update.kind : ''),
+    status,
     description: keyParam || (rawInput?.command as string) || update.kind,
     input,
     output,
@@ -183,8 +206,9 @@ export function normalizeAcpToolCall(message: IMessageAcpToolCall): NormalizedTo
     messageId: message.id,
     conversationId: message.conversation_id,
     imagePath: getAcpImagePath(update),
-    hive: parseHiveTool(update.title, rawInput, update.rawOutput ?? update.raw_output),
-    swarmProgress: parseSwarmProgress(update.rawOutput ?? update.raw_output),
+    hive: parseHiveTool(update.title, rawInput, rawOutput),
+    swarmProgress: parseSwarmProgress(rawOutput),
+    ...(isDenied(status, rawOutput, output) ? { denied: true as const } : {}),
   };
 }
 

@@ -178,6 +178,30 @@ describe('PermissionRequestPanel', () => {
     expect(screen.queryByTestId('message-permission-options')).not.toBeInTheDocument();
   });
 
+  it.each([
+    ['message-permission-option-once', 'allow'],
+    ['message-permission-option-always', 'allow'],
+    ['message-permission-option-reject', 'deny'],
+  ] as const)('says what the answer decided, not only that it was sent (%s)', async (testId, outcome) => {
+    const decision = vi.fn((option: PermissionPanelOption) => `decided ${option.value}: bun install`);
+    renderPanel({ decision });
+
+    fireEvent.click(getOptionButton(testId));
+
+    const status = await screen.findByTestId('message-permission-status');
+    expect(status).toHaveAttribute('data-outcome', outcome);
+    expect(status).toHaveTextContent(`decided ${testId.split('-').at(-1)}: bun install`);
+    expect(status).not.toHaveTextContent('messages.responseSentSuccessfully');
+  });
+
+  it('names the answer that was picked when the card has no words for what it decided', async () => {
+    renderPanel({ decision: () => undefined });
+    fireEvent.click(getOptionButton('message-permission-option-reject'));
+    const status = await screen.findByTestId('message-permission-status');
+    expect(status).toHaveTextContent('messages.permissionAnswered');
+    expect(status).toHaveAttribute('data-outcome', 'deny');
+  });
+
   it('disables the other options while one is submitting', async () => {
     let resolveRequest: (() => void) | undefined;
     const onConfirm = vi.fn(

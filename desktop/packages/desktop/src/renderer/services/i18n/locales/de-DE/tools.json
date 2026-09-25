@@ -31,7 +31,8 @@
     "executing": "Wird ausgeführt",
     "success": "Erfolgreich",
     "error": "Fehler",
-    "canceled": "Abgebrochen"
+    "canceled": "Abgebrochen",
+    "denied": "Nicht erlaubt"
   },
   "titles": {
     "web_search_started": "Websuche gestartet",
@@ -75,6 +76,7 @@
     "loadError": "Vollständige Ausgabe konnte nicht geladen werden.",
     "retry": "Erneut versuchen",
     "callAria": "{{name}} · {{status}}",
+    "denied": "Nicht ausgeführt: Du hast es nicht erlaubt.",
     "showMore": "Mehr anzeigen",
     "showLess": "Weniger anzeigen"
   },

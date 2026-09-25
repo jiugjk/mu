@@ -28,7 +28,7 @@
   "resumeSuccess": "Aufgabe fortgesetzt",
   "message.badge": "Geplant",
   "allScheduledTasks": "Alle geplanten Aufgaben",
-  "noTasks": "Keine geplanten Aufgaben",
+  "noTasks": "Noch keine geplanten Aufgaben.",
   "runNowSuccess": "Aufgabenausführung ausgelöst",
   "detail": {
     "backToAll": "Alle geplanten Aufgaben",
@@ -158,7 +158,8 @@
     "createFailed": "Aufgabe konnte nicht erstellt werden: {{error}}",
     "updateFailed": "Aufgabe konnte nicht gespeichert werden: {{error}}",
     "searchPlaceholder": "Aufgaben suchen...",
-    "noSearchResults": "Keine passenden geplanten Aufgaben."
+    "noSearchResults": "Keine passenden geplanten Aufgaben.",
+    "emptyHint": "Mit „{{button}}“ oben legst du eine an."
   },
   "trigger": {
     "runScheduledTask": "Geplante Aufgabe ausführen: {{name}}"

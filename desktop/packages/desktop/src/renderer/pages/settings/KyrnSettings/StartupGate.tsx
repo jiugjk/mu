@@ -7,14 +7,19 @@ import MuMark from '@renderer/components/brand/MuMark';
 import styles from '@renderer/components/brand/Brand.module.css';
 import { muErrorText, toMuError } from './fields/muError';
 
-export default function StartupGate({ children }: { children: React.ReactNode }) {
+/**
+ * Holds the app back until mu's catalog has loaded, and says why when it cannot. `open` lets the app through without
+ * asking. It is a prop, not a gate left out of the tree, so the element around the app is the same on every page and
+ * what it holds stays mounted when the gate opens or closes.
+ */
+export default function StartupGate({ children, open = false }: { children: React.ReactNode; open?: boolean }) {
   const { t, i18n } = useTranslation();
   const {
     data,
     error,
     mutate: retry,
   } = useSWR(
-    'kyrn.catalog',
+    open ? null : 'kyrn.catalog',
     async () => {
       const catalog = unwrap(await kyrnBridge.catalog.invoke());
       await mutate('assistants.list', catalog.assistants, { revalidate: false });
@@ -22,6 +27,7 @@ export default function StartupGate({ children }: { children: React.ReactNode })
     },
     { shouldRetryOnError: false, revalidateOnFocus: false }
   );
+  if (open) return <>{children}</>;
   if (error) {
     // What went wrong in the app language; the raw message only as the detail under it.
     const { text, detail } = muErrorText(t, i18n.language, toMuError(error));

@@ -263,7 +263,9 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
       const modeOptions: MobileActionSheetOption[] = dynamicModes.map((mode) => ({
         key: mode.value,
         label: t(`agentMode.${mode.value}`, { defaultValue: mode.label }),
-        description: mode.description,
+        description: mode.description
+          ? t(`agentMode.descriptions.${mode.value}`, { defaultValue: mode.description })
+          : undefined,
         active: mode.value === selectedMode,
       }));
       entries.push({
@@ -493,7 +495,7 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
   );
 
   return (
-    <div className={styles.actionRow}>
+    <div className={styles.actionRow} data-mobile={isMobile ? 'true' : undefined}>
       <div className={styles.actionTools}>
         <div className={styles.actionEntry}>
           {isMobile ? (

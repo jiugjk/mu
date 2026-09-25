@@ -28,7 +28,7 @@
   "resumeSuccess": "Tâche reprise",
   "message.badge": "Planifié",
   "allScheduledTasks": "Toutes les tâches planifiées",
-  "noTasks": "Aucune tâche planifiée",
+  "noTasks": "Aucune tâche planifiée pour l'instant.",
   "runNowSuccess": "Exécution de la tâche déclenchée",
   "detail": {
     "backToAll": "Toutes les tâches planifiées",
@@ -158,7 +158,8 @@
     "createFailed": "Impossible de créer la tâche : {{error}}",
     "updateFailed": "Impossible d’enregistrer la tâche : {{error}}",
     "searchPlaceholder": "Rechercher des tâches...",
-    "noSearchResults": "Aucune tâche planifiée correspondante."
+    "noSearchResults": "Aucune tâche planifiée correspondante.",
+    "emptyHint": "Créez-en une avec « {{button}} », en haut."
   },
   "trigger": {
     "runScheduledTask": "Exécuter la tâche planifiée : {{name}}"

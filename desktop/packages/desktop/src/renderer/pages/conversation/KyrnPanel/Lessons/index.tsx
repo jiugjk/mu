@@ -5,8 +5,8 @@ import type { StoredLesson } from '@/common/kyrn/lessons';
 import type { Activity } from '@/common/kyrn/types';
 import { useClock } from '../clock';
 import { ErrorNotice } from '../text';
-import LessonRow from './LessonRow';
-import { lessonMatches, memoryEvents, SEARCH_AFTER, shownLessons, type LessonFilter } from './model';
+import LessonRow, { LessonText } from './LessonRow';
+import { lessonMatches, memoryEvents, SEARCH_AFTER, shownLessons, shownText, type LessonFilter } from './model';
 import { lessonNotes } from './notes';
 import { useLessons } from './useLessons';
 import styles from './Lessons.module.css';
@@ -96,8 +96,9 @@ export default function LessonsTab({
           {notes.map((note) => (
             <li key={note.id} className={styles.note}>
               <span className={styles.noteTime}>{clock(note.at)}</span>
-              <span className={styles.noteText} dir='auto' title={note.text}>
-                {note.text}
+              {/* A note names a lesson by its words, code spans and all. */}
+              <span className={styles.noteText} dir='auto' title={shownText(note.text)}>
+                <LessonText text={note.text} />
               </span>
             </li>
           ))}

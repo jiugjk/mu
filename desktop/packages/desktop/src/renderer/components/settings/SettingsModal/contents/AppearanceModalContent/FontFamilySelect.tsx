@@ -48,7 +48,9 @@ const FontFamilySelect: React.FC<FontFamilySelectProps> = ({ value, onChange }) 
 
   return (
     <AionSelect
-      className='w-240px'
+      // As wide as its label and value, from 240px up to the row's width: a long default ("システムのデフォルト")
+      // or family name is not cut.
+      className='w-max min-w-240px max-w-full'
       // Two selects side by side in a row: each says what it picks.
       prefix={<span className='text-t-secondary'>{t('settings.fontFamilyLabel')}</span>}
       aria-label={t('settings.fontFamilyLabel')}

@@ -30,7 +30,7 @@
   "resumeSuccess": "Tarea reanudada",
   "message.badge": "Programado",
   "allScheduledTasks": "Todas las tareas programadas",
-  "noTasks": "Sin tareas programadas",
+  "noTasks": "Aún no hay tareas programadas.",
   "runNowSuccess": "Ejecución de tarea activada",
   "detail": {
     "backToAll": "Todas las tareas programadas",
@@ -163,7 +163,8 @@
     "createFailed": "No se pudo crear la tarea: {{error}}",
     "updateFailed": "No se pudo guardar la tarea: {{error}}",
     "searchPlaceholder": "Buscar tareas...",
-    "noSearchResults": "No hay tareas programadas coincidentes."
+    "noSearchResults": "No hay tareas programadas coincidentes.",
+    "emptyHint": "Crea una con «{{button}}», arriba."
   },
   "trigger": {
     "runScheduledTask": "Ejecutar tarea programada: {{name}}"

@@ -62,6 +62,19 @@ const STDERR_TAIL = 8 * 1024;
 const MU_LINE = '[mu] ';
 
 /**
+ * How long a control command (anything but a prompt) may wait for its answer, in milliseconds. `command` counts from
+ * the moment mu is up (its first line of output); a command sent before that waits for mu to come up as well, up to
+ * `start` in all. A first start can take far longer than an answer: a virus scanner reading every file of a fresh
+ * install, a busy disk, a machine under load. Counted from the write, 30 seconds failed a conversation's first message
+ * while mu was still starting, and the next attempt then worked.
+ */
+export interface RpcDeadlines {
+  command: number;
+  start: number;
+}
+const DEADLINES: RpcDeadlines = { command: 30_000, start: 180_000 };
+
+/**
  * What the adapter logs when mu stopped without being asked to: the exit, then the end of mu's error output. The adapter's
  * error output is AionCore's to log (each line under "CLI process stderr" in the app's log folder); mu's own never
  * reaches the client.
@@ -94,6 +107,9 @@ export class PiRpc implements RpcPort {
     { resolve(value: JsonRecord): void; reject(error: Error): void; timer?: NodeJS.Timeout }
   >();
   private closed = false;
+  /** mu has written its first line: it reads commands (see started()). */
+  private up = false;
+  private deadlines: RpcDeadlines;
   /** close() was called: mu stopping is expected, not news for the log. */
   private ending = false;
   private exited = false;
@@ -112,9 +128,11 @@ export class PiRpc implements RpcPort {
     session: string | undefined,
     onEvent: (event: JsonRecord) => void,
     /** Added to the inherited environment of the harness process. */
-    env?: Readonly<Record<string, string>>
+    env?: Readonly<Record<string, string>>,
+    deadlines: RpcDeadlines = DEADLINES
   ) {
     this.onEvent = onEvent;
+    this.deadlines = deadlines;
     // A project inside WSL gets its harness inside WSL (Windows only).
     const location = process.platform === 'win32' ? wslLocation(cwd) : undefined;
     this.wsl = location !== undefined;
@@ -148,6 +166,7 @@ export class PiRpc implements RpcPort {
     // that error would end the adapter, and with it every conversation it serves.
     this.child.stdin.on('error', () => this.broken());
     createInterface({ input: this.child.stdout }).on('line', (line) => {
+      if (!this.up) this.started();
       let event: JsonRecord;
       try {
         event = asRecord(JSON.parse(line));
@@ -219,17 +238,32 @@ export class PiRpc implements RpcPort {
     if (this.closed) return Promise.reject(new Error('mu process is closed'));
     const id = randomUUID();
     return new Promise((resolve, reject) => {
-      // A difficult prompt can run for hours. Only control commands have a deadline.
+      // A difficult prompt can run for hours. Only control commands have a deadline (see RpcDeadlines).
       const timer =
         command.type === 'prompt'
           ? undefined
-          : setTimeout(() => {
-              this.pending.delete(id);
-              reject(new Error('mu control command timed out'));
-            }, 30000);
+          : this.expire(id, this.up ? this.deadlines.command : this.deadlines.start);
       this.pending.set(id, { resolve, reject, timer });
       this.write(`${JSON.stringify({ ...command, id })}\n`);
     });
+  }
+  /** Fails a control command that has had no answer after `ms`. */
+  private expire(id: string, ms: number): NodeJS.Timeout {
+    return setTimeout(() => {
+      const request = this.pending.get(id);
+      if (!request) return;
+      this.pending.delete(id);
+      request.reject(new Error('mu control command timed out'));
+    }, ms);
+  }
+  /** mu is up: the control commands that waited for it have the usual deadline from now. */
+  private started(): void {
+    this.up = true;
+    for (const [id, request] of this.pending) {
+      if (!request.timer) continue;
+      clearTimeout(request.timer);
+      request.timer = this.expire(id, this.deadlines.command);
+    }
   }
   /** An answer to one of mu's questions. Never throws: a mu that cannot take it any more has stopped, and says so. */
   respond(response: JsonRecord): void {

@@ -19,6 +19,23 @@
   white-space: nowrap;
 }
 
+/* Where the line's matter is set up (a judge, when there is none): a link-like word, never a button's box. */
+.action {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: rgb(var(--primary-6));
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.action:hover,
+.action:focus-visible {
+  text-decoration: underline;
+}
+
 /* A hint the main model was given: a small label with a hairline, never a colour. The line gives way before it does. */
 .hint {
   flex: none;

@@ -18,3 +18,17 @@ export type ProviderNames = ReadonlyMap<string, string>;
 export const providerDisplayName = (t: (key: string) => string, id: string, names?: ProviderNames): string =>
   names?.get(id) ||
   (isSubscriptionProvider(id) ? t(`mu.welcome.login.providers.${id}.name`) : (BUILTIN_PROVIDER_NAMES[id] ?? id));
+
+/** The names mu last reported for the models it can use, by `provider/model-id` (the send box's model values). */
+export type ModelNames = ReadonlyMap<string, string>;
+
+/**
+ * A model as the send box's picker names it: by the name mu reported for it (pi's own, "GPT-5.6 Terra"), found by its
+ * `provider/model-id`; otherwise by its id without the provider, which the picker says as the group the model is in.
+ */
+export function modelDisplayName(ref: string, names?: ModelNames): string {
+  const named = names?.get(ref);
+  if (named) return named;
+  const slash = ref.indexOf('/');
+  return slash > 0 ? ref.slice(slash + 1) : ref;
+}

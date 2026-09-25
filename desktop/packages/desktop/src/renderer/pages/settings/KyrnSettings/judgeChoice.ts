@@ -1,29 +1,33 @@
+import { CLM_KEY_VARIABLE } from '@/common/kyrn/clm';
 import type { JudgeSettings, JudgeType, KyrnSettings } from '@/common/kyrn/types';
 
 /**
- * The two kinds of judge a person chooses between: Jev, or Laya on this machine. The profiles behind them (jev,
- * jev-direct, jev-openrouter, jev-gateway, jev-custom, laya) are how the config keeps them; the tiers page shows them by
- * these two names, and a Jev profile by the service it reaches Jev through. Anything else (a model as judge, a mock, a
- * self-hosted HTTP judge) is only named there, by the name it was given.
+ * The three kinds of judge a person chooses between: Jev, Laya on this machine, or CLM on a server of their own. The
+ * profiles behind them (jev, jev-direct, jev-openrouter, jev-gateway, jev-custom, laya, clm) are how the config keeps
+ * them; the tiers page shows them by these three names, and a Jev profile by the service it reaches Jev through.
+ * Anything else (a model as judge, a mock, a self-hosted HTTP judge) is only named there, by the name it was given.
  */
-export type JudgeChoice = 'jev' | 'local';
+export type JudgeChoice = 'jev' | 'local' | 'clm';
 
-export const JUDGE_CHOICES: readonly JudgeChoice[] = ['jev', 'local'];
+export const JUDGE_CHOICES: readonly JudgeChoice[] = ['jev', 'local', 'clm'];
+/** The choices of the first-run guide. CLM needs a server with a GPU someone already runs: it waits in the settings. */
+export const GUIDE_CHOICES: readonly JudgeChoice[] = ['jev', 'local'];
 
 const KIND_OF: Record<JudgeType, JudgeChoice | undefined> = {
   jev: 'jev',
   typesafe: 'jev',
   gateway: 'jev',
   local: 'local',
+  clm: 'clm',
   llm: undefined,
   http: undefined,
   mock: undefined,
 };
 
 /** The profile a choice prefers when several of its kind exist: the built-in names. */
-const PREFERRED: Record<JudgeChoice, string> = { jev: 'jev', local: 'laya' };
+const PREFERRED: Record<JudgeChoice, string> = { jev: 'jev', local: 'laya', clm: 'clm' };
 
-/** Which of the two a profile is; undefined for a model as judge, a self-hosted judge or the mock. */
+/** Which of the three a profile is; undefined for a model as judge, a self-hosted HTTP judge or the mock. */
 export const kindOf = (judge: JudgeSettings | undefined): JudgeChoice | undefined =>
   judge ? KIND_OF[judge.type] : undefined;
 
@@ -146,3 +150,6 @@ function askedAt(settings: KyrnSettings, index: number, profile: string): KyrnSe
 
 /** The variable a Jev profile's key lives in. */
 export const jevKeyVariable = (judge: JudgeSettings | undefined): string => judge?.apiKeyEnv || JEV_KEY_VARIABLE;
+
+/** The variable a CLM profile's key lives in: needed only by a server started with CLM_API_KEY. */
+export const clmKeyVariable = (judge: JudgeSettings | undefined): string => judge?.apiKeyEnv || CLM_KEY_VARIABLE;

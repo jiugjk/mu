@@ -159,12 +159,11 @@ const AppLayout: React.FC<{ layout: React.ReactElement }> = ({ layout }) => {
   // backend who this client is on its own.
   useCrossSessionRateLimitNotice();
 
-  // Do not obstruct an existing task while the main process is being upgraded.
-  return location.pathname.startsWith('/conversation/') ? (
-    React.cloneElement(layout)
-  ) : (
-    <StartupGate>{React.cloneElement(layout)}</StartupGate>
-  );
+  // Do not obstruct an existing task while the main process is being upgraded: a conversation passes the gate. The
+  // gate stays in the tree on every page, open on a conversation. Leaving it out there would give the layout another
+  // parent, and React would mount the whole layout afresh on every step between a conversation and any other page:
+  // the sidebar forgot the conversation "back to chat" returns to, and the work panel reloaded its pages.
+  return <StartupGate open={location.pathname.startsWith('/conversation/')}>{React.cloneElement(layout)}</StartupGate>;
 };
 
 const PanelRoute: React.FC<{ layout: React.ReactElement }> = ({ layout }) => {

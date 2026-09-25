@@ -527,6 +527,7 @@ const ToolsModalContent: React.FC = () => {
               <span className='text-14px font-500 leading-22px text-t-primary'>{t('settings.imageGeneration')}</span>
               <Switch
                 size='small'
+                aria-label={t('settings.imageGeneration')}
                 disabled={
                   isUpdatingImageGeneration ||
                   isImageGenerationServerLoading ||

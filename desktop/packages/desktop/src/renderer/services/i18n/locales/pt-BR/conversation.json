@@ -463,7 +463,7 @@
   "chat": {
     "noModelSelected": "Nenhum modelo selecionado para a sessão atual, impossível enviar mensagem",
     "sendMessageTo": "Enviar mensagem para {{model}}",
-    "processing": "Processando...",
+    "processing": "Processando…",
     "quotaExceededTitle": "Cota do modelo alcançada",
     "quotaExceededBody": "A cota do modelo atual esgotou. Deseja mudar para o {{model}} para continuar?",
     "quotaExceededNoFallback": "Cota do modelo alcançada. Por favor, mude para outro modelo disponível.",
@@ -526,7 +526,6 @@
       "manual": "Envio manual"
     },
     "addToQueue": "Adicionar à caixa de rascunhos",
-    "addToQueueShortcut": "⌘ + Enter / Ctrl + Enter",
     "midturnBlocked": "Não é possível interromper enquanto este agente está respondendo. Use Adicionar à caixa de rascunhos.",
     "enterShortcut": "Enter",
     "actionMode": "Escolher ação de envio",
@@ -597,7 +596,8 @@
   "sendbox": {
     "hint": "Digite / para comandos, @ para referenciar arquivos, ↑/↓ para o histórico de mensagens",
     "mediaPathFallback": "Este agente não tem suporte nativo para este tipo de arquivo; ele será enviado como um caminho de arquivo.",
-    "hintWithSessions": "/ para comandos, @ para arquivos, @@ para conversas, ↑/↓ para o histórico"
+    "hintWithSessions": "/ para comandos, @ para arquivos, @@ para conversas, ↑/↓ para o histórico",
+    "stop": "Parar a resposta"
   },
   "composer": {
     "goalLine": {

@@ -2,7 +2,14 @@ import { createInstance, type TFunction } from 'i18next';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { StoredLesson } from '@/common/kyrn/lessons';
 import type { Activity } from '@/common/kyrn/types';
-import { lessonMatches, memoryEvents, shownLessons } from '@/renderer/pages/conversation/KyrnPanel/Lessons/model';
+import {
+  codeSpans,
+  lessonMatches,
+  memoryEvents,
+  repeatsLesson,
+  shownLessons,
+  shownText,
+} from '@/renderer/pages/conversation/KyrnPanel/Lessons/model';
 import { lessonNotes } from '@/renderer/pages/conversation/KyrnPanel/Lessons/notes';
 import common from '@/renderer/services/i18n/locales/en-US/common.json';
 import zhCN from '@/renderer/services/i18n/locales/zh-CN/common.json';
@@ -174,5 +181,50 @@ describe('the quiet notes above the lessons', () => {
     ]);
     expect(notes.map((note) => note.at)).toEqual([events[3].at, events[2].at, events[1].at]);
     expect(texts(en, events, 10)).toHaveLength(4);
+  });
+});
+
+describe('a lesson’s words on screen', () => {
+  it('parts out its code spans as Markdown reads them, and leaves an unclosed backtick as it is', () => {
+    expect(codeSpans('当前根工作树没有 `desktop/`；应使用 `.claude/worktrees/mu-sync/desktop/` 的快照')).toEqual([
+      { text: '当前根工作树没有 ', code: false },
+      { text: 'desktop/', code: true },
+      { text: '；应使用 ', code: false },
+      { text: '.claude/worktrees/mu-sync/desktop/', code: true },
+      { text: ' 的快照', code: false },
+    ]);
+    expect(codeSpans('Run `npm test`.')).toEqual([
+      { text: 'Run ', code: false },
+      { text: 'npm test', code: true },
+      { text: '.', code: false },
+    ]);
+    // Two backticks close only on two, so one inside is part of the code; one space inside both ends is dropped.
+    expect(codeSpans('Quote it as `` a`b `` here')).toEqual([
+      { text: 'Quote it as ', code: false },
+      { text: 'a`b', code: true },
+      { text: ' here', code: false },
+    ]);
+    expect(codeSpans('A lone ` stays.')).toEqual([{ text: 'A lone ` stays.', code: false }]);
+    expect(codeSpans('Not closed: ``this`.')).toEqual([{ text: 'Not closed: ``this`.', code: false }]);
+    expect(codeSpans('No code at all')).toEqual([{ text: 'No code at all', code: false }]);
+    expect(shownText('  Use `test.sh`\n  from the root ')).toBe('Use test.sh from the root');
+  });
+
+  it('knows a trigger that only says its lesson again: the same words, or their start, cut or not', () => {
+    const said = '当前根工作树没有 `desktop/`；调查桌面源码应使用 `.claude/worktrees/mu-sync/desktop/` 的已记录快照。';
+    expect(repeatsLesson(`  ${said} `, said)).toBe(true);
+    expect(repeatsLesson('当前根工作树没有 `desktop/`；调查桌面源码应使用 `.clau', said)).toBe(true);
+    expect(repeatsLesson('当前根工作树没有 desktop/；调查桌面源码…', said)).toBe(true);
+    expect(repeatsLesson('Rerun these tests...', 'Rerun these tests from the parent session.')).toBe(true);
+    // A trigger that says when, in its own words, stays.
+    expect(
+      repeatsLesson(
+        '嵌入式创建 extension 时传入 config/provider 但未给 roots',
+        '经验仅保存在内存，session 结束即丢失。'
+      )
+    ).toBe(false);
+    expect(
+      repeatsLesson('Running kyrn-judge hive tests in a sub-agent', 'Rerun these tests from the parent session.')
+    ).toBe(false);
   });
 });

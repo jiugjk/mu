@@ -3,7 +3,7 @@ import type { DecisionMode, FeatureState, HarnessState } from './manifest';
 import type { ModelsSettings } from './models';
 
 export type Result<T> = { ok: true; data: T } | { ok: false; error: string };
-export type JudgeType = 'jev' | 'typesafe' | 'gateway' | 'local' | 'http' | 'llm' | 'mock';
+export type JudgeType = 'jev' | 'typesafe' | 'clm' | 'gateway' | 'local' | 'http' | 'llm' | 'mock';
 export type JudgeSettings = {
   type: JudgeType;
   model: string;

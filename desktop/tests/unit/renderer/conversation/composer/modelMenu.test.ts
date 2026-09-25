@@ -13,7 +13,7 @@ import {
   filterModelMenu,
   modelMenu,
 } from '@/renderer/pages/conversation/platforms/acp/Composer/modelMenu';
-import { providerDisplayName } from '@/renderer/utils/model/providerName';
+import { modelDisplayName, providerDisplayName } from '@/renderer/utils/model/providerName';
 
 const model = (currentValue: string): AcpDerivedOption => ({
   id: 'model',
@@ -131,6 +131,22 @@ describe('providerDisplayName', () => {
     expect(providerDisplayName(signInWords, 'anthropic')).toBe('Claude');
     expect(providerDisplayName(signInWords, 'vercel-ai-gateway', names)).toBe('Vercel AI Gateway');
     expect(providerDisplayName(signInWords, 'custom-2', names)).toBe('custom-2');
+  });
+});
+
+describe('modelDisplayName', () => {
+  it('names a model as the picker does: by the name mu reported for it, else by its id without the provider', () => {
+    const names = new Map([
+      ['openai-codex/gpt-5.6-terra', 'GPT-5.6 Terra'],
+      ['openrouter/anthropic/claude-sonnet-4.5', 'Claude Sonnet 4.5'],
+    ]);
+    expect(modelDisplayName('openai-codex/gpt-5.6-terra', names)).toBe('GPT-5.6 Terra');
+    expect(modelDisplayName('openrouter/anthropic/claude-sonnet-4.5', names)).toBe('Claude Sonnet 4.5');
+    // A model mu did not report: the provider is what the picker groups by, not part of the model's name.
+    expect(modelDisplayName('openai-codex/gpt-6-astra', names)).toBe('gpt-6-astra');
+    expect(modelDisplayName('openrouter/meta/llama-5')).toBe('meta/llama-5');
+    // An id that names no provider stays as it is.
+    expect(modelDisplayName('test-model', names)).toBe('test-model');
   });
 });
 

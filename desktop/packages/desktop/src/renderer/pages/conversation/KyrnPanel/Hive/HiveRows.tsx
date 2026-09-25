@@ -6,16 +6,16 @@ import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { isBeeActive, parseSwarmSnapshot, type HiveBee, type HiveBeeStatus } from '@/common/kyrn/hive';
 import type { Activity } from '@/common/kyrn/types';
-import { thinkingLevelLabel } from '@/renderer/utils/model/thinkingLevel';
+import { useModelNames } from '@/renderer/hooks/agent/useModelNames';
 import { list, record, str } from '../activity';
 import type { HiveFocusRequest } from '../focus';
 import { beeCounters, ErrorNotice, quietLabel } from '../text';
-import { buildHiveRuns, type HiveRun } from './activity';
+import { buildHiveRuns, endedRuns, type HiveRun } from './activity';
 import BeeActivityList from './BeeActivity';
 import { swarmTitleText } from './codes';
 import HiveGraph from './Graph';
 import { hiveLinks, isLive, reportLinks, type HiveLink } from './Graph/links';
-import { beeLine } from './HiveToolCard';
+import { beeLine, beeWho, settledBee, swarmSummary } from './HiveToolCard';
 import Hive from './index';
 import styles from './Hive.module.css';
 
@@ -89,16 +89,18 @@ function linksOf(run: SwarmRun, detail: HiveRun | undefined): HiveLink[] {
 
 /**
  * The hive tab, newest run first: each run's map (the bees around the goal and what passed between them) over its
- * rows — one per sub-agent: name, role, model and thinking level, and what it is doing or said — under a line that
- * counts how many run, are done and failed. The newest run's map is open, an older run's opens on its button. A row
- * opens to its counts, its silence, why it stopped and its last steps; a hive run also opens to its records (the
- * notes passed between bees, the gates). A bee picked on the map opens its row. A request from the transcript opens
- * the bee it names.
+ * rows — one per sub-agent: its task, then what it is doing or said beside its role, model and thinking level — under
+ * a line that counts how many run, are done and failed. The newest run's map is open, an older run's opens on its
+ * button. A row opens to its counts, its silence, why it stopped and its last steps; a hive run also opens to its
+ * records (the notes passed between bees, the gates). A bee picked on the map opens its row. A request from the
+ * transcript opens the bee it names.
  */
 export default function HiveRows({ events, focus }: { events: Activity[]; focus?: HiveFocusRequest }) {
   const { t, i18n } = useTranslation();
+  const names = useModelNames();
   const runs = useMemo(() => swarmRuns(t, events), [t, events]);
   const records = useMemo(() => new Map(buildHiveRuns(events).map((run) => [run.id, run])), [events]);
+  const ended = useMemo(() => endedRuns(events), [events]);
   // Runs whose map is the other way round from the default (open for the newest run, closed for the rest).
   const [mapsToggled, setMapsToggled] = useState<ReadonlySet<string>>(new Set());
   const [picked, setPicked] = useState<{ run: string; bee: string }>();
@@ -151,7 +153,12 @@ export default function HiveRows({ events, focus }: { events: Activity[]; focus?
     <div className={styles.rowsTab} data-testid='kyrn-hive'>
       {focus && !focusedRun ? <p className={styles.empty}>{t('common.kyrn.hiveView.waitingRun')}</p> : null}
       {!runs.length && !focus ? <p className={styles.empty}>{t('common.kyrn.hiveView.none')}</p> : null}
-      {runs.map((run, index) => {
+      {runs.map((listed, index) => {
+        // Once its turn is over, no bee of a run is still at work: a run mu's death cut short says so.
+        const over = ended.has(listed.id);
+        const bees = listed.bees.map((bee) => settledBee(bee, !over));
+        const cutShort = bees.some((bee, at) => bee !== listed.bees[at]);
+        const run = { ...listed, bees };
         const running = run.bees.filter((bee) => isBeeActive(bee.status)).length;
         const done = run.bees.filter((bee) => bee.status === 'done').length;
         const failed = run.bees.filter((bee) => bee.status === 'failed' || bee.status === 'timed-out').length;
@@ -162,7 +169,9 @@ export default function HiveRows({ events, focus }: { events: Activity[]; focus?
               <span className={styles.runTitle} dir='auto' title={run.title}>
                 {run.title || t(run.kind === 'delegate' ? 'common.kyrn.hiveView.agents' : 'common.kyrn.hiveView.title')}
               </span>
-              <span className={styles.runCounts}>{t('common.kyrn.hiveView.counts', { running, done, failed })}</span>
+              <span className={styles.runCounts}>
+                {cutShort ? swarmSummary(t, bees, false) : t('common.kyrn.hiveView.counts', { running, done, failed })}
+              </span>
               {run.bees.length ? (
                 <Button
                   type='text'
@@ -192,37 +201,35 @@ export default function HiveRows({ events, focus }: { events: Activity[]; focus?
                 const status = t(
                   bee.status === 'unknown' ? 'common.kyrn.hiveView.unknown' : `common.kyrn.beeStatus.${bee.status}`
                 );
+                const who = beeWho(t, bee, names);
                 return (
                   <li key={bee.name} ref={anchor(key)} data-bee={bee.name}>
                     <Button type='text' long className={styles.row} aria-expanded={open} onClick={() => toggle(key)}>
                       <StatusMark status={bee.status} />
                       <span className={styles.srOnly}>{status}</span>
                       <span className={styles.rowMain}>
-                        <span className={styles.rowTop}>
-                          <span className={styles.rowName} dir='auto'>
-                            {bee.name}
+                        {/* The task is the one part that is cut to fit: its whole is on hover. */}
+                        <span className={styles.rowName} dir='auto' title={bee.name} data-testid='hive-row-task'>
+                          {bee.name}
+                        </span>
+                        <span className={styles.rowStatus}>
+                          {/* One line while closed; the whole of it once the row is open. */}
+                          <span
+                            className={classNames(
+                              bee.error ? styles.rowFailed : styles.rowDoing,
+                              bee.tool && !bee.error && styles.rowTool,
+                              open && styles.rowWhole
+                            )}
+                            dir='auto'
+                          >
+                            {beeLine(t, bee, i18n.language)}
                           </span>
-                          {bee.role ? (
-                            <span className={styles.rowRole} dir='auto'>
-                              {bee.role}
+                          {/* Never cut: it goes under what the bee is doing when both do not fit. */}
+                          {who ? (
+                            <span className={styles.rowWho} dir='auto' data-testid='hive-row-who'>
+                              {who}
                             </span>
                           ) : null}
-                          <span className={styles.rowModel}>
-                            {[bee.model, bee.thinking && thinkingLevelLabel(t, bee.thinking)]
-                              .filter(Boolean)
-                              .join(' · ')}
-                          </span>
-                        </span>
-                        {/* One line while closed; the whole of it once the row is open. */}
-                        <span
-                          className={classNames(
-                            bee.error ? styles.rowFailed : styles.rowDoing,
-                            bee.tool && !bee.error && styles.rowTool,
-                            open && styles.rowWhole
-                          )}
-                          dir='auto'
-                        >
-                          {beeLine(t, bee, i18n.language)}
                         </span>
                       </span>
                     </Button>

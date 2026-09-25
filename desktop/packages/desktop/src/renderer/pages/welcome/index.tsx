@@ -10,7 +10,7 @@ import MuErrorMessage from '@/renderer/pages/settings/KyrnSettings/fields/MuErro
 import {
   choiceOf,
   choose,
-  JUDGE_CHOICES,
+  GUIDE_CHOICES,
   jevKeyVariable,
   profileFor,
 } from '@/renderer/pages/settings/KyrnSettings/judgeChoice';
@@ -242,7 +242,12 @@ export default function Welcome() {
                     provider={provider(api)}
                     typedKey={form.key.trim()}
                     disabled={apiModelProblem({ ...apiInput(api), model: form.model || 'x' }) === 'baseUrl'}
-                    onModels={setListed}
+                    onModels={(models) => {
+                      setListed(models);
+                      // A service that lists one model has named it: nothing is left to choose.
+                      if (models.length === 1)
+                        setForm((now) => (now.model.trim() ? now : { ...now, model: models[0] }));
+                    }}
                   />
                 </div>
               </ChoiceTile>
@@ -257,7 +262,7 @@ export default function Welcome() {
         <h1 className={styles.title}>{t('mu.welcome.judge.title')}</h1>
         <p className={styles.subtitle}>{t('mu.welcome.judge.subtitle')}</p>
         <div className={choiceStyles.choices} role='radiogroup' aria-label={t('mu.welcome.judge.title')}>
-          {JUDGE_CHOICES.map((choice) => (
+          {GUIDE_CHOICES.map((choice) => (
             <JudgeChoiceTile
               key={choice}
               choice={choice}
@@ -267,6 +272,7 @@ export default function Welcome() {
               <ChoiceBody
                 choice={choice}
                 draft={draft}
+                guide
                 onChange={mu.editSettings}
                 onKey={(variable, value) =>
                   mu.edit((now) => ({ ...now, judgeKeys: { ...now.judgeKeys, [variable]: value } }))

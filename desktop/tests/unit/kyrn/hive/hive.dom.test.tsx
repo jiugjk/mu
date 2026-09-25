@@ -189,3 +189,67 @@ describe('Native Hive interaction', () => {
     expect(within(inspector).getByText('test-model · Minimal')).toBeInTheDocument();
   });
 });
+
+const cardRow = (card: HTMLElement, name: string) => within(card).getByRole('button', { name: `Inspect ${name}` });
+const avatarStatus = (element: HTMLElement) => element.querySelector('[data-status]')?.getAttribute('data-status');
+
+describe('a sub-agent card whose call is over', () => {
+  // A hive whose mu closed mid-run keeps its last snapshot, with two bees caught at work in it: the card said
+  // "2 active" for good.
+  const caughtMidRun = (status: 'in_progress' | 'failed') => {
+    const message = hiveMessage();
+    message.content.update.status = status;
+    message.content.update.rawOutput = {
+      details: {
+        snapshot: {
+          ...hiveSnapshot,
+          bees: [
+            hiveSnapshot.bees[0],
+            hiveSnapshot.bees[1],
+            { ...hiveSnapshot.bees[0], name: 'cache-keys', status: 'thinking', tool: undefined },
+            { ...hiveSnapshot.bees[1], name: 'provider-docs' },
+          ],
+        },
+      },
+    };
+    return message;
+  };
+  it('reads the bees caught at work as stopped, and counts what got done and what did not', () => {
+    render(view(<MessageToolGroupSummary messages={[caughtMidRun('failed')]} />));
+    const card = screen.getByTestId('swarm-tool-card');
+    expect(within(card).getByText('2 done / 4 · 2 not finished')).toBeInTheDocument();
+    expect(within(card).queryByText(/active/)).not.toBeInTheDocument();
+    // Their lines say they stopped, not the tool they were on, and their avatars do not look busy.
+    expect(within(card).queryByText('read src/cache.ts')).not.toBeInTheDocument();
+    for (const name of ['prefix-mutations', 'cache-keys']) {
+      expect(cardRow(card, name)).toHaveTextContent('Stopped');
+      expect(avatarStatus(cardRow(card, name))).toBe('stopped');
+    }
+    expect(cardRow(card, 'provider-cache')).toHaveTextContent('Done');
+    expect(avatarStatus(cardRow(card, 'provider-cache'))).toBe('done');
+    // On the map in miniature a stopped bee's dot is hollow; a working one's is filled.
+    const dots = [...within(card).getByTestId('hive-miniature').querySelectorAll('circle')];
+    expect(dots.map((dot) => dot.getAttribute('data-filled'))).toEqual(['false', 'true', 'false', 'true']);
+  });
+
+  it('keeps what the bees are doing while the call runs', () => {
+    render(view(<MessageToolGroupSummary messages={[caughtMidRun('in_progress')]} />));
+    const card = screen.getByTestId('swarm-tool-card');
+    expect(within(card).getByText('2 active · 2 done / 4')).toBeInTheDocument();
+    expect(within(card).getByText('read src/cache.ts')).toBeInTheDocument();
+    expect(avatarStatus(cardRow(card, 'prefix-mutations'))).toBe('tool');
+    expect(avatarStatus(cardRow(card, 'cache-keys'))).toBe('thinking');
+  });
+
+  it('counts a call that finished with every bee done as done, with nothing left over', () => {
+    const message = hiveMessage();
+    message.content.update.status = 'completed';
+    message.content.update.rawOutput = {
+      details: {
+        snapshot: { ...hiveSnapshot, bees: [{ ...hiveSnapshot.bees[0], status: 'done' }, hiveSnapshot.bees[1]] },
+      },
+    };
+    render(view(<MessageToolGroupSummary messages={[message]} />));
+    expect(within(screen.getByTestId('swarm-tool-card')).getByText('2 done / 2')).toBeInTheDocument();
+  });
+});

@@ -67,6 +67,7 @@
   "noOptionsAvailable": "无可用选项",
   "processing": "处理中...",
   "responseSentSuccessfully": "响应已成功发送",
+  "permissionAnswered": "已回答：{{option}}",
   "permissionResponseFailed": "未能发送响应，请重试。",
   "permissionNoLongerPending": "这个请求已不再等待回答。",
   "confirmation": {

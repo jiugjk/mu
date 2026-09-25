@@ -67,6 +67,7 @@
   "tray.showWindow": "Mostrar mu",
   "tray.newChat": "Nuevo chat",
   "tray.closeToTray": "Minimizar a bandeja",
+  "tray.hideToMenuBar": "Minimizar a la barra de menús",
   "tray.about": "Acerca de mu",
   "tray.restart": "Reiniciar aplicación",
   "tray.quit": "Salir",
@@ -175,6 +176,8 @@
       "open": "Abrir Hive",
       "inspect": "Inspeccionar {{name}}",
       "summary": "{{active}} activas · {{done}} completadas / {{total}}",
+      "summaryEnded": "{{done}} completadas / {{total}}",
+      "summaryUnfinished": "{{done}} completadas / {{total}} · {{unfinished}} sin terminar",
       "counts": "en curso: {{running}} · terminados: {{done}} · con error: {{failed}}",
       "none": "Aún no hay subagentes en esta conversación.",
       "details": "Flujo y registros",
@@ -890,7 +893,8 @@
       "log": {
         "thisTurn": "Este turno",
         "earlier": "Mostrar líneas anteriores",
-        "latest": "Ir a lo último"
+        "latest": "Ir a lo último",
+        "times": "×{{times}}"
       }
     },
     "empty": "Todavía no hay eventos registrados en esta sesión.",
@@ -945,10 +949,14 @@
         "switched": "Tablero activado o desactivado"
       },
       "permissions": {
-        "mode": "Modo de permisos"
+        "mode": "Modo de permisos",
+        "request": "Permiso solicitado",
+        "resolved": "Permiso respondido",
+        "approved": "Ejecutado sin preguntar"
       },
       "checkpoint": {
-        "taken": "Punto de control guardado"
+        "taken": "Punto de control guardado",
+        "off": "Puntos de control desactivados"
       },
       "rewind": {
         "proposed": "Retroceso propuesto",
@@ -1070,6 +1078,7 @@
       "empty": "Dale un momento al agente; aquí verás con palabras sencillas cómo va.",
       "checks": "{{done}} de {{total}} comprobaciones hechas",
       "ended": "Detenido",
+      "done": "Terminado",
       "brief": "Resumen",
       "briefHelp": "El modelo no llegó a escribir esta a tiempo; es un resumen breve y fijo.",
       "needsYou": "Te necesita",
@@ -1236,12 +1245,17 @@
     "compactionDropped_one": "{{count}} llamada eliminada",
     "compactionDropped_other": "{{count}} llamadas eliminadas",
     "jevLine": {
-      "classifying": "Jev está clasificando el mensaje…",
-      "classified": "Clasificado por Jev: {{type}}",
+      "classifying": "{{judge}} está clasificando el mensaje…",
+      "classified": "Clasificado por {{judge}}: {{type}}",
       "byRule": "Clasificado por regla: {{type}}",
       "shadow": "{{line}} (solo se registra, no se aplica)",
       "late": "{{line}} (llegó tarde para este turno)",
-      "fallback": "Esta vez Jev no clasificó el mensaje; se sigue como de costumbre"
+      "fallback": "Esta vez {{judge}} no dio una clasificación clara; se sigue como de costumbre",
+      "unanswered": "Esta vez {{judge}} no respondió; se sigue como de costumbre",
+      "noJudge": "Todavía no hay ningún juez disponible, así que los mensajes no se clasifican.",
+      "setUp": "Configurar un juez",
+      "skipped": "Clasificación omitida",
+      "off": "La clasificación está desactivada"
     },
     "eventLine": {
       "detail": "Detalles: {{detail}}",
@@ -1338,7 +1352,19 @@
         }
       },
       "permissions": {
-        "mode": "Modo de permisos: {{mode}}"
+        "mode": "Modo de permisos: {{mode}}",
+        "request": "Esperando tu permiso: {{summary}}",
+        "waiting": "Esperando tu permiso",
+        "answers": {
+          "once": "Lo has permitido una vez",
+          "session": "Permitido en esta conversación",
+          "deny": "No lo has permitido"
+        },
+        "about": "{{answer}}: {{summary}}",
+        "approved": {
+          "judge": "El juez lo dejó pasar sin preguntarte: {{summary}}",
+          "grant": "Se ejecutó sin preguntar, porque está permitido en esta conversación: {{summary}}"
+        }
       },
       "board": {
         "on": "Tablero: activado",
@@ -1355,11 +1381,15 @@
   },
   "menu": {
     "about": "Acerca de {{name}}",
+    "settings": "Configuración…",
     "services": "Servicios",
     "hide": "Ocultar {{name}}",
     "hideOthers": "Ocultar otros",
     "unhide": "Mostrar todo",
     "quit": "Salir de {{name}}",
+    "file": "Archivo",
+    "newChat": "Nuevo chat",
+    "closeWindow": "Cerrar ventana",
     "edit": "Edición",
     "undo": "Deshacer",
     "redo": "Rehacer",
@@ -1377,8 +1407,13 @@
     "zoomIn": "Ampliar",
     "zoomOut": "Reducir",
     "toggleFullScreen": "Activar o desactivar pantalla completa",
+    "window": "Ventana",
+    "minimize": "Minimizar",
+    "zoomWindow": "Zoom",
+    "bringAllToFront": "Traer todo al frente",
     "help": "Ayuda",
-    "checkForUpdates": "Buscar actualizaciones…"
+    "checkForUpdates": "Buscar actualizaciones…",
+    "projectPage": "{{name}} en GitHub"
   },
   "trayMenu": {
     "runningTasks": "Tareas en ejecución: {{count}}"

@@ -197,6 +197,57 @@ Failed tests automatically get screenshots attached to the HTML report.
 
 ---
 
+## The mu conversation test
+
+`tests/e2e/mu-conversation/` runs one whole conversation through the app against a local fake model, with no
+account, no key and no network:
+
+```bash
+bun run e2e:conversation                 # builds out/, then runs the test
+bun run e2e:conversation --skip-build    # out/ is already fresh
+MU_E2E_KEEP=1 bun run e2e:conversation   # keep the profile after a pass too
+```
+
+What it does, in order (each step fails on any error nothing handled: page errors, a page's error screen, the main
+process's and the adapter's reports):
+
+1. A fresh start opens the guide; the fake model is added in 设置 → 提供商 as an OpenAI-compatible endpoint (测试连接
+   lists its model) and picked as the default model.
+2. A plain reply streams in, in several pieces.
+3. In 最小权限 a `write` asks with exactly one card; 允许这一次 writes the file and the turn finishes.
+4. A `bash` call answered 不允许 reaches the model as a refusal; the conversation goes on.
+5. A reply stopped halfway stays stopped; the next message works.
+6. 文件 lists the written file; 看板, switched on for the project with the fake model as its writer, shows its lines
+   (no Jev needed).
+7. After a quit and a new start the conversation opens with its history, and a new message works.
+8. 关于 shows the version from `package.json`; 检查更新 (against a canned GitHub answer offering a newer version)
+   downloads nothing.
+9. Nothing kept running after the quit, and nothing landed outside the profile.
+
+How it stays apart from your own setup: everything lives in one temporary folder (`$TMPDIR/mu-e2e-*`): a home folder
+(`HOME`), Electron's user data (`AIONUI_E2E_USER_DATA_DIR`), mu's agent folder (`MU_AGENT_DIR`, with the offline mock
+judge and every decision point off), the project, and a symlinked view of the harness checkout with its own `.env`. The
+environment is built from a short list, so no key of yours reaches the app. The backend's Node.js runtime is declined
+(`MU_NODE_RUNTIME=later`), so nothing is downloaded. The app runs in its E2E mode: no mu:// registration, no
+single-instance lock, no tray, no update checks.
+
+The fake model (`fakeModel.mjs`, Node's http only) answers by a marker in the last user message (`E2E:PLAIN`,
+`E2E:WRITE <path>`, `E2E:BASH <command>`, `E2E:SLOW`, `E2E:ECHO <text>`) and records every request.
+`node tests/e2e/mu-conversation/fakeModel.mjs --port 8765` runs it alone.
+
+Needs: the harness checkout beside this one (`../KYRN`) or `MU_ROOT`; the AionCore binary in
+`resources/bundled-aioncore/<platform>-<arch>/` (or `AIONUI_BACKEND_BIN`); a Node 22.19 or newer on `PATH` or in nvm
+(or `MU_E2E_NODE`); an Electron executable: `MU_E2E_ELECTRON`, else `ELECTRON_EXEC_PATH`, else the checkout's
+`electron` package, else `kyrn/node_modules/electron` (the one `scripts/kyrn/start` uses; a worktree looks in its main
+checkout too). A checkout installed without install scripts has no Electron in its `electron` package: the test then
+names the folders it looked in. `MU_E2E_APP=<executable>` runs a packaged app instead of `out/`. On Linux without a display, run it
+under `xvfb-run -a`. A run takes about four minutes (a minute of it the build); the whole run stops after 20 minutes.
+After a failure the profile is kept and its path printed: `logs/main-*.log` (main process, backend, adapter),
+`logs/renderer-*.log` (renderer console), `userData/logs/` (backend), `agent/sessions/` (mu's sessions). The HTML
+report is in `tests/e2e/report/mu-conversation`.
+
+---
+
 ## Environment Variables
 
 | Variable         | Default                     | Purpose                      |

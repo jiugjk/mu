@@ -98,6 +98,7 @@ const OfficialAssistantsGrid: React.FC<OfficialAssistantsGridProps> = ({
         ) : null}
         {officialAssistants.map((assistant) => {
           const enabled = assistant.enabled !== false;
+          const name = assistant.name_i18n?.[localeKey] || assistant.name;
           const actionMenu = (
             <Menu
               onClickMenuItem={(key) => {
@@ -133,6 +134,7 @@ const OfficialAssistantsGrid: React.FC<OfficialAssistantsGridProps> = ({
                 <span onClick={(e) => e.stopPropagation()}>
                   <Switch
                     size='small'
+                    aria-label={name}
                     data-testid={`switch-enabled-${assistant.id}`}
                     checked={enabled}
                     onChange={(checked) => onToggleEnabled(assistant, checked)}
@@ -140,7 +142,7 @@ const OfficialAssistantsGrid: React.FC<OfficialAssistantsGridProps> = ({
                 </span>
               </div>
               <div className={`mt-12px truncate text-14px font-600 text-t-primary ${enabled ? '' : 'opacity-70'}`}>
-                {assistant.name_i18n?.[localeKey] || assistant.name}
+                {name}
               </div>
               <div
                 className={`mt-6px line-clamp-2 text-12px leading-[1.5] text-t-secondary ${enabled ? '' : 'opacity-55'}`}

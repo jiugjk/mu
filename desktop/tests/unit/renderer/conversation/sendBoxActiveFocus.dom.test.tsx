@@ -278,3 +278,18 @@ describe('SendBox selection→focus downward effect', () => {
     expect(textarea).not.toHaveFocus();
   });
 });
+
+describe('SendBox stop button', () => {
+  it('is named while a reply runs, and stops it', async () => {
+    // Its only mark is a square: without a name a screen reader announced just "button".
+    const onStop = vi.fn().mockResolvedValue(undefined);
+    render(
+      <SendBox value='' onChange={vi.fn()} onSend={vi.fn().mockResolvedValue(undefined)} loading onStop={onStop} />
+    );
+
+    const stop = screen.getByRole('button', { name: 'conversation.sendbox.stop' });
+    expect(stop).toHaveAttribute('data-testid', 'sendbox-stop-btn');
+    fireEvent.click(stop);
+    await waitFor(() => expect(onStop).toHaveBeenCalledTimes(1));
+  });
+});

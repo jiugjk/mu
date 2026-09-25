@@ -39,6 +39,7 @@ const bridge = vi.hoisted(() => ({
   loginLogout: vi.fn(),
   localJudgeState: vi.fn(),
   localJudgeRun: vi.fn(),
+  clmCheck: vi.fn(),
 }));
 // The routed page's frame (the settings rail's phone navigation, the scroll box) is not what is tested here.
 vi.mock('@/renderer/pages/settings/components/SettingsPageWrapper', () => ({
@@ -58,6 +59,7 @@ vi.mock('@/common/kyrn/bridge', () => ({
     loginLogout: { invoke: bridge.loginLogout },
     localJudgeState: { invoke: bridge.localJudgeState },
     localJudgeRun: { invoke: bridge.localJudgeRun },
+    clmCheck: { invoke: bridge.clmCheck },
   },
   // As the real one: a failure keeps the code the store gave it.
   unwrap: <T,>(result: Result<T>) => {
@@ -542,7 +544,7 @@ describe('the save bar', () => {
     fireEvent.click(screen.getByRole('switch', { name: '自动压缩' }));
     // The common module is the English one in this setup.
     fireEvent.click(screen.getByText('Save'));
-    expect(await screen.findByText('保存失败：a-b和a.b 会共用同一个密钥变量，请修改其中一个 ID。')).toBeInTheDocument();
+    expect(await screen.findByText('保存失败：a-b 和 a.b 会共用同一个密钥变量，请修改其中一个 ID。')).toBeInTheDocument();
     bridge.save.mockResolvedValueOnce({
       ok: false,
       code: 'contextLimit',
@@ -1315,9 +1317,10 @@ describe('the kernel pages', () => {
     bridge.settings.mockResolvedValue({ ok: true, data: settings({ tiers: ['jev', 'laya'] }) });
     render(<SettingsArea section='judges' />, { wrapper });
     const tiers = await screen.findByTestId('mu-section-judges');
-    // The two choices, Jev and Laya, and no second way to pick a judge.
+    // The three choices, Jev, Laya and CLM, and no second way to pick a judge.
     const choice = within(tiers).getByTestId('mu-judge-choice-jev');
     expect(within(tiers).getByTestId('mu-judge-choice-local')).toBeInTheDocument();
+    expect(within(tiers).getByTestId('mu-judge-choice-clm')).toBeInTheDocument();
     // The judge tiers are a group of this page, under the choice.
     const order = within(tiers).getByTestId('mu-judge-tiers');
     expect(choice.compareDocumentPosition(order) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -1495,6 +1498,66 @@ describe('the kernel pages', () => {
       apiKeyEnv: 'MU_JUDGE_CUSTOM_API_KEY',
     });
     expect(sent.credentials).toEqual([{ name: 'MU_JUDGE_CUSTOM_API_KEY', value: 'relay-key' }]);
+  });
+
+  it('asks CLM, chosen, for its server’s address and says how the server is, once, with the address rule', async () => {
+    const clm = {
+      type: 'clm' as const,
+      model: 'clm-latest',
+      baseUrl: '',
+      apiKeyEnv: 'MU_JUDGE_CLM_API_KEY',
+      timeoutMs: 8000,
+    };
+    // As the store sends it: the built-in profile, and the state of its key.
+    bridge.settings.mockResolvedValue({
+      ok: true,
+      data: settings({
+        judges: { ...settings().judges, clm },
+        keys: { TYPESAFE_API_KEY: true, MU_JUDGE_CLM_API_KEY: false },
+      }),
+    });
+    bridge.clmCheck.mockResolvedValue({
+      ok: true,
+      data: { status: 'ready', models: ['clm-latest', 'clm-raw'], mock: false, keyRequired: false, latencyMs: 12 },
+    });
+    render(<SettingsArea section='judges' />, { wrapper });
+    fireEvent.click(await screen.findByTestId('mu-judge-choice-clm'));
+    const tile = screen.getByTestId('mu-judge-choice-clm');
+    expect(tile).toHaveAttribute('aria-checked', 'true');
+    // Empty is clm-serve's own address on this machine, and the server there is asked.
+    const address = within(tile).getByLabelText(enMu.judges.clm.address);
+    expect(address).toHaveValue('');
+    expect(tile).toHaveTextContent('Empty is this computer (http://127.0.0.1:8700).');
+    await waitFor(() =>
+      expect(within(tile).getByTestId('mu-clm-status')).toHaveTextContent('Answering · clm-latest and clm-raw · 12 ms')
+    );
+    expect(bridge.clmCheck).toHaveBeenCalledWith({ baseUrl: '' });
+    expect(tile).toHaveTextContent(enMu.judges.clm.unmeasured);
+    // The tier: CLM by its name, its address and its model. Its key and its server are the choice's, above.
+    const tier = screen.getByTestId('mu-judge-tier-0');
+    expect(tier).toHaveTextContent(`Tier 1: ${enMu.judges.choices.clm.title}`);
+    expect(tier).toHaveTextContent(enMu.judges.types.clmHelp);
+    expect(within(tier).getByLabelText(enMu.judges.model)).toHaveValue('clm-latest');
+    expect(within(tier).queryByLabelText(enMu.judges.clm.key)).not.toBeInTheDocument();
+    expect(screen.getAllByTestId('mu-clm-server')).toHaveLength(1);
+    // A public address over plain HTTP breaks the rule, and is not asked.
+    bridge.clmCheck.mockClear();
+    fireEvent.change(address, { target: { value: 'http://example.com:8700' } });
+    expect(within(tile).getByRole('alert')).toHaveTextContent(enMu.endpointRule);
+    expect(tier).toHaveTextContent(enMu.endpointRule);
+    expect(screen.queryByTestId('mu-clm-server')).not.toBeInTheDocument();
+    // A private-network one is fine, and asked.
+    fireEvent.change(address, { target: { value: 'http://192.168.1.20:8700' } });
+    expect(within(tile).queryByRole('alert')).not.toBeInTheDocument();
+    await waitFor(() => expect(bridge.clmCheck).toHaveBeenCalledWith({ baseUrl: 'http://192.168.1.20:8700' }));
+    expect(bridge.clmCheck).toHaveBeenCalledTimes(1);
+    fireEvent.change(within(tile).getByLabelText(enMu.judges.clm.key), { target: { value: 'clm-key' } });
+    fireEvent.click(screen.getByText('Save'));
+    await waitFor(() => expect(bridge.save).toHaveBeenCalled());
+    const sent = bridge.save.mock.calls[0][0] as SaveSettings;
+    expect(sent.tiers).toEqual(['clm']);
+    expect(sent.judges.clm).toMatchObject({ type: 'clm', baseUrl: 'http://192.168.1.20:8700' });
+    expect(sent.credentials).toEqual([{ name: 'MU_JUDGE_CLM_API_KEY', value: 'clm-key' }]);
   });
 
   it('puts the switches that carry the product on the features page, and every other feature on the next', async () => {

@@ -14,12 +14,20 @@
     <link rel="apple-touch-icon" href="./pwa/icon-180.png" />
     <title>mu</title>
     <script>
-      // Synchronously restore theme appearance from localStorage to prevent theme flash
+      // Synchronously restore theme appearance to prevent theme flash: the cached one, or the system's while the
+      // theme follows it (also before any theme was applied, as on a first start).
       (function () {
+        var theme = null;
         try {
-          var theme = localStorage.getItem('__aionui_theme');
-          if (theme) document.documentElement.setAttribute('data-theme', theme);
+          theme = localStorage.getItem('__aionui_theme');
+          if (localStorage.getItem('__aionui_theme_follows_system') === '1') theme = null;
         } catch (e) {}
+        try {
+          if (!theme && window.matchMedia) {
+            theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          }
+        } catch (e) {}
+        if (theme) document.documentElement.setAttribute('data-theme', theme);
       })();
     </script>
     <style>
@@ -36,10 +44,9 @@
   </head>
   <body>
     <script>
-      // Set arco-theme on body synchronously
+      // Set arco-theme on body synchronously, to the appearance chosen in <head>
       try {
-        var t = localStorage.getItem('__aionui_theme');
-        if (t) document.body.setAttribute('arco-theme', t);
+        document.body.setAttribute('arco-theme', document.documentElement.getAttribute('data-theme') || 'light');
       } catch (e) {}
     </script>
     <div id="root"></div>

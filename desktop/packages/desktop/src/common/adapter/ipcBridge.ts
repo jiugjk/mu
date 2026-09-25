@@ -85,7 +85,7 @@ import type {
 } from '../types/team/teamTypes';
 import type { UpdateAction, UpdateState } from '../update/updateTypes';
 import type { AgentMetadata } from '@/renderer/utils/model/agentTypes';
-import type { Theme } from '@/common/theme/types';
+import type { Theme, WindowAppearance } from '@/common/theme/types';
 import type { AttachFolderRequest, ProjectDetailDto, ProjectEntryDto } from '@/common/types/project';
 import type { ChatFileRef, ContentEncoding } from '@/common/types/chatFile';
 import { withTextsAsMu } from '../kyrn/displayName';
@@ -746,6 +746,8 @@ export const application = {
     'app.log-stream'
   ),
   devToolsStateChanged: bridge.buildEmitter<{ isOpen: boolean }>('app.devtools-state-changed'),
+  /** The application menu's items the page carries out: 新会话 (⌘N) and 设置… (⌘,). */
+  menuCommand: bridge.buildEmitter<{ command: 'newChat' | 'openSettings' }>('app.menu-command'),
 };
 
 // ---------------------------------------------------------------------------
@@ -1486,6 +1488,8 @@ export const theme = {
   setActive: bridge.buildProvider<void, Theme>('theme:set-active'),
   // any window → main: pull the currently cached resolved theme on load (null if none yet)
   requestCurrent: bridge.buildProvider<Theme | null, void>('theme:request-current'),
+  // renderer → main: the theme in effect, for the window's own background (now and at the next start)
+  windowAppearance: bridge.buildProvider<void, WindowAppearance>('theme:window-appearance'),
 };
 
 // ---------------------------------------------------------------------------

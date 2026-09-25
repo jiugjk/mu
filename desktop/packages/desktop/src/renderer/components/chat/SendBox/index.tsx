@@ -43,8 +43,7 @@ import { useProjectMentionSearch } from '@/renderer/pages/conversation/explorer/
 import { peLabeledPath } from '@/renderer/pages/conversation/explorer/search/searchModel';
 import { copyText } from '@/renderer/utils/ui/clipboard';
 import { blurActiveElement, shouldBlockMobileInputFocus } from '@/renderer/utils/ui/focus';
-import { isPlatformPrimaryModifier } from '@/renderer/utils/ui/keyboardShortcuts';
-import { isMacOS } from '@/renderer/utils/platform';
+import { formatPrimaryEnterShortcut, isPlatformPrimaryModifier } from '@/renderer/utils/ui/keyboardShortcuts';
 import { Button, Input, Message, Tag, Tooltip } from '@arco-design/web-react';
 import { CloseSmall, Plus, Quote } from '@icon-park/react';
 import { chatFileRefKey } from '@/common/types/chatFile';
@@ -66,6 +65,7 @@ import { useAbortUploadsOnConversationChange } from '@renderer/hooks/file/useAbo
 import UploadProgressBar from '@renderer/components/media/UploadProgressBar';
 import { allSupportedExts } from '@renderer/services/FileService';
 import { getConversationInputHistory, isCaretOnFirstLine } from '@/renderer/utils/chat/messageHistory';
+import { commandDescription } from '@/renderer/utils/chat/muCommands';
 import SendArrowIcon from './SendArrowIcon';
 import './sendbox.css';
 
@@ -668,13 +668,13 @@ const SendBox: React.FC<{
       slashController.filteredCommands.map((command) => ({
         key: command.name,
         label: `/${command.name}`,
-        description: command.description,
+        description: commandDescription(command, t),
         badge: command.hint,
         highlightIndices: slashController.query
           ? getFuzzyMatchIndices(command.name, slashController.query)?.map((index) => index + 1)
           : undefined,
       })),
-    [slashController.filteredCommands, slashController.query]
+    [slashController.filteredCommands, slashController.query, t]
   );
 
   const isCommandMenuOpen = conversationExport.isOpen || slashController.isOpen;
@@ -1641,9 +1641,8 @@ const SendBox: React.FC<{
   const addToDraftLabel = t('conversation.commandQueue.addToQueue', { defaultValue: 'Save to Draft box' });
   const sendNowLabel = t('conversation.commandQueue.sendNow', { defaultValue: 'Send now' });
   const enterShortcutLabel = t('conversation.commandQueue.enterShortcut', { defaultValue: 'Enter' });
-  const addToDraftShortcutLabel = t('conversation.commandQueue.addToQueueShortcut', {
-    defaultValue: isMacOS() ? '⌘ + Enter' : 'Ctrl + Enter',
-  });
+  // This computer's own shortcut only: both platforms' side by side wrapped the tooltip onto two lines.
+  const addToDraftShortcutLabel = formatPrimaryEnterShortcut(enterShortcutLabel);
   const sendActionTooltip =
     sendDisabled && sendDisabledTooltip ? sendDisabledTooltip : `${sendNowLabel} · ${enterShortcutLabel}`;
   const draftActionBaseTooltip = addToDraftTooltip ?? addToDraftLabel;
@@ -1733,6 +1732,7 @@ const SendBox: React.FC<{
     </Tooltip>
   ) : null;
 
+  // Its only mark is a square, so it carries its name: a screen reader said just "button".
   const stopButton = (
     <Button
       shape='circle'
@@ -1740,6 +1740,8 @@ const SendBox: React.FC<{
       className='bg-animate sendbox-stop-button'
       icon={<div className='mx-auto size-12px bg-6'></div>}
       onClick={stopHandler}
+      data-testid='sendbox-stop-btn'
+      aria-label={t('conversation.sendbox.stop')}
     ></Button>
   );
 

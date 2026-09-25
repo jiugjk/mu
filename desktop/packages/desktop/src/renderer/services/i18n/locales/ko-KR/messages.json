@@ -67,6 +67,7 @@
   "noOptionsAvailable": "사용 가능한 옵션 없음",
   "processing": "처리 중...",
   "responseSentSuccessfully": "응답 전송 성공",
+  "permissionAnswered": "응답함: {{option}}",
   "permissionResponseFailed": "응답을 보내지 못했습니다. 다시 시도해 주세요.",
   "permissionNoLongerPending": "이 요청은 더 이상 답변을 기다리지 않습니다.",
   "confirmation": {

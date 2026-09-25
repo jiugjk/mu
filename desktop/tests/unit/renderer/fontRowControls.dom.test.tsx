@@ -13,10 +13,56 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string) => k, i18n: { language: 'en' } }),
 }));
 
+import FontFamilySelect from '@renderer/components/settings/SettingsModal/contents/AppearanceModalContent/FontFamilySelect';
 import FontSizeStepper from '@renderer/components/settings/SettingsModal/contents/AppearanceModalContent/FontSizeStepper';
+import FontWeightSelect from '@renderer/components/settings/SettingsModal/contents/AppearanceModalContent/FontWeightSelect';
 
 const DECREASE = 'settings.fontSizeDecrease';
 const INCREASE = 'settings.fontSizeIncrease';
+
+const hasClass = (element: Element, name: string) => element.classList.contains(name);
+
+// The appearance page's font rows: in German and Japanese a fixed 170px or 240px cut "Systemstandard" and
+// "システムのデフォルト". The selects now take the width of their words; jsdom has no layout, so the classes that
+// size them are what is checked here (the widths were measured in a browser).
+describe('font selects', () => {
+  it('are as wide as their words, from a minimum up to the row, instead of a fixed width', () => {
+    render(
+      <>
+        <FontFamilySelect value='' onChange={vi.fn()} />
+        <FontWeightSelect value='' onChange={vi.fn()} />
+      </>
+    );
+    const family = screen.getByRole('combobox', { name: 'settings.fontFamilyLabel' });
+    const weight = screen.getByRole('combobox', { name: 'settings.fontWeightLabel' });
+    for (const select of [family, weight]) {
+      expect(hasClass(select, 'w-max')).toBe(true);
+      expect(hasClass(select, 'max-w-full')).toBe(true);
+      expect([...select.classList].filter((name) => /^w-\d+px$/.test(name))).toEqual([]);
+    }
+    expect(hasClass(family, 'min-w-240px')).toBe(true);
+    expect(hasClass(weight, 'min-w-170px')).toBe(true);
+  });
+
+  it('keep the weight select as wide as its longest name whatever is chosen: every name is there, one is seen', () => {
+    render(<FontWeightSelect value='600' onChange={vi.fn()} />);
+    const weight = screen.getByRole('combobox', { name: 'settings.fontWeightLabel' });
+    const names = [...weight.querySelectorAll('.arco-select-view-value > span > span')];
+    expect(names.map((name) => name.textContent)).toEqual([
+      'settings.fontWeightSystemDefault',
+      'settings.fontWeightLight',
+      'settings.fontWeightRegular',
+      'settings.fontWeightMedium',
+      'settings.fontWeightSemibold',
+      'settings.fontWeightBold',
+    ]);
+    const seen = names.filter((name) => !hasClass(name, 'invisible'));
+    expect(seen.map((name) => name.textContent)).toEqual(['settings.fontWeightSemibold']);
+    expect(seen[0].getAttribute('aria-hidden')).toBeNull();
+    // The hidden names hold the width only: a screen reader does not read them.
+    expect(names.filter((name) => name.getAttribute('aria-hidden') === 'true')).toHaveLength(5);
+  });
+});
 
 describe('FontSizeStepper', () => {
   it('renders the current value and steps within bounds', () => {

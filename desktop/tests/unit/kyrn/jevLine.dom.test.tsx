@@ -1,5 +1,5 @@
 import React, { type PropsWithChildren } from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createInstance } from 'i18next';
 import { I18nextProvider } from 'react-i18next';
@@ -11,7 +11,7 @@ import {
 } from '@/renderer/pages/conversation/Messages/hooks';
 import MessageList from '@/renderer/pages/conversation/Messages/MessageList';
 import MessageJevLine from '@/renderer/pages/conversation/Messages/acp/MessageJevLine';
-import { jevLine } from '@/renderer/pages/conversation/Messages/acp/jevLine';
+import { fallbackKind, jevLine, judgeName } from '@/renderer/pages/conversation/Messages/acp/jevLine';
 import enCommon from '@/renderer/services/i18n/locales/en-US/common.json';
 import zhCommon from '@/renderer/services/i18n/locales/zh-CN/common.json';
 
@@ -22,8 +22,10 @@ vi.mock('react-i18next', async (original) => {
   const actual = await original<typeof import('react-i18next')>();
   return { ...actual };
 });
+const navigate = vi.hoisted(() => vi.fn());
 vi.mock('react-router-dom', () => ({
   useLocation: () => ({ key: 'location-key', state: {} }),
+  useNavigate: () => navigate,
 }));
 
 vi.mock('@/renderer/hooks/context/ConversationContext', () => ({
@@ -108,6 +110,7 @@ describe('reading Jev’s class from the tool call the adapter sends', () => {
       jevLine(jev({ title: 'Jev · Classifying', status: 'completed', rawOutput: { preflight: 'pending' } }))
     ).toEqual({
       stage: 'classifying',
+      judge: '',
     });
     expect(
       jevLine(
@@ -116,20 +119,70 @@ describe('reading Jev’s class from the tool call the adapter sends', () => {
           rawOutput: { turnType: 'chat', state: 'applied', by: 'jev-latest', preflight: 'verdict' },
         })
       )
-    ).toEqual({ stage: 'classified', turnType: 'chat', state: 'applied', byRule: false });
-    // The adapter's current fallback title is spelled "Jev", and its class is no turn type.
+    ).toEqual({ stage: 'classified', turnType: 'chat', state: 'applied', byRule: false, judge: 'jev-latest' });
+    // The adapter's current fallback title is spelled "Jev", and its class is no turn type: the wait ran out.
     expect(jevLine(jev({ title: 'Jev · Fallback', rawOutput: { preflight: 'fallback' } }))).toEqual({
       stage: 'fallback',
+      why: 'unanswered',
+      judge: '',
     });
     expect(jevLine(jev({ title: 'Jev · Default', rawOutput: { preflight: 'verdict', state: 'applied' } }))).toEqual({
       stage: 'fallback',
+      why: 'unsure',
+      judge: '',
+    });
+  });
+
+  it('names the judge that was asked or answered: the wait’s judge, the verdict’s by, never a rule', () => {
+    expect(
+      jevLine(
+        jev({ title: 'Jev · Classifying', status: 'in_progress', rawOutput: { preflight: 'pending', judge: 'laya' } })
+      )
+    ).toEqual({ stage: 'classifying', judge: 'laya' });
+    expect(
+      jevLine(jev({ title: 'Jev · chat', rawOutput: { preflight: 'verdict', turnType: 'chat', by: 'clm-8b' } }))
+    ).toMatchObject({ stage: 'classified', judge: 'clm-8b' });
+    // The adapter adds the judge it asked to a wait that ran out.
+    expect(
+      jevLine(jev({ title: 'Jev · Fallback', rawOutput: { preflight: 'fallback', judge: 'laya>jev-latest' } }))
+    ).toEqual({ stage: 'fallback', why: 'unanswered', judge: 'laya>jev-latest' });
+    expect(
+      jevLine(jev({ title: 'Jev · chat', rawOutput: { preflight: 'verdict', turnType: 'chat', by: 'rule' } }))
+    ).toMatchObject({ byRule: true, judge: '' });
+  });
+
+  it('tells a judge that did not answer from one that was not sure, from none at all, from a quiet one', () => {
+    const verdict = (fields: Record<string, unknown>) =>
+      jevLine(
+        jev({
+          title: 'Jev · Default',
+          rawOutput: { preflight: 'verdict', turnType: 'unknown', state: 'none', ...fields },
+        })
+      );
+    expect(verdict({ reasonCode: 'error:auth', reason: 'HTTP 401' })).toEqual({ stage: 'noJudge' });
+    expect(verdict({ reason_code: 'error:timeout' })).toEqual({ stage: 'fallback', why: 'unanswered', judge: '' });
+    expect(verdict({ reason: 'no answer after 6.0 s', by: 'laya' })).toEqual({
+      stage: 'fallback',
+      why: 'unanswered',
+      judge: 'laya',
+    });
+    expect(verdict({ reasonCode: 'abstain' })).toEqual({ stage: 'fallback', why: 'unsure', judge: '' });
+    expect(verdict({ reasonCode: 'off' })).toEqual({ stage: 'quiet' });
+    expect(verdict({ reason: 'skipped' })).toEqual({ stage: 'quiet' });
+    // The hints still come with a line that has no judge.
+    expect(verdict({ reasonCode: 'error:auth', hintIds: ['answered'] })).toEqual({
+      stage: 'noJudge',
+      hints: ['answered'],
     });
   });
 
   it('is only a jev: call, classifying while it runs', () => {
     expect(jevLine(call('bash-1', { title: 'bash' }))).toBeUndefined();
     expect(jevLine({ ...call('x', {}), type: 'text' } as unknown as TMessage)).toBeUndefined();
-    expect(jevLine(jev({ title: 'Jev · Classifying', status: 'in_progress' }))).toEqual({ stage: 'classifying' });
+    expect(jevLine(jev({ title: 'Jev · Classifying', status: 'in_progress' }))).toEqual({
+      stage: 'classifying',
+      judge: '',
+    });
   });
 
   it('takes the class and its state from the verdict, and from the title when the verdict is not kept', () => {
@@ -140,6 +193,7 @@ describe('reading Jev’s class from the tool call the adapter sends', () => {
       turnType: 'chat',
       state: 'applied',
       byRule: false,
+      judge: 'jev-latest',
     });
     expect(
       jevLine(jev({ title: 'Jev · research', raw_output: { turnType: 'research', state: 'shadow', by: 'rule' } }))
@@ -174,6 +228,7 @@ describe('reading Jev’s class from the tool call the adapter sends', () => {
       turnType: 'multi_step_task',
       state: 'applied',
       byRule: false,
+      judge: '',
       hints: ['plan_first', 'try_delegate'],
     });
     // The relay may have snake_cased the key; a rule's hint comes even when Jev gave no class.
@@ -181,24 +236,53 @@ describe('reading Jev’s class from the tool call the adapter sends', () => {
       jevLine(
         jev({ title: 'Jev · Default', rawOutput: { turnType: 'unknown', state: 'none', hint_ids: ['answered'] } })
       )
-    ).toEqual({ stage: 'fallback', hints: ['answered'] });
+    ).toEqual({ stage: 'fallback', why: 'unsure', judge: '', hints: ['answered'] });
     // No hint, no field: a line without hints reads as it always did.
     expect(
       jevLine(jev({ title: 'Jev · chat', rawOutput: { turnType: 'chat', state: 'applied', hintIds: [] } }))
-    ).toEqual({ stage: 'classified', turnType: 'chat', state: 'applied', byRule: false });
+    ).toEqual({ stage: 'classified', turnType: 'chat', state: 'applied', byRule: false, judge: '' });
     expect(
       jevLine(jev({ title: 'Jev · Classifying', status: 'in_progress', rawOutput: { hintIds: ['plan_first'] } }))
-    ).toEqual({ stage: 'classifying' });
+    ).toEqual({ stage: 'classifying', judge: '' });
   });
 
   it('is a fallback when no class came: the wait ended, the class is unknown, or there was no verdict', () => {
-    expect(jevLine(jev({ title: 'Jev · Fallback' }))).toEqual({ stage: 'fallback' });
+    // A row recorded before the stages were marked: the wait ran out, so the judge did not answer.
+    expect(jevLine(jev({ title: 'Jev · Fallback' }))).toEqual({ stage: 'fallback', why: 'unanswered', judge: '' });
     expect(jevLine(jev({ title: 'Jev · Default', rawOutput: { turnType: 'unknown', state: 'applied' } }))).toEqual({
       stage: 'fallback',
+      why: 'unsure',
+      judge: '',
     });
     expect(jevLine(jev({ title: 'Jev · Default', rawOutput: { turnType: 'unknown', state: 'none' } }))).toEqual({
       stage: 'fallback',
+      why: 'unsure',
+      judge: '',
     });
+  });
+});
+
+describe('the judge’s name and why no class came', () => {
+  it('names Jev, Laya and CLM by their labels, a cascade by its first tier, and Jev when none is named', () => {
+    expect(judgeName('jev-latest')).toBe('Jev');
+    expect(judgeName('openrouter/jev-latest')).toBe('Jev');
+    expect(judgeName('laya')).toBe('Laya');
+    expect(judgeName('laya>jev-latest')).toBe('Laya');
+    expect(judgeName('clm-8b')).toBe('CLM');
+    expect(judgeName('')).toBe('Jev');
+    expect(judgeName(undefined)).toBe('Jev');
+    expect(judgeName('my-own-judge')).toBe('my-own-judge');
+  });
+
+  it('reads a refused key as no judge, a failure or a wait as no answer, and off or skipped as nothing to say', () => {
+    expect(fallbackKind('error:auth')).toBe('noJudge');
+    for (const reason of ['no_answer', 'timeout', 'error:timeout', 'error:network', 'error:server']) {
+      expect(fallbackKind(reason)).toBe('unanswered');
+    }
+    expect(fallbackKind('off')).toBe('quiet');
+    expect(fallbackKind('skipped')).toBe('quiet');
+    expect(fallbackKind('abstain')).toBe('unsure');
+    expect(fallbackKind('')).toBe('unsure');
   });
 });
 
@@ -245,10 +329,59 @@ describe('the line, in the language of the app', () => {
     expect(screen.getByTestId('mu-jev-line')).toHaveTextContent('按规则归类为闲聊');
     rule.unmount();
     const none = showLine('en', jev({ title: 'Jev · Fallback' }));
-    expect(screen.getByTestId('mu-jev-line')).toHaveTextContent('No class from Jev this time');
+    expect(screen.getByTestId('mu-jev-line')).toHaveTextContent(/^Jev did not answer this time; going on as usual$/);
     none.unmount();
+    const unsure = showLine(
+      'en',
+      jev({ title: 'Jev · Default', rawOutput: { preflight: 'verdict', state: 'applied' } })
+    );
+    expect(screen.getByTestId('mu-jev-line')).toHaveTextContent(
+      /^No clear class from Jev this time; going on as usual$/
+    );
+    unsure.unmount();
     showLine('zh', jev({ title: 'Jev · Classifying', status: 'in_progress' }));
     expect(screen.getByTestId('mu-jev-line')).toHaveTextContent('Jev 正在归类…');
+  });
+
+  it('names the judge that answered or was asked: Laya, CLM, the first tier of a cascade', () => {
+    const laya = showLine(
+      'zh',
+      jev({ title: 'Jev · chat', rawOutput: { preflight: 'verdict', turnType: 'chat', state: 'applied', by: 'laya' } })
+    );
+    expect(screen.getByTestId('mu-jev-line')).toHaveTextContent(/^Laya 归类为闲聊$/);
+    laya.unmount();
+    const clm = showLine(
+      'en',
+      jev({ title: 'Jev · Classifying', status: 'in_progress', rawOutput: { preflight: 'pending', judge: 'clm-8b' } })
+    );
+    expect(screen.getByTestId('mu-jev-line')).toHaveTextContent(/^CLM is classifying this message…$/);
+    clm.unmount();
+    showLine('zh', jev({ title: 'Jev · Fallback', rawOutput: { preflight: 'fallback', judge: 'laya>jev-latest' } }));
+    expect(screen.getByTestId('mu-jev-line')).toHaveTextContent(/^Laya 这次没有回答，按默认方式继续$/);
+  });
+
+  it('says there is no judge when its key was refused, and leads to the judges’ settings', () => {
+    navigate.mockClear();
+    const refused = jev({
+      title: 'Jev · Default',
+      rawOutput: { preflight: 'verdict', turnType: 'unknown', state: 'none', reasonCode: 'error:auth' },
+    });
+    const zh = showLine('zh', refused);
+    expect(screen.getByTestId('mu-jev-line')).toHaveTextContent(/^还没有可用的判定器，消息不会被归类。设置判定器$/);
+    zh.unmount();
+    showLine('en', refused);
+    expect(screen.getByTestId('mu-jev-line')).toHaveAttribute('data-stage', 'noJudge');
+    expect(screen.getByTestId('mu-jev-line')).not.toHaveTextContent(/Jev|auth|401/);
+    fireEvent.click(screen.getByTestId('mu-jev-setup'));
+    expect(navigate).toHaveBeenCalledWith('/settings/judges');
+  });
+
+  it('shows nothing for a classification that is switched off', () => {
+    const { container } = showLine(
+      'en',
+      jev({ title: 'Jev · Default', rawOutput: { preflight: 'verdict', turnType: 'unknown', reasonCode: 'off' } })
+    );
+    expect(container).toBeEmptyDOMElement();
   });
 
   it('follows the line with the hints the main model was given, each with its whole sentence on hover', () => {
@@ -281,7 +414,7 @@ describe('the line, in the language of the app', () => {
       })
     );
     expect(screen.getByTestId('mu-jev-line')).toHaveTextContent(
-      `No class from Jev this time; going on as usual${enCommon.kyrn.judgeView.hintChips.answered}`
+      `No clear class from Jev this time; going on as usual${enCommon.kyrn.judgeView.hintChips.answered}`
     );
     replied.unmount();
 
@@ -328,6 +461,23 @@ describe('in the conversation', () => {
     render(<MessageList />, { wrapper: ({ children }) => <Wrapper messages={messages}>{children}</Wrapper> });
     expect(screen.getAllByTestId('mu-jev-line')).toHaveLength(1);
     expect(screen.getByTestId('tool-summary')).toHaveTextContent(/^bash-1,read-1$/);
+  });
+
+  it('says once that there is no judge, not under every message, and nothing for a switched-off one', () => {
+    const refused = { preflight: 'verdict', turnType: 'unknown', state: 'none', reasonCode: 'error:auth' };
+    const messages: TMessage[] = [
+      call('jev:runtime-1:1', { title: 'Jev · Default', rawOutput: refused }),
+      call('bash-1', { title: 'bash' }),
+      call('jev:runtime-1:2', { title: 'Jev · Default', rawOutput: refused }),
+      call('jev:runtime-1:3', { title: 'Jev · Default', rawOutput: { ...refused, reasonCode: 'off' } }),
+      call('jev:runtime-1:4', { title: 'Jev · Fallback', rawOutput: { preflight: 'fallback' } }),
+    ];
+    render(<MessageList />, { wrapper: ({ children }) => <Wrapper messages={messages}>{children}</Wrapper> });
+    expect(screen.getAllByTestId('mu-jev-line').map((line) => line.getAttribute('data-stage'))).toEqual([
+      'noJudge',
+      'fallback',
+    ]);
+    expect(screen.getAllByTestId('mu-jev-setup')).toHaveLength(1);
   });
 
   it('shows a notice of the bridge as a line of its own too, never in the tool box', () => {

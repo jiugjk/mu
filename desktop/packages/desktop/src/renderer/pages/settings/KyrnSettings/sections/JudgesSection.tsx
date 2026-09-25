@@ -2,6 +2,7 @@ import React from 'react';
 import { Input, Tag } from '@arco-design/web-react';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
+import { CLM_DEFAULT_ADDRESS, CLM_DEFAULT_MODEL } from '@/common/kyrn/clm';
 import { isSafeEndpoint } from '@/common/kyrn/models';
 import type { JudgeSettings, KyrnSettings } from '@/common/kyrn/types';
 import AionSelect from '@/renderer/components/base/AionSelect';
@@ -13,6 +14,7 @@ import fieldStyles from '../fields/fields.module.css';
 import {
   choiceOf,
   choose,
+  clmKeyVariable,
   defaultModelOf,
   JEV_SERVICES,
   JUDGE_CHOICES,
@@ -24,6 +26,7 @@ import {
   serviceOf,
   withJevService,
 } from '../judgeChoice';
+import ClmServerCheck from './ClmServerCheck';
 import SectionShell, { Card, GroupTitle } from './SectionShell';
 import LocalJudgePanel from './LocalJudgePanel';
 import styles from './sections.module.css';
@@ -37,8 +40,8 @@ type JudgesSectionProps = {
 
 /**
  * The judges page. First the choice most people make once: which judge answers the small questions mu asks while it
- * works, and under it what that choice needs (Jev a service and its key, Laya the one-click panel). Below it the judge
- * tiers: the order in which several judges are asked, and what each one needs.
+ * works, and under it what that choice needs (Jev a service and its key, Laya the one-click panel, CLM its server's
+ * address). Below it the judge tiers: the order in which several judges are asked, and what each one needs.
  */
 export default function JudgesSection({ draft, base, onChange, onKey }: JudgesSectionProps) {
   const { t } = useTranslation();
@@ -98,19 +101,74 @@ export function JudgeChoiceTile({ choice, active, onPick, children }: TileProps)
 type BodyProps = {
   choice: JudgeChoice;
   draft: Draft;
+  /** In the first-run guide, which sets a judge up: Laya's address and its Stop belong to the settings. */
+  guide?: boolean;
   onChange: JudgesSectionProps['onChange'];
   onKey: JudgesSectionProps['onKey'];
 };
 
 /**
  * What a choice needs: Jev the service it is reached through (with the address of a service that has one to set) and
- * that service's key, Laya to be installed and running (one click each).
+ * that service's key, Laya to be installed and running (one click each), CLM the address of its server, the key of a
+ * server that asks for one, and word from the server.
  */
-export function ChoiceBody({ choice, draft, onChange, onKey }: BodyProps) {
+export function ChoiceBody({ choice, draft, guide = false, onChange, onKey }: BodyProps) {
   const { t } = useTranslation();
   const { settings } = draft;
   const name = profileFor(settings, choice);
   const judge = name ? settings.judges[name] : undefined;
+
+  if (choice === 'clm') {
+    if (!name || !judge) return null;
+    const variable = clmKeyVariable(judge);
+    const set = settings.keys[variable];
+    const problem = clmAddressProblem(t, judge.baseUrl);
+    return (
+      <div className={styles.choiceFields}>
+        <div className={styles.choiceField}>
+          <label className={styles.choiceLabel}>{t('mu.judges.clm.address')}</label>
+          <Input
+            className={styles.choiceInput}
+            aria-label={t('mu.judges.clm.address')}
+            placeholder={CLM_DEFAULT_ADDRESS}
+            status={problem ? 'error' : undefined}
+            value={judge.baseUrl}
+            onChange={(baseUrl) => onChange((now) => withProfile(now, name, { baseUrl }))}
+          />
+          {problem ? (
+            <div className={fieldStyles.problem} role='alert'>
+              {problem}
+            </div>
+          ) : (
+            <div className={styles.choiceHint}>{t('mu.judges.clm.addressHelp', { address: CLM_DEFAULT_ADDRESS })}</div>
+          )}
+        </div>
+        <div className={styles.choiceField}>
+          <label className={styles.choiceLabel}>
+            {t('mu.judges.clm.key')}
+            <Tag size='small'>{t(set ? 'mu.keyState.set' : 'mu.keyState.none')}</Tag>
+          </label>
+          <Input.Password
+            className={styles.choiceInput}
+            aria-label={t('mu.judges.clm.key')}
+            autoComplete='new-password'
+            value={draft.judgeKeys[variable] ?? ''}
+            placeholder={set ? t('mu.keyKeep') : t('mu.judges.clm.keyPlaceholder')}
+            onChange={(value) => onKey(variable, value)}
+          />
+          <div className={styles.choiceHint}>{t('mu.judges.clm.keyHelp')}</div>
+        </div>
+        <div className={styles.choiceField}>
+          <ClmServerCheck
+            baseUrl={judge.baseUrl}
+            model={judge.model || CLM_DEFAULT_MODEL}
+            keySet={Boolean(set || draft.judgeKeys[variable])}
+          />
+          <div className={styles.choiceHint}>{t('mu.judges.clm.unmeasured')}</div>
+        </div>
+      </div>
+    );
+  }
 
   if (choice === 'jev') {
     const service = serviceOf(judge) ?? 'auto';
@@ -175,20 +233,23 @@ export function ChoiceBody({ choice, draft, onChange, onKey }: BodyProps) {
 
   return (
     <div className={styles.choiceField}>
-      <LocalJudgePanel />
-      <div className={styles.choiceHint}>
-        {t('mu.judges.localAddress', { address: judge?.baseUrl || t('mu.judges.endpointDefault') })}
-      </div>
+      <LocalJudgePanel guide={guide} />
+      {guide ? null : (
+        <div className={styles.choiceHint}>
+          {t('mu.judges.localAddress', { address: judge?.baseUrl || t('mu.judges.endpointDefault') })}
+        </div>
+      )}
     </div>
   );
 }
 
 /**
- * The judge tiers, under the choice: the order, by the judges' names (Jev, Laya), then a group per judge in that order
- * with what it needs. Jev: the service it is reached through, its model and the service's address where it has one.
- * The one thing a judge needs to run (Jev's key, Laya's install) is asked for in the choice above when it is the judge
- * chosen there, the first; a judge further down the order needs it here, where it is the only place. A judge of
- * another kind (a model as judge, a self-hosted service) goes by the name it was given.
+ * The judge tiers, under the choice: the order, by the judges' names (Jev, Laya, CLM), then a group per judge in that
+ * order with what it needs. Jev: the service it is reached through, its model and the service's address where it has
+ * one. CLM: its server's address and its model. The one thing a judge needs to run (Jev's key, Laya's install, CLM's
+ * server) is asked for in the choice above when it is the judge chosen there, the first; a judge further down the
+ * order needs it here, where it is the only place. A judge of another kind (a model as judge, a self-hosted HTTP
+ * service) goes by the name it was given.
  */
 function JudgeTiers({ draft, base, onChange, onKey }: JudgesSectionProps) {
   const { t, i18n } = useTranslation();
@@ -197,7 +258,7 @@ function JudgeTiers({ draft, base, onChange, onKey }: JudgesSectionProps) {
     const kind = kindOf(settings.judges[profile]);
     return kind ? t(`mu.judges.choices.${kind}.title`) : profile;
   };
-  // Every judge in the order, and Jev and Laya when they are not in it yet.
+  // Every judge in the order, and Jev, Laya and CLM when they are not in it yet.
   const offered = [
     ...settings.tiers,
     ...JUDGE_CHOICES.filter((choice) => !settings.tiers.some((name) => kindOf(settings.judges[name]) === choice))
@@ -232,9 +293,11 @@ function JudgeTiers({ draft, base, onChange, onKey }: JudgesSectionProps) {
         const summary =
           kind === 'local'
             ? t('mu.judges.types.localHelp')
-            : kind === undefined
-              ? t('mu.judges.customTier')
-              : undefined;
+            : kind === 'clm'
+              ? t('mu.judges.types.clmHelp')
+              : kind === undefined
+                ? t('mu.judges.customTier')
+                : undefined;
         return (
           <Card
             key={`${index}:${name}`}
@@ -244,6 +307,8 @@ function JudgeTiers({ draft, base, onChange, onKey }: JudgesSectionProps) {
           >
             {kind === 'jev' ? (
               <JevFields draft={draft} base={base} index={index} onChange={onChange} onKey={onKey} />
+            ) : kind === 'clm' ? (
+              <ClmFields draft={draft} base={base} index={index} onChange={onChange} onKey={onKey} />
             ) : kind === 'local' && index > 0 ? (
               // The first judge is the one chosen above, whose choice installs and starts it.
               <div className={styles.tierPanel}>
@@ -289,6 +354,13 @@ const withProfile = (settings: KyrnSettings, name: string, patch: Partial<JudgeS
   ...settings,
   judges: { ...settings.judges, [name]: { ...settings.judges[name], ...patch } },
 });
+
+/**
+ * What is wrong with a CLM server's address, if anything: the rule for every address mu sends a judge's questions
+ * to, since they hold what the person wrote. Empty is clm-serve's default on this machine. The store refuses the same.
+ */
+const clmAddressProblem = (t: TFunction, baseUrl: string): string | undefined =>
+  baseUrl && !isSafeEndpoint(baseUrl) ? t('mu.endpointRule') : undefined;
 
 /**
  * Jev in the order: the service it is reached through, its model and the service's address where it has one to set,
@@ -368,6 +440,80 @@ function JevFields({ draft, base, index, onChange, onKey }: JudgesSectionProps &
             onChange={(value) => onKey(variable, value)}
           />
         </Row>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * CLM in the order: its server's address and the model it asks for, and, when it is not the judge chosen on the
+ * judges page, the key of a server that asks for one and word from the server.
+ */
+function ClmFields({ draft, base, index, onChange, onKey }: JudgesSectionProps & { index: number }) {
+  const { t } = useTranslation();
+  const { settings } = draft;
+  const name = settings.tiers[index];
+  const judge = settings.judges[name];
+  const saved = base.judges[name];
+  const variable = clmKeyVariable(judge);
+  const set = settings.keys[variable];
+  const problem = clmAddressProblem(t, judge.baseUrl);
+  // The first judge's key and server are in the choice above.
+  const here = index > 0;
+  return (
+    <>
+      <Row
+        title={t('mu.judges.clm.address')}
+        help={problem ? undefined : t('mu.judges.clm.addressHelp', { address: CLM_DEFAULT_ADDRESS })}
+        problem={problem}
+        modified={saved !== undefined && saved.baseUrl !== judge.baseUrl}
+      >
+        <Input
+          size='small'
+          className={fieldStyles.wide}
+          aria-label={t('mu.judges.clm.address')}
+          placeholder={CLM_DEFAULT_ADDRESS}
+          status={problem ? 'error' : undefined}
+          value={judge.baseUrl}
+          onChange={(baseUrl) => onChange((now) => withProfile(now, name, { baseUrl }))}
+        />
+      </Row>
+      <Row title={t('mu.judges.model')} modified={saved !== undefined && saved.model !== judge.model}>
+        <Input
+          size='small'
+          className={fieldStyles.wide}
+          aria-label={t('mu.judges.model')}
+          placeholder={CLM_DEFAULT_MODEL}
+          value={judge.model}
+          onChange={(model) => onChange((now) => withProfile(now, name, { model }))}
+        />
+      </Row>
+      {here ? (
+        <>
+          <Row
+            title={t('mu.judges.clm.key')}
+            help={t('mu.judges.clm.keyHelp')}
+            modified={Boolean(draft.judgeKeys[variable])}
+            badges={<Tag size='small'>{t(set ? 'mu.keyState.set' : 'mu.keyState.none')}</Tag>}
+          >
+            <Input.Password
+              size='small'
+              className={fieldStyles.wide}
+              aria-label={t('mu.judges.clm.key')}
+              autoComplete='new-password'
+              value={draft.judgeKeys[variable] ?? ''}
+              placeholder={set ? t('mu.keyKeep') : t('mu.judges.clm.keyPlaceholder')}
+              onChange={(value) => onKey(variable, value)}
+            />
+          </Row>
+          <div className={styles.tierPanel}>
+            <ClmServerCheck
+              baseUrl={judge.baseUrl}
+              model={judge.model || CLM_DEFAULT_MODEL}
+              keySet={Boolean(set || draft.judgeKeys[variable])}
+            />
+          </div>
+        </>
       ) : null}
     </>
   );

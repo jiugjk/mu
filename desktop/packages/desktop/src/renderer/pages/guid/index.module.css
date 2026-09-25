@@ -83,11 +83,12 @@
   margin-top: auto;
 }
 
+/* The "+" keeps its room: the chips beside it wrap or clip their labels, and never slide under it. */
 .actionTools {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  flex-shrink: 1;
+  flex-shrink: 0;
   min-width: 0;
 }
 
@@ -98,13 +99,21 @@
   margin-inline-end: 0;
 }
 
-/* The model and permission chips, side by side. */
+/* The model and permission chips, side by side. In a narrow window they wrap onto a second line, and a chip too wide
+   for a line of its own clips its label (hovering it scrolls the label). */
 .actionConfigGroup {
   display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: 6px;
   min-width: 0;
   flex: 0 1 auto;
+}
+
+.actionConfigGroup > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* The home composer's chips are the conversation's (.sendbox-tools / .sendbox-actions in sendbox.css): monochrome
@@ -157,11 +166,13 @@
   max-width: 220px;
 }
 
+/* Whatever the "+" leaves: the chips and the send button, packed to the end of the row. */
 .actionSubmit {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 6px;
-  flex-shrink: 0;
+  flex: 1 1 0;
   margin-inline-start: auto;
   min-width: 0;
 }
@@ -397,20 +408,27 @@
   .guidLayout {
     width: clamp(var(--app-min-width, 360px), calc(100% - 24px), 100%);
     padding: 0 12px;
-    padding-bottom: 100px; /* 为底部快捷按钮留出空间 */
     box-sizing: border-box;
+  }
+
+  /* 为底部快捷按钮留出空间: room for the phone's bottom quick buttons, in the phone layout only
+     (html[data-phone-layout], set by Layout). A narrow desktop window has no such buttons. */
+  :global(html[data-phone-layout]) .guidLayout {
+    padding-bottom: 100px;
   }
 
   .guidInputCard {
     width: 100%;
   }
 
-  .actionRow {
+  /* The phone layout's row: the "+" (which opens the sheet holding every control) and the send button. A narrow
+     desktop window keeps the desktop row above, chips included. */
+  .actionRow[data-mobile='true'] {
     flex-wrap: nowrap;
     gap: 8px;
   }
 
-  .actionTools {
+  .actionRow[data-mobile='true'] .actionTools {
     gap: 8px;
     flex: 1 1 auto;
     min-width: 0;
@@ -421,24 +439,16 @@
     scrollbar-width: none;
   }
 
-  .actionTools::-webkit-scrollbar {
+  .actionRow[data-mobile='true'] .actionTools::-webkit-scrollbar {
     display: none;
   }
 
-  .actionTools > * {
+  .actionRow[data-mobile='true'] .actionTools > * {
     flex: 0 0 auto;
   }
 
-  .actionEntry {
+  .actionRow[data-mobile='true'] .actionEntry {
     margin-inline-end: 0;
-  }
-
-  .actionConfigGroup {
-    gap: 0;
-  }
-
-  .actionConfigGroup :global(.sendbox-model-btn .guid-model-label) {
-    max-width: 90px;
   }
 
   .actionConfigGroupWithDivider > :first-child::after {
@@ -446,8 +456,8 @@
     height: 16px;
   }
 
-  .actionSubmit {
-    flex-shrink: 0;
+  .actionRow[data-mobile='true'] .actionSubmit {
+    flex: 0 0 auto;
     margin-inline-start: 8px;
   }
 }
@@ -519,17 +529,25 @@
   color: var(--aou-9) !important;
 }
 
+/* A narrow window: the page can be taller than the window (the starting points stack, the composer's chips wrap), so
+   it scrolls. It stays centred while it fits, as in a wide window, and starts at the top when it does not (`safe`), so
+   nothing is cut off above; for the same reason it is not lifted above the middle here. */
 @media (max-width: 768px) {
   .guidContainer {
-    justify-content: flex-start;
+    justify-content: safe center;
     overflow-y: auto;
     overflow-x: hidden;
-    padding-top: 20px;
-    -webkit-overflow-scrolling: touch;
   }
 
   .guidContainer .guidLayout {
     margin-top: 0;
+  }
+
+  /* A phone: the page starts at the top and scrolls under the finger. */
+  :global(html[data-phone-layout]) .guidContainer {
+    justify-content: flex-start;
+    padding-top: 20px;
+    -webkit-overflow-scrolling: touch;
   }
 }
 
@@ -676,7 +694,7 @@
 }
 
 @media (max-width: 768px) {
-  .actionTools {
+  .actionRow[data-mobile='true'] .actionTools {
     gap: 6px;
     flex: 1 1 auto;
     min-width: 0;

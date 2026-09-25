@@ -140,6 +140,7 @@ const EnabledAssistantRow: React.FC<EnabledAssistantRowProps> = ({
         ) : null}
         <Switch
           size='small'
+          aria-label={name}
           data-testid={`switch-enabled-${assistant.id}`}
           checked={assistant.enabled !== false}
           onChange={(checked) => onToggleEnabled(assistant, checked)}

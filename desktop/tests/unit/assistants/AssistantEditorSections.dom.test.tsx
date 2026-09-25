@@ -494,7 +494,7 @@ describe('AssistantEditorSections', () => {
     );
 
     const defaultsCard = screen.getByTestId('assistant-card-defaults');
-    expect(within(defaultsCard).getByText('User MCP和Builtin MCP')).toBeInTheDocument();
+    expect(within(defaultsCard).getByText('User MCP 和 Builtin MCP')).toBeInTheDocument();
   });
 
   it('uses provider-backed models for aionrs even when detected agent metadata exposes model options', () => {

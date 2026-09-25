@@ -108,6 +108,7 @@ const MessageAcpPermission: React.FC<MessageAcpPermissionProps> = React.memo(({ 
       detailLabelKey={command ? undefined : 'messages.requestDetails'}
       options={panelOptions}
       onConfirm={handleConfirm}
+      decision={muWording ? (option) => muWording.decided(option.value, command) : undefined}
     />
   );
 });

@@ -14,9 +14,17 @@
   "bypassPermissions": "YOLO",
   "smart": "Smart",
   "build": "Build Mode",
+  "full": "Full access",
+  "jev": "Jev approves",
+  "ask": "Minimal permissions",
   "permission": "Permission",
   "switchMode": "Permission Mode",
   "switchSuccess": "Mode switched successfully",
   "switchPendingNextTurn": "Takes effect on the next turn",
-  "switchFailed": "Failed to switch mode"
+  "switchFailed": "Failed to switch mode",
+  "descriptions": {
+    "full": "Runs everything without asking. What you said not to do is still stopped.",
+    "jev": "Reads and edits in the project go ahead; Jev approves commands, changes outside the project and outside actions for you, and asks you only when it is not sure.",
+    "ask": "Only reading goes ahead; every edit, command and outside action asks you first."
+  }
 }

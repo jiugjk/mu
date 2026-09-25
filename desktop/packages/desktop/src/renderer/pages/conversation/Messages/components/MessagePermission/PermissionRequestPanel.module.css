@@ -207,6 +207,13 @@
   background: var(--color-success-light-1);
 }
 
+/* The decision names the call, which can be a long command. */
+.decision {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 @container (max-width: 420px) {
   .titleRow {
     flex-wrap: wrap;

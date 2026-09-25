@@ -165,8 +165,25 @@ vi.mock('@/renderer/pages/conversation/Messages/components/MessageSkillSuggest',
 }));
 
 vi.mock('@/renderer/pages/conversation/Messages/components/MessageToolGroupSummary', () => ({
-  default: ({ messages }: { messages: Array<IMessageToolGroup | IMessageAcpToolCall> }) => (
-    <div data-testid='tool-summary'>{messages.map((message) => message.id).join(',')}</div>
+  default: ({
+    messages,
+    live,
+    stale,
+  }: {
+    messages: Array<IMessageToolGroup | IMessageAcpToolCall>;
+    live?: boolean;
+    stale?: ReadonlySet<string>;
+  }) => (
+    <div
+      data-testid='tool-summary'
+      data-live={String(live)}
+      data-stale={messages
+        .filter((message) => stale?.has(message.id))
+        .map((message) => message.id)
+        .join(',')}
+    >
+      {messages.map((message) => message.id).join(',')}
+    </div>
   ),
 }));
 
@@ -297,6 +314,15 @@ function ListDriver(): null {
   replaceMessages = (messages) => act(() => updateMessages(messages));
   return null;
 }
+
+/** The list drawn again, as a change of the runtime view draws it. */
+const rerenderListed = (rerender: (ui: React.ReactElement) => void) =>
+  rerender(
+    <>
+      <MessageList />
+      <ListDriver />
+    </>
+  );
 
 function createUserMessage(id: string, created_at: number): TMessage {
   return {
@@ -671,6 +697,51 @@ describe('MessageList', () => {
       expect(history).toHaveTextContent('first,second');
       expect(screen.getByTestId('thinking-active-thought-3')).toBeInTheDocument();
       expect(liveRows()).toHaveLength(1);
+    });
+  });
+
+  // QA on macOS, 2026-09-25: mu's process closed mid-call, and the call kept running on screen for good.
+  describe('a call still marked running', () => {
+    const renderList = (messages: TMessage[]) =>
+      render(
+        <>
+          <MessageList />
+          <ListDriver />
+        </>,
+        { wrapper: ({ children }) => <Wrapper messages={messages}>{children}</Wrapper> }
+      );
+    it('runs only while the conversation is processing, or before it is known to be idle', () => {
+      mockHydrated = false;
+      const { rerender } = renderList([
+        createUserMessage('user-1', 1),
+        createAcpToolCall({ id: 'tool-1', status: 'in_progress' }),
+      ]);
+      expect(screen.getByTestId('tool-summary')).toHaveAttribute('data-live', 'true');
+
+      mockHydrated = true;
+      rerenderListed(rerender);
+      expect(screen.getByTestId('tool-summary')).toHaveAttribute('data-live', 'false');
+    });
+
+    it('stays over in the next turn once it was seen running while the conversation was idle', () => {
+      const earlier = [createUserMessage('user-1', 1), createAcpToolCall({ id: 'tool-1', status: 'in_progress' })];
+      const { rerender } = renderList(earlier);
+      expect(screen.getByTestId('tool-summary')).toHaveAttribute('data-live', 'false');
+
+      // The next send: processing starts; the old call is still the last row.
+      mockIsProcessing = true;
+      rerenderListed(rerender);
+      expect(screen.getByTestId('tool-summary')).toHaveAttribute('data-live', 'true');
+      expect(screen.getByTestId('tool-summary')).toHaveAttribute('data-stale', 'tool-1');
+
+      replaceMessages([
+        ...earlier,
+        createUserMessage('user-2', 3),
+        createAcpToolCall({ id: 'tool-2', status: 'in_progress' }),
+      ]);
+      const summaries = screen.getAllByTestId('tool-summary');
+      expect(summaries.at(-1)).toHaveTextContent('tool-2');
+      expect(summaries.at(-1)).toHaveAttribute('data-stale', '');
     });
   });
 

@@ -32,9 +32,14 @@ import { BackendLifecycleManager } from '@aionui/web-host';
 import { resolveBinaryPath } from '@process/backend';
 import { wasLaunchedAtLogin } from '@process/bridge/applicationBridge';
 import { applyStartupAppLanguage, onAppLanguageApplied } from '@process/services/i18n';
-import { setupApplicationMenu } from './process/utils/appMenu';
+import { setApplicationMenuWindow, setupApplicationMenu } from './process/utils/appMenu';
 import { getUpdateService } from './process/services/update';
 import { initializeZoomFactor, setupZoomForWindow } from './process/utils/zoom';
+import {
+  followSystemAppearance,
+  initializeWindowAppearance,
+  windowBackgroundColor,
+} from './process/utils/windowBackground';
 import { hydrateWindowsProcessPath } from './process/startup/windowsPath';
 import { registerWindowsAppUserModelId } from './process/startup/windowsAppUserModelId';
 import {
@@ -435,7 +440,8 @@ const createWindow = ({ showOnReady = true }: { showOnReady?: boolean } = {}): v
     minWidth: MIN_WINDOW_WIDTH,
     minHeight: MIN_WINDOW_HEIGHT,
     show: false, // Hide until CSS is loaded to prevent FOUC
-    backgroundColor: '#ffffff',
+    // The theme in effect (the system's appearance until one is chosen): no white flash in dark mode, on a reload too.
+    backgroundColor: windowBackgroundColor(),
     autoHideMenuBar: true,
     // Set icon for Windows/Linux in development mode
     ...(devIcon && process.platform !== 'darwin' ? { icon: devIcon } : {}),
@@ -824,6 +830,14 @@ const handleAppReady = async (): Promise<void> => {
     loadSavedWindowBounds(undefined);
   }
 
+  try {
+    initializeWindowAppearance(await ProcessConfig.get('window.appearance'));
+  } catch (error) {
+    console.error('[AionUi] Failed to restore the window appearance:', error);
+    initializeWindowAppearance(undefined);
+  }
+  followSystemAppearance();
+
   {
     // 初始化关闭到托盘设置 / Initialize close-to-tray setting
     if (isE2ETestMode) {
@@ -843,6 +857,8 @@ const handleAppReady = async (): Promise<void> => {
 
     const showMainWindowOnReady = !(wasLaunchedAtLogin() && getCloseToTrayEnabled());
 
+    // The menu's 新会话, 设置… and update check bring the window forward first (a new one after ⌘W on a Mac).
+    setApplicationMenuWindow(() => showOrCreateMainWindow({ mainWindow, createWindow }));
     createWindow({ showOnReady: showMainWindowOnReady });
     appReadyDone = true;
     mark('createWindow');

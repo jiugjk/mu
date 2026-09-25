@@ -73,6 +73,8 @@ export function mapEvent(event: JsonRecord): SessionUpdate[] {
     const id = `jev:${text(frame.runtimeId)}:${frame.turnId}`;
     // The titles are an English fallback for other clients. The desktop names the row in the reader's language from
     // `rawOutput.preflight` and the verdict's turn type, so a stored conversation follows a later language switch.
+    // The judge that was asked (`jev-latest`, `laya`, `laya>jev-latest`…) names the row until a verdict says who
+    // answered.
     if (frame.kind === 'preflight.pending')
       return [
         {
@@ -81,7 +83,7 @@ export function mapEvent(event: JsonRecord): SessionUpdate[] {
           title: 'Jev · Classifying',
           kind: 'think',
           status: 'in_progress',
-          rawOutput: { preflight: 'pending' },
+          rawOutput: { preflight: 'pending', ...(text(payload.judge) ? { judge: text(payload.judge) } : {}) },
         },
       ];
     if (frame.kind === 'preflight.verdict')
@@ -106,8 +108,7 @@ export function mapEvent(event: JsonRecord): SessionUpdate[] {
         },
       ];
   }
-  if (event.type === 'extension_ui_request' && event.method === 'notify') {
-    return [{ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: `${text(event.message)}\n` } }];
-  }
+  // What mu notifies (a command's answer, a warning) is no part of the reply: the bridge shows it as a line of its own
+  // (`KyrnAgent`'s notices).
   return [];
 }

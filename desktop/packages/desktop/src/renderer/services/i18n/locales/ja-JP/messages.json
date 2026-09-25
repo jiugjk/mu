@@ -67,6 +67,7 @@
   "noOptionsAvailable": "利用可能なオプションはありません",
   "processing": "処理中...",
   "responseSentSuccessfully": "応答が正常に送信されました",
+  "permissionAnswered": "回答済み：{{option}}",
   "permissionResponseFailed": "応答を送信できませんでした。もう一度お試しください。",
   "permissionNoLongerPending": "このリクエストはもう回答を待っていません。",
   "confirmation": {

@@ -1,7 +1,8 @@
 import type { TFunction } from 'i18next';
 import { runEnding, type BrowserRunState, type BrowserRunStatus } from '@/common/kyrn/browserRun';
 import { parseCoded, parseParams, type CodeParams, type Coded } from '@/common/kyrn/hive';
-import { formatDuration } from '@/renderer/services/i18n/format';
+import { formatDuration, formatNumber } from '@/renderer/services/i18n/format';
+import { checkpointOffWords, readCheckpointParams } from '@/renderer/pages/conversation/Messages/acp/muNotice';
 import { reasonLine, reasonText, statusKey } from '@/renderer/pages/conversation/Preview/browser/muBrowser/format';
 import { record, str } from '../activity';
 
@@ -356,6 +357,49 @@ function permissionsLine(t: TFunction, payload: Record<string, unknown>): string
   return lines(name ? t(`${KEY}.permissions.mode`, { mode: name }) : undefined);
 }
 
+// ── permissions.request / resolved / approved ───────────────────────────────
+
+/** mu's answers by id, as `permissions.resolved` reports them. */
+const PERMISSION_ANSWERS: ReadonlySet<string> = new Set(['once', 'session', 'deny']);
+
+/** mu waits for the person's permission; the call it names is data, shown as it is. */
+function permissionRequestLine(t: TFunction, payload: Record<string, unknown>): string[] {
+  const summary = str(payload.summary);
+  return lines(summary ? t(`${KEY}.permissions.request`, { summary }) : t(`${KEY}.permissions.waiting`));
+}
+
+/** How the person answered, with the call when the question named one (`summary`, found by the log). */
+function permissionAnswerLine(t: TFunction, payload: Record<string, unknown>): string[] | undefined {
+  const answer = str(payload.answer);
+  if (!PERMISSION_ANSWERS.has(answer)) return undefined;
+  const said = t(`${KEY}.permissions.answers.${answer}`);
+  const summary = str(payload.summary);
+  return lines(summary ? t(`${KEY}.permissions.about`, { answer: said, summary }) : said);
+}
+
+/** A call that ran without asking: the judge let it through, or the person had allowed it for this conversation. */
+function permissionApprovedLine(t: TFunction, payload: Record<string, unknown>): string[] | undefined {
+  const summary = str(payload.summary);
+  const by = str(payload.by);
+  if (!summary || (by !== 'jev' && by !== 'grant')) return undefined;
+  return lines(t(`${KEY}.permissions.approved.${by === 'jev' ? 'judge' : 'grant'}`, { summary }));
+}
+
+// ── checkpoint.off ──────────────────────────────────────────────────────────
+
+/** Why the session goes without checkpoints, in the words the conversation's notice uses; mu's own line otherwise. */
+function checkpointLine(t: TFunction, payload: Record<string, unknown>, language: string | null | undefined): string[] {
+  const words = checkpointOffWords({
+    title: '',
+    reason: str(payload.code),
+    params: readCheckpointParams(payload.params),
+  });
+  const values = words
+    ? Object.fromEntries(Object.entries(words.values).map(([name, value]) => [name, formatNumber(value, language)]))
+    : {};
+  return lines(words ? t(words.key, values) : str(payload.message));
+}
+
 // ── board.switched ──────────────────────────────────────────────────────────
 
 /** Whether the board is on: the harness says so whenever it starts and after each switch, so this is a state. */
@@ -391,6 +435,14 @@ export function eventLines(
       return browserLines(t, payload);
     case 'permissions.mode':
       return permissionsLine(t, payload);
+    case 'permissions.request':
+      return permissionRequestLine(t, payload);
+    case 'permissions.resolved':
+      return permissionAnswerLine(t, payload);
+    case 'permissions.approved':
+      return permissionApprovedLine(t, payload);
+    case 'checkpoint.off':
+      return checkpointLine(t, payload, language);
     case 'board.switched':
       return boardLine(t, payload);
     default:

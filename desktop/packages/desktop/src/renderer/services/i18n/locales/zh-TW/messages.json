@@ -67,6 +67,7 @@
   "noOptionsAvailable": "沒有可用選項",
   "processing": "處理中...",
   "responseSentSuccessfully": "回覆已成功送出",
+  "permissionAnswered": "已回答：{{option}}",
   "permissionResponseFailed": "無法傳送回應，請再試一次。",
   "permissionNoLongerPending": "這個請求已不再等待回答。",
   "confirmation": {

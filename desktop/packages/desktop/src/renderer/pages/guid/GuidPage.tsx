@@ -37,6 +37,7 @@ import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import useSWR from 'swr';
 import { useFirstRunWelcome } from '@/renderer/pages/welcome/useFirstRunWelcome';
+import { commandDescription } from '@/renderer/utils/chat/muCommands';
 import styles from './index.module.css';
 
 type GuidNavigationState = {
@@ -238,13 +239,13 @@ const GuidPage: React.FC = () => {
       slashController.filteredCommands.map((command) => ({
         key: command.name,
         label: `/${command.name}`,
-        description: command.description,
+        description: commandDescription(command, t),
         badge: command.hint,
         highlightIndices: slashController.query
           ? getFuzzyMatchIndices(command.name, slashController.query)?.map((index) => index + 1)
           : undefined,
       })),
-    [slashController.filteredCommands, slashController.query]
+    [slashController.filteredCommands, slashController.query, t]
   );
 
   const send = useGuidSend({

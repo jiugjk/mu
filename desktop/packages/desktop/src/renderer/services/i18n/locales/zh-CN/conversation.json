@@ -457,7 +457,7 @@
   "chat": {
     "noModelSelected": "当前会话未选择模型，无法发送消息",
     "sendMessageTo": "发送消息到 {{model}}",
-    "processing": "正在处理中……",
+    "processing": "正在处理中…",
     "quotaExceededTitle": "模型额度已用尽",
     "quotaExceededBody": "当前模型额度已用尽，是否切换到 {{model}}？",
     "quotaExceededNoFallback": "当前模型额度已用尽，请切换到其他可用模型。",
@@ -520,7 +520,6 @@
       "manual": "手动发送"
     },
     "addToQueue": "存到草稿箱",
-    "addToQueueShortcut": "⌘ + Enter / Ctrl + Enter",
     "midturnBlocked": "当前 Agent 正在处理，暂时不能直接发送。可以先存到草稿箱，稍后发送。",
     "enterShortcut": "Enter",
     "actionMode": "选择发送方式",
@@ -591,7 +590,8 @@
   "sendbox": {
     "hint": "输入 / 唤起命令，@ 引用文件，↑/↓ 切换历史消息",
     "mediaPathFallback": "该 Agent 不原生支持此文件类型，将以文件路径形式发送。",
-    "hintWithSessions": "输入 / 唤起命令，@ 引用文件，@@ 引用会话，↑/↓ 切换历史消息"
+    "hintWithSessions": "输入 / 唤起命令，@ 引用文件，@@ 引用会话，↑/↓ 切换历史消息",
+    "stop": "停止回复"
   },
   "composer": {
     "goalLine": {

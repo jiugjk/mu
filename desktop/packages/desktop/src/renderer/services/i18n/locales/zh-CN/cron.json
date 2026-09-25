@@ -29,7 +29,7 @@
   "resumeSuccess": "任务已恢复",
   "message.badge": "定时任务",
   "allScheduledTasks": "全部定时任务",
-  "noTasks": "暂无定时任务",
+  "noTasks": "还没有定时任务。",
   "runNowSuccess": "任务已触发执行",
   "detail": {
     "backToAll": "全部定时任务",
@@ -62,6 +62,7 @@
     "keepAwakeTooltip": "开启后，mu 将阻止电脑进入休眠状态",
     "searchPlaceholder": "搜索定时任务...",
     "noSearchResults": "没有匹配的定时任务。",
+    "emptyHint": "点上方的“{{button}}”建一个。",
     "createTask": "创建定时任务",
     "editTask": "编辑定时任务",
     "createSuccess": "任务创建成功",

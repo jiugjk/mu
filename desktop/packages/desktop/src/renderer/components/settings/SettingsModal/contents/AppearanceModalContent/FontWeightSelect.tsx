@@ -37,12 +37,28 @@ const FontWeightSelect: React.FC<FontWeightSelectProps> = ({ value, onChange }) 
 
   return (
     <AionSelect
-      className='w-170px'
+      // As wide as its label and longest name, from 170px up to the row's width: "Systemstandard" is not cut.
+      className='w-max min-w-170px max-w-full'
       prefix={<span className='text-t-secondary'>{t('settings.fontWeightLabel')}</span>}
       aria-label={t('settings.fontWeightLabel')}
       value={value}
       onChange={(next) => onChange(typeof next === 'string' ? next : SYSTEM_FONT_WEIGHT)}
       options={options}
+      // Every name in one cell, only the chosen one seen: the select keeps the width of the longest name whatever is
+      // chosen, so the four rows line up.
+      renderFormat={(_, chosen) => (
+        <span className='inline-grid'>
+          {options.map((option) => (
+            <span
+              key={option.value}
+              className={option.value === chosen ? 'col-start-1 row-start-1' : 'col-start-1 row-start-1 invisible'}
+              aria-hidden={option.value === chosen ? undefined : true}
+            >
+              {option.label}
+            </span>
+          ))}
+        </span>
+      )}
     />
   );
 };

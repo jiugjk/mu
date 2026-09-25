@@ -39,6 +39,9 @@ const updateMocks = vi.hoisted(() => ({
   open: undefined as undefined | ((event: { source: 'menu' | 'tray' }) => void),
   run: vi.fn(() => Promise.resolve()),
 }));
+const menuMocks = vi.hoisted(() => ({
+  command: undefined as undefined | ((event: { command: 'newChat' | 'openSettings' }) => void),
+}));
 vi.mock('react-router-dom', () => ({
   useNavigate: () => navigate,
   useLocation: () => ({ pathname: currentPathname, search: '', hash: '' }),
@@ -53,6 +56,14 @@ vi.mock('@/common', () => ({
     application: {
       openDevTools: { invoke: () => openDevTools() },
       logStream: { on: () => () => {} },
+      menuCommand: {
+        on: (callback: (event: { command: 'newChat' | 'openSettings' }) => void) => {
+          menuMocks.command = callback;
+          return () => {
+            menuMocks.command = undefined;
+          };
+        },
+      },
     },
     task: { stopAll: { invoke: () => Promise.resolve({ success: false }) } },
     update: {
@@ -120,6 +131,16 @@ const missing = (kind: IRuntimeStatusEvent['scope']['kind'], id: string): IRunti
 });
 
 const BACK_KEY = 'common.back';
+
+const setWindowWidth = (width: number) =>
+  Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: width });
+
+/** The window resized to `width`, as Electron reports it to the page. */
+const resizeTo = (width: number) =>
+  act(() => {
+    setWindowWidth(width);
+    window.dispatchEvent(new Event('resize'));
+  });
 
 describe('Layout sider brand Home button', () => {
   beforeEach(() => {
@@ -318,5 +339,66 @@ describe('Layout sider brand Home button', () => {
   it('listens for no update requests outside the desktop app', () => {
     renderLayout();
     expect(updateMocks.open).toBeUndefined();
+    expect(menuMocks.command).toBeUndefined();
+  });
+
+  it('starts a new conversation and opens the settings when the application menu asks', () => {
+    platformMocks.isElectronDesktopMock.mockReturnValue(true);
+    currentPathname = '/conversation/abc';
+    renderLayout();
+
+    act(() => menuMocks.command?.({ command: 'newChat' }));
+    expect(navigate).toHaveBeenCalledWith('/guid', { state: { resetAssistant: true } });
+
+    act(() => menuMocks.command?.({ command: 'openSettings' }));
+    expect(navigate).toHaveBeenLastCalledWith('/settings/providers');
+  });
+
+  it('stays on the settings page shown when the menu asks for the settings there', () => {
+    platformMocks.isElectronDesktopMock.mockReturnValue(true);
+    currentPathname = '/settings/about';
+    renderLayout();
+
+    act(() => menuMocks.command?.({ command: 'openSettings' }));
+
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  describe('in a desktop window resized narrow and wide again', () => {
+    beforeEach(() => {
+      platformMocks.isElectronDesktopMock.mockReturnValue(true);
+      currentPathname = '/guid';
+      setWindowWidth(1400);
+    });
+
+    afterEach(() => {
+      setWindowWidth(1024);
+    });
+
+    it('folds the sidebar to its rail, keeps the desktop layout, and opens the sidebar again (N13)', () => {
+      const { container } = renderLayout();
+      const sider = container.querySelector('.layout-sider') as HTMLElement;
+      expect(sider).not.toHaveClass('collapsed');
+
+      resizeTo(500);
+      expect(sider).toHaveClass('collapsed');
+      expect(sider.style.width).toBe('56px');
+      // No phone layout in a desktop window, however narrow: no sheet, no scrim, no phone styles.
+      expect(document.documentElement).not.toHaveAttribute('data-phone-layout');
+
+      resizeTo(1400);
+      expect(sider).not.toHaveClass('collapsed');
+    });
+
+    it('keeps a sidebar the person folded folded, however wide the window gets', () => {
+      const { container } = renderLayout();
+      const sider = container.querySelector('.layout-sider') as HTMLElement;
+
+      act(() => shortcutMocks.params?.toggleSider());
+      resizeTo(500);
+      resizeTo(1400);
+
+      expect(sider).toHaveClass('collapsed');
+    });
   });
 });

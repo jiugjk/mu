@@ -1,4 +1,5 @@
 import { bridge } from '../platform/bridge';
+import type { ClmServerState } from './clm';
 import { KyrnError, type KyrnResult } from './errors';
 import type { ImportedHistory, ImportList, ImportOutcome } from './importChats';
 import type { LessonChange, LessonsView } from './lessons';
@@ -51,6 +52,8 @@ export const kyrnBridge = {
   localJudgeRun: bridge.buildProvider<KyrnResult<LocalJudgeState>, { action: LocalJudgeAction; consent?: boolean }>(
     'kyrn.localJudge.run'
   ),
+  /** How the CLM server behind a judge's address is (common/kyrn/clm.ts), asked by the main process. */
+  clmCheck: bridge.buildProvider<KyrnResult<ClmServerState>, { baseUrl: string }>('kyrn.clm.check'),
 };
 
 /** The data of a bridge answer; a failure is thrown as a `KyrnError` that keeps its code for the screen to translate. */

@@ -14,9 +14,17 @@
   "bypassPermissions": "YOLO",
   "smart": "Akıllı",
   "build": "Derleme modu",
+  "full": "Tam erişim",
+  "jev": "Jev onaylar",
+  "ask": "En az izin",
   "permission": "İzin",
   "switchMode": "İzin Modu",
   "switchSuccess": "Mod değiştirildi",
   "switchPendingNextTurn": "Sonraki turda geçerli olacak",
-  "switchFailed": "Mod değiştirilemedi"
+  "switchFailed": "Mod değiştirilemedi",
+  "descriptions": {
+    "full": "Hiçbir şey sormadan her şeyi çalıştırır. Yapılmamasını söylediğiniz şeyler yine durdurulur.",
+    "jev": "Projedeki okuma ve düzenlemeler doğrudan yapılır; komutları, proje dışındaki değişiklikleri ve dış işlemleri sizin yerinize Jev onaylar, yalnızca emin olmadığında size sorar.",
+    "ask": "Yalnızca okuma doğrudan yapılır; her düzenleme, komut ve dış işlem için önce size sorulur."
+  }
 }

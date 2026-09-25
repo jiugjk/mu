@@ -17,6 +17,10 @@ describe('KYRN events in native AionUi cards', () => {
       status: 'in_progress',
       rawOutput: { preflight: 'pending' },
     });
+    // The judge that was asked names the row until a verdict says who answered.
+    expect(frame('preflight.pending', { judge: 'laya>jev-latest', mode: 'active' })[0]).toMatchObject({
+      rawOutput: { preflight: 'pending', judge: 'laya>jev-latest' },
+    });
     expect(frame('preflight.verdict', { turnType: 'chat' })[0]).toMatchObject({
       sessionUpdate: 'tool_call_update',
       toolCallId: 'jev:r:1',
@@ -68,5 +72,17 @@ describe('KYRN events in native AionUi cards', () => {
     ).toEqual([
       { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'Provider reasoning summary' } },
     ]);
+  });
+  it('makes no reply text of what mu notifies: the bridge shows it as a line of its own', () => {
+    for (const notifyType of ['info', 'warning', 'error'])
+      expect(
+        mapEvent({
+          type: 'extension_ui_request',
+          id: 'n',
+          method: 'notify',
+          message: 'Checkpoints are off',
+          notifyType,
+        })
+      ).toEqual([]);
   });
 });

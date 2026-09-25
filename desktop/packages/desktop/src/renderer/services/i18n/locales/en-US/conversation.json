@@ -457,7 +457,7 @@
   "chat": {
     "noModelSelected": "No model selected for current session, cannot send message",
     "sendMessageTo": "Send message to {{model}}",
-    "processing": "Processing...",
+    "processing": "Processing…",
     "quotaExceededTitle": "Model quota reached",
     "quotaExceededBody": "The current model quota is exhausted. Switch to {{model}} to continue?",
     "quotaExceededNoFallback": "Model quota reached. Please switch to another available model.",
@@ -520,7 +520,6 @@
       "manual": "Manual send"
     },
     "addToQueue": "Save to Draft box",
-    "addToQueueShortcut": "⌘ + Enter / Ctrl + Enter",
     "midturnBlocked": "This agent is still working, so the message can’t be sent directly. Save it to Draft box and send it later.",
     "enterShortcut": "Enter",
     "actionMode": "Choose send action",
@@ -591,7 +590,8 @@
   "sendbox": {
     "hint": "Type / for commands, @ to reference files, ↑/↓ for message history",
     "mediaPathFallback": "This agent has no native support for this file type; it will be sent as a file path.",
-    "hintWithSessions": "Type / for commands, @ for files, @@ for conversations, ↑/↓ for history"
+    "hintWithSessions": "Type / for commands, @ for files, @@ for conversations, ↑/↓ for history",
+    "stop": "Stop the reply"
   },
   "composer": {
     "goalLine": {

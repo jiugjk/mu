@@ -41,7 +41,7 @@
   "drawer.saveSuccess": "Saved successfully",
   "message.badge": "スケジュール",
   "allScheduledTasks": "すべてのスケジュールタスク",
-  "noTasks": "スケジュールタスクがありません",
+  "noTasks": "スケジュールタスクはまだありません。",
   "runNowSuccess": "タスクの実行をトリガーしました",
   "detail": {
     "backToAll": "すべてのスケジュールタスク",
@@ -171,7 +171,8 @@
     "createFailed": "タスクを作成できませんでした：{{error}}",
     "updateFailed": "タスクを保存できませんでした：{{error}}",
     "searchPlaceholder": "タスクを検索...",
-    "noSearchResults": "一致するスケジュール済みタスクはありません。"
+    "noSearchResults": "一致するスケジュール済みタスクはありません。",
+    "emptyHint": "上の「{{button}}」から作成できます。"
   },
   "trigger": {
     "runScheduledTask": "スケジュールタスクを実行：{{name}}"

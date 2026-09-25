@@ -28,6 +28,9 @@ const clientBusinessSettingsMocks = vi.hoisted(() => ({
   getClientBusinessSetting: vi.fn(),
   setClientBusinessSetting: vi.fn(() => Promise.resolve()),
 }));
+const platformMocks = vi.hoisted(() => ({
+  isMacOS: vi.fn(() => false),
+}));
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string) => k, i18n: { language: 'en' } }),
@@ -35,6 +38,7 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('@/renderer/utils/platform', () => ({
   isElectronDesktop: () => true,
+  isMacOS: platformMocks.isMacOS,
 }));
 
 vi.mock('@/renderer/components/base/AionScrollArea', () => ({
@@ -136,6 +140,7 @@ describe('SystemModalContent directory settings', () => {
       return undefined;
     });
     clientBusinessSettingsMocks.setClientBusinessSetting.mockResolvedValue(undefined);
+    platformMocks.isMacOS.mockReturnValue(false);
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
       value: vi.fn().mockImplementation((query: string) => ({
@@ -270,6 +275,15 @@ describe('SystemModalContent directory settings', () => {
     expect(screen.queryByText('settings.promptTimeout')).not.toBeInTheDocument();
     expect(screen.queryByText('settings.crossSessionMessage')).not.toBeInTheDocument();
     expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
+  });
+
+  it('names the menu bar on a Mac, where the closed app lives on', async () => {
+    platformMocks.isMacOS.mockReturnValue(true);
+    renderContent();
+
+    await screen.findByText('/work');
+    expect(screen.getByText('settings.closeToMenuBar')).toBeInTheDocument();
+    expect(screen.queryByText('settings.closeToTray')).not.toBeInTheDocument();
   });
 
   it('loads ACP timeouts from backend client settings', async () => {

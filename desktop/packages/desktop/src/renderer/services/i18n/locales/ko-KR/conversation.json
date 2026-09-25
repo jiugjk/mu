@@ -457,7 +457,7 @@
   "chat": {
     "noModelSelected": "현재 세션에 선택된 모델이 없어 메시지를 보낼 수 없습니다",
     "sendMessageTo": "{{model}}에게 메시지 보내기",
-    "processing": "처리 중...",
+    "processing": "처리 중…",
     "quotaExceededTitle": "모델 할당량 도달",
     "quotaExceededBody": "현재 모델 할당량이 소진되었습니다. {{model}}(으)로 전환하여 계속하시겠습니까?",
     "quotaExceededNoFallback": "모델 할당량에 도달했습니다. 다른 사용 가능한 모델로 전환하세요.",
@@ -520,7 +520,6 @@
       "manual": "수동 전송"
     },
     "addToQueue": "Draft box에 추가",
-    "addToQueueShortcut": "⌘ + Enter / Ctrl + Enter",
     "midturnBlocked": "이 에이전트가 응답하는 동안에는 끼어들기를 지원하지 않습니다. Draft box에 추가를 사용하세요.",
     "enterShortcut": "Enter",
     "actionMode": "전송 방식 선택",
@@ -591,7 +590,8 @@
   "sendbox": {
     "hint": "/ 로 명령, @ 로 파일 참조, ↑/↓ 로 메시지 기록 전환",
     "mediaPathFallback": "이 에이전트는 이 파일 형식을 기본적으로 지원하지 않으므로 파일 경로로 전송됩니다.",
-    "hintWithSessions": "/ 로 명령, @ 로 파일, @@ 로 대화 참조, ↑/↓ 로 기록"
+    "hintWithSessions": "/ 로 명령, @ 로 파일, @@ 로 대화 참조, ↑/↓ 로 기록",
+    "stop": "응답 중지"
   },
   "composer": {
     "goalLine": {

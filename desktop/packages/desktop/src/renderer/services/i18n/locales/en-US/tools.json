@@ -31,7 +31,8 @@
     "executing": "Executing",
     "success": "Success",
     "error": "Error",
-    "canceled": "Canceled"
+    "canceled": "Canceled",
+    "denied": "Not allowed"
   },
   "titles": {
     "web_search_started": "Web Search Started",
@@ -75,6 +76,7 @@
     "loadError": "Could not load full output.",
     "retry": "Retry",
     "callAria": "{{name}} · {{status}}",
+    "denied": "Not run: you did not allow it.",
     "showMore": "Show more",
     "showLess": "Show less"
   },

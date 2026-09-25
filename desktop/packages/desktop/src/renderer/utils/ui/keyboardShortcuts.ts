@@ -92,3 +92,9 @@ export const formatPrimaryShortcut = ({ key, shiftKey = false }: PrimaryShortcut
   }
   return `Ctrl+${shiftKey ? 'Shift+' : ''}${letter}`;
 };
+
+/**
+ * The primary modifier with Enter, as this computer's own shortcut: "⌘ + Enter" on macOS, "Ctrl + Enter" elsewhere.
+ * `enterLabel` is the app language's name for the Enter key.
+ */
+export const formatPrimaryEnterShortcut = (enterLabel: string): string => `${isMacOS() ? '⌘' : 'Ctrl'} + ${enterLabel}`;

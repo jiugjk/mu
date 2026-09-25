@@ -63,6 +63,22 @@ export const adjustZoomFactor = (delta: number): number => {
   return setZoomFactor(currentZoomFactor + delta);
 };
 
+/** One zoom step, from a key or from the View menu: the same limits for both, and the result remembered. */
+export const applyZoomAction = (
+  action: ZoomShortcutAction,
+  persistZoomFactor?: (factor: number) => void | Promise<void>
+): number => {
+  const updatedFactor =
+    action === 'zoomIn'
+      ? adjustZoomFactor(UI_SCALE_STEP)
+      : action === 'zoomOut'
+        ? adjustZoomFactor(-UI_SCALE_STEP)
+        : setZoomFactor(UI_SCALE_DEFAULT);
+
+  void persistZoomFactor?.(updatedFactor);
+  return updatedFactor;
+};
+
 export const attachZoomShortcutsToWindow = (
   win: BrowserWindow,
   persistZoomFactor?: (factor: number) => void | Promise<void>
@@ -73,33 +89,36 @@ export const attachZoomShortcutsToWindow = (
       return;
     }
 
+    // Also keeps the View menu's accelerators from zooming a second time.
     event.preventDefault();
-
-    const updatedFactor =
-      action === 'zoomIn'
-        ? adjustZoomFactor(UI_SCALE_STEP)
-        : action === 'zoomOut'
-          ? adjustZoomFactor(-UI_SCALE_STEP)
-          : setZoomFactor(UI_SCALE_DEFAULT);
-
-    void persistZoomFactor?.(updatedFactor);
+    applyZoomAction(action, persistZoomFactor);
   });
+};
+
+const persistZoomFactor = (factor: number): void => {
+  // Track the write so a ⌘± immediately followed by ⌘Q still flushes.
+  const op = (async () => {
+    try {
+      const { ProcessConfig } = await import('./initStorage');
+      await ProcessConfig.set('ui.zoomFactor', factor);
+    } catch (error) {
+      console.error('[AionUi] Failed to persist zoom factor:', error);
+    }
+  })();
+  trackPersistedWrite(op);
 };
 
 export const setupZoomForWindow = (win: BrowserWindow): void => {
   applyZoomToWindow(win);
-  attachZoomShortcutsToWindow(win, (factor) => {
-    // Track the write so a ⌘± immediately followed by ⌘Q still flushes.
-    const op = (async () => {
-      try {
-        const { ProcessConfig } = await import('./initStorage');
-        await ProcessConfig.set('ui.zoomFactor', factor);
-      } catch (error) {
-        console.error('[AionUi] Failed to persist zoom factor from keyboard shortcut:', error);
-      }
-    })();
-    trackPersistedWrite(op);
-  });
+  attachZoomShortcutsToWindow(win, persistZoomFactor);
+};
+
+/**
+ * The View menu's actual size, zoom in and zoom out: the keyboard's steps on the app's own scale (Chromium's zoom
+ * roles would bypass it, and 实际大小 would not return to the app's default).
+ */
+export const zoomFromMenu = (action: ZoomShortcutAction): void => {
+  applyZoomAction(action, persistZoomFactor);
 };
 
 /**
