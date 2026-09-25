@@ -22,6 +22,9 @@ export function searchPath(...first: string[]): string {
 /** The launcher as a person runs it: the bash script elsewhere, mu.cmd on Windows. */
 export const MU = join(BIN, windows ? "mu.cmd" : "mu");
 
+/** Windows PowerShell 5.1, which every Windows has. */
+export const WINDOWS_POWERSHELL = join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+
 /**
  * Runs a script of kyrn/bin, or a link or shim to one, the way a shell does: a bash script directly, a `.cmd` through
  * cmd.exe, which is the only way a batch file starts. `args` are plain words. Nothing of the developer's own setup leaks
@@ -29,6 +32,47 @@ export const MU = join(BIN, windows ? "mu.cmd" : "mu");
  * Windows also gets the few variables its programs expect to find.
  */
 export function runScript(script: string, args: readonly string[], env: Record<string, string>, timeout = 60_000) {
+	const options = { encoding: "utf8" as const, input: "", env: scriptEnv(env), timeout, windowsHide: true };
+	const result = windows
+		? spawnSync(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", `""${script}" ${args.join(" ")}"`], {
+				...options,
+				windowsVerbatimArguments: true,
+			})
+		: spawnSync(script, args, options);
+	return { code: result.status, out: result.stdout, err: result.stderr };
+}
+
+/**
+ * Runs mu.ps1 as PowerShell runs a script file. `shell` is Windows PowerShell 5.1 (powershell.exe, on every Windows)
+ * or PowerShell 7 (pwsh.exe). Node quotes each argument and PowerShell reads it back whole, so the script gets `args`
+ * exactly, as from a PowerShell prompt. The execution policy is set aside for this run: what is tested is the script.
+ *
+ * `legacy` calls the script from a session that passes arguments to programs as PowerShell 7 did before 7.3, which a
+ * person can still choose ($PSNativeCommandArgumentPassing). The arguments then travel in variables of their own.
+ */
+export function runPowerShell(
+	shell: string,
+	args: readonly string[],
+	env: Record<string, string>,
+	{ legacy = false, timeout = 60_000 } = {},
+) {
+	const flags = ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass"];
+	const script = join(BIN, "mu.ps1");
+	const named = Object.fromEntries(args.map((arg, index) => [`MU_TEST_ARG${index}`, arg]));
+	const words = args.map((_arg, index) => `$env:MU_TEST_ARG${index}`).join(" ");
+	const command = `$PSNativeCommandArgumentPassing = 'Legacy'; & $env:MU_TEST_SCRIPT ${words}; exit $LASTEXITCODE`;
+	const result = spawnSync(shell, legacy ? [...flags, "-Command", command] : [...flags, "-File", script, ...args], {
+		encoding: "utf8",
+		input: "",
+		env: scriptEnv(legacy ? { ...env, ...named, MU_TEST_SCRIPT: script } : env),
+		timeout,
+		windowsHide: true,
+	});
+	return { code: result.status, out: result.stdout, err: result.stderr };
+}
+
+/** A run's variables: `env` on a bare PATH, and on Windows the few variables its programs expect to find. */
+function scriptEnv(env: Record<string, string>): Record<string, string | undefined> {
 	const base: Record<string, string | undefined> = windows
 		? {
 				PATH: searchPath(),
@@ -41,15 +85,7 @@ export function runScript(script: string, args: readonly string[], env: Record<s
 				TMP: process.env.TMP,
 			}
 		: { PATH: searchPath() };
-	const full = { ...base, ...env, ...(windows && env.HOME ? { USERPROFILE: env.HOME } : {}) };
-	const options = { encoding: "utf8" as const, input: "", env: full, timeout, windowsHide: true };
-	const result = windows
-		? spawnSync(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", `""${script}" ${args.join(" ")}"`], {
-				...options,
-				windowsVerbatimArguments: true,
-			})
-		: spawnSync(script, args, options);
-	return { code: result.status, out: result.stdout, err: result.stderr };
+	return { ...base, ...env, ...(windows && env.HOME ? { USERPROFILE: env.HOME } : {}) };
 }
 
 /**
