@@ -36,7 +36,6 @@ import React, { useCallback, useContext, useEffect, useLayoutEffect, useMemo, us
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import useSWR from 'swr';
-import { useFirstRunWelcome } from '@/renderer/pages/welcome/useFirstRunWelcome';
 import { commandDescription } from '@/renderer/utils/chat/muCommands';
 import styles from './index.module.css';
 
@@ -54,7 +53,6 @@ type GuidNavigationState = {
 const GuidPage: React.FC = () => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  useFirstRunWelcome();
   const location = useLocation();
   const guidContainerRef = useRef<HTMLDivElement>(null);
   // Arco's nested ConfigProvider does not inherit: whatever it leaves out falls back to Arco's defaults (zh-CN

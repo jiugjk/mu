@@ -7,7 +7,8 @@ import PanelRoute from '@/renderer/components/layout/Router';
 
 const { catalog } = vi.hoisted(() => ({ catalog: vi.fn() }));
 vi.mock('@/common/kyrn/bridge', () => ({
-  kyrnBridge: { catalog: { invoke: catalog } },
+  // The first-run check (firstRunGuide.dom.test.tsx) reads the settings; here it never hears back.
+  kyrnBridge: { catalog: { invoke: catalog }, settings: { invoke: () => new Promise(() => {}) } },
   unwrap: (result: { data?: unknown }) => result.data,
 }));
 vi.mock('react-i18next', () => ({

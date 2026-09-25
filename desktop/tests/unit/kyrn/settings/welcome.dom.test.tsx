@@ -50,6 +50,9 @@ vi.mock('@/common/kyrn/bridge', () => ({
     return result.data;
   },
 }));
+// The guide's code, which the first-run check loads before it opens the guide.
+const guideCode = vi.hoisted(() => ({ preload: vi.fn() }));
+vi.mock('@/renderer/pages/welcome/page', () => ({ WelcomePage: { preload: guideCode.preload } }));
 // The real switcher changes the app's own i18next and writes the setting; here it only has to be there.
 vi.mock('@/renderer/components/settings/LanguageSwitcher', () => ({
   default: () => <div data-testid='language-switcher' />,
@@ -96,6 +99,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   localStorage.clear();
+  guideCode.preload.mockResolvedValue({ default: Welcome });
   bridge.settings.mockResolvedValue({ ok: true, data: newUser() });
   bridge.availableModels.mockResolvedValue({ ok: true, data: { providers: [], thinkingLevels: [] } });
   bridge.recheck.mockResolvedValue({ ok: true, data: undefined });
@@ -428,9 +432,10 @@ describe('the first-run guide', () => {
       useFirstRunWelcome();
       return <div>landing</div>;
     }
-    at('/home', <Landing />);
+    at('/guid', <Landing />);
     expect(await screen.findByText('the guide')).toBeInTheDocument();
     cleanup();
+    guideCode.preload.mockClear();
 
     bridge.settings.mockResolvedValue({
       ok: true,
@@ -438,10 +443,45 @@ describe('the first-run guide', () => {
         models: { ...newUser().models, defaults: { provider: 'relay', model: 'relay-large', thinkingLevel: '' } },
       }),
     });
-    at('/home', <Landing />);
+    at('/guid', <Landing />);
     await waitFor(() => expect(localStorage.getItem(ONBOARDING_KEY)).toBeTruthy());
     expect(screen.getByText('landing')).toBeInTheDocument();
     expect(screen.queryByText('the guide')).not.toBeInTheDocument();
+    expect(guideCode.preload).not.toHaveBeenCalled();
+  });
+
+  it('opens the guide only once its code is in, so no route loader shows before it', async () => {
+    const code = Promise.withResolvers<{ default: typeof Welcome }>();
+    guideCode.preload.mockReturnValue(code.promise);
+    function Landing() {
+      useFirstRunWelcome();
+      return <div>landing</div>;
+    }
+    at('/guid', <Landing />);
+    await waitFor(() => expect(guideCode.preload).toHaveBeenCalled());
+    expect(screen.getByText('landing')).toBeInTheDocument();
+    code.resolve({ default: Welcome });
+    expect(await screen.findByText('the guide')).toBeInTheDocument();
+    cleanup();
+
+    // Code that did not load is no reason to skip the guide: its route loads it again.
+    guideCode.preload.mockRejectedValue(new TypeError('Failed to fetch dynamically imported module'));
+    at('/guid', <Landing />);
+    expect(await screen.findByText('the guide')).toBeInTheDocument();
+  });
+
+  it('leaves a page other than home alone: a reload or a link opened it', async () => {
+    function Elsewhere() {
+      useFirstRunWelcome();
+      return <div>scheduled tasks</div>;
+    }
+    at('/scheduled', <Elsewhere />);
+    await waitFor(() => expect(guideCode.preload).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.getByText('scheduled tasks')).toBeInTheDocument();
+    expect(screen.queryByText('the guide')).not.toBeInTheDocument();
+    // Not seen: the guide still opens from home.
+    expect(localStorage.getItem(ONBOARDING_KEY)).toBeNull();
   });
 });
 

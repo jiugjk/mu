@@ -7,6 +7,8 @@ import DocumentTitle from '@renderer/components/layout/DocumentTitle';
 import { preloadablePage, preloadWhenIdle, type PreloadablePage } from '@renderer/components/layout/preloadablePage';
 import { useCrossSessionRateLimitNotice } from '@/renderer/hooks/system/useCrossSessionRateLimitNotice';
 import StartupGate from '@/renderer/pages/settings/KyrnSettings/StartupGate';
+import { WelcomePage } from '@/renderer/pages/welcome/page';
+import { useFirstRunWelcome } from '@/renderer/pages/welcome/useFirstRunWelcome';
 import { MuSettingsProvider } from '@/renderer/pages/settings/KyrnSettings/useMuSettings';
 import {
   FEATURE_LIST_PAGES,
@@ -20,7 +22,6 @@ import {
 } from '@/renderer/pages/settings/settingsNav';
 const Conversation = preloadablePage(() => import('@renderer/pages/conversation'));
 const Guid = preloadablePage(() => import('@renderer/pages/guid'));
-const Welcome = preloadablePage(() => import('@renderer/pages/welcome'));
 const MuSettings = preloadablePage(() => import('@renderer/pages/settings/KyrnSettings'));
 const MovedFeatureOptions = preloadablePage(() =>
   import('@renderer/pages/settings/KyrnSettings').then((module) => ({ default: module.MovedFeatureOptions }))
@@ -183,6 +184,8 @@ const AppLayout: React.FC<{ layout: React.ReactElement }> = ({ layout }) => {
   // is a broadcast rather than an in-conversation banner. The hook asks the
   // backend who this client is on its own.
   useCrossSessionRateLimitNotice();
+  // Here, not on the home page: the check runs while the start screen is up, and a first start opens on the guide.
+  useFirstRunWelcome();
 
   // Do not obstruct an existing task while the main process is being upgraded: a conversation passes the gate. The
   // gate stays in the tree on every page, open on a conversation. Leaving it out there would give the layout another
@@ -200,7 +203,7 @@ const PanelRoute: React.FC<{ layout: React.ReactElement }> = ({ layout }) => {
         <Route element={<AppLayout layout={layout} />}>
           <Route index element={<Navigate to='/guid' replace />} />
           <Route path='/guid' element={withRouteFallback(Guid)} />
-          <Route path='/welcome' element={withRouteFallback(Welcome)} />
+          <Route path='/welcome' element={withRouteFallback(WelcomePage)} />
           <Route path='/conversation/:id' element={withRouteFallback(Conversation)} />
           <Route path='/team/:id' element={<Navigate to='/guid' replace />} />
           {/* The settings rail: one route per entry, all under one draft of mu's settings. */}
