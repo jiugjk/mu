@@ -4,15 +4,20 @@ import {
   PROVIDER_ID,
   RESERVED_PROVIDER_IDS,
   suggestProviderId,
+  supportedThinkingLevels,
+  THINKING_LEVELS,
   type EndpointType,
+  type ThinkingLevel,
+  type ThinkingLevelMap,
 } from '@/common/kyrn/models';
 import type { KyrnSettings } from '@/common/kyrn/types';
 import type { Draft } from '@/renderer/pages/settings/KyrnSettings/draft';
 import { blankModel, blankProvider } from '@/renderer/pages/settings/KyrnSettings/providers/endpoints';
 
 /**
- * The first-run guide: a model, a judge, done. It is shown once, to someone who has no startup model yet; it is
- * marked seen when it is finished or skipped, and can be opened again from the models settings.
+ * The first-run guide: a model (and what it can do), a judge, the QQ gateway, then how this computer starts mu.
+ * It is shown once, to someone who has no startup model yet; it is marked seen when it is finished or skipped, and
+ * can be opened again from the models settings.
  */
 export const ONBOARDING_KEY = 'mu.onboarding.v1';
 
@@ -39,7 +44,37 @@ export const needsOnboarding = (settings: KyrnSettings): boolean => !settings.mo
 /** The wire formats the guide offers (OpenAI's two, Anthropic's); Google's is in the provider settings. */
 export type GuideApi = Extract<EndpointType, 'openai-completions' | 'openai-responses' | 'anthropic-messages'>;
 
-export type ApiModel = { api: GuideApi; baseUrl: string; key: string; model: string };
+export type ApiModel = {
+  api: GuideApi;
+  baseUrl: string;
+  key: string;
+  model: string;
+  /** Whether the model can read pictures. Omitted means no. */
+  imageInput?: boolean;
+  /** Whether the model thinks. Omitted means no, and the thinking level is not stored. */
+  reasoning?: boolean;
+  /** Thinking level a new conversation starts at. Ignored when the model does not think. */
+  thinkingLevel?: ThinkingLevel | '';
+  /** Which levels the model takes. `xhigh` and `max` count only when this names them. */
+  thinkingLevelMap?: ThinkingLevelMap;
+};
+
+const isLevel = (value: string): value is ThinkingLevel => (THINKING_LEVELS as readonly string[]).includes(value);
+
+/** Image input, thinking, and the level a new conversation starts at, as the guide will store them. */
+function appliedCapabilities(input: ApiModel): {
+  imageInput: boolean;
+  reasoning: boolean;
+  thinkingLevel: ThinkingLevel | '';
+  thinkingLevelMap: ThinkingLevelMap;
+} {
+  const reasoning = input.reasoning === true;
+  const thinkingLevelMap = reasoning ? { ...input.thinkingLevelMap } : {};
+  const supported = supportedThinkingLevels(reasoning, thinkingLevelMap);
+  const requested = input.thinkingLevel ?? '';
+  const thinkingLevel = reasoning && isLevel(requested) && supported.includes(requested) ? requested : '';
+  return { imageInput: input.imageInput === true, reasoning, thinkingLevel, thinkingLevelMap };
+}
 
 const isLoopback = (baseUrl: string): boolean => {
   try {
@@ -111,12 +146,23 @@ export function withApiModel(draft: Draft, input: ApiModel, previous?: string): 
   const models = draft.settings.models;
   const kept = models.providers.filter((provider) => !(provider.isNew && provider.id === previous));
   const id = providerIdFor(input.baseUrl.trim(), new Set(kept.map((provider) => provider.id)));
+  const capabilities = appliedCapabilities(input);
+  const modelId = input.model.trim();
   const provider = {
     ...blankProvider(id),
     name: providerNameFor(input.baseUrl.trim(), id),
     api: input.api,
     baseUrl: input.baseUrl.trim(),
-    models: [{ ...blankModel(input.model.trim()), name: input.model.trim() }],
+    models: [
+      {
+        ...blankModel(modelId),
+        name: modelId,
+        imageInput: capabilities.imageInput,
+        reasoning: capabilities.reasoning,
+        thinkingLevelMap: capabilities.thinkingLevelMap,
+        thinkingLevels: supportedThinkingLevels(capabilities.reasoning, capabilities.thinkingLevelMap),
+      },
+    ],
   };
   const { [previous ?? '']: _dropped, ...providerKeys } = draft.providerKeys;
   return {
@@ -129,24 +175,41 @@ export function withApiModel(draft: Draft, input: ApiModel, previous?: string): 
         models: {
           ...models,
           providers: [...kept, provider],
-          defaults: { ...models.defaults, provider: id, model: input.model.trim() },
+          defaults: {
+            ...models.defaults,
+            provider: id,
+            model: modelId,
+            thinkingLevel: capabilities.thinkingLevel,
+          },
         },
       },
     },
   };
 }
 
-/** The draft with a model of an account mu is already signed in to as the startup model. */
-export function withSignedInModel(draft: Draft, provider: string, model: string, previous?: string): Draft {
+/**
+ * The draft with a model of an account mu is already signed in to as the startup model. `thinkingLevel` is where a
+ * new conversation starts; omitted leaves whatever the draft already had. The account, not the guide, says which
+ * levels that model can take.
+ */
+export function withSignedInModel(
+  draft: Draft,
+  provider: string,
+  model: string,
+  previous?: string,
+  thinkingLevel?: ThinkingLevel | ''
+): Draft {
   const models = draft.settings.models;
   const kept = models.providers.filter((entry) => !(entry.isNew && entry.id === previous));
   const { [previous ?? '']: _dropped, ...providerKeys } = draft.providerKeys;
+  const level =
+    thinkingLevel === undefined ? models.defaults.thinkingLevel : isLevel(thinkingLevel) ? thinkingLevel : '';
   return {
     ...draft,
     providerKeys,
     settings: {
       ...draft.settings,
-      models: { ...models, providers: kept, defaults: { ...models.defaults, provider, model } },
+      models: { ...models, providers: kept, defaults: { ...models.defaults, provider, model, thinkingLevel: level } },
     },
   };
 }

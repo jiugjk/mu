@@ -18,7 +18,8 @@
     "moreFeatures": "更多功能",
     "providers": "提供商",
     "defaultModel": "默认模型",
-    "context": "上下文"
+    "context": "上下文",
+    "personality": "人格"
   },
   "pages": {
     "decisions": {
@@ -451,6 +452,9 @@
     "steps": {
       "model": "模型",
       "judge": "判定器",
+      "personality": "人格",
+      "qq": "QQ",
+      "startup": "自启动",
       "done": "完成"
     },
     "skipAll": "跳过引导",
@@ -460,7 +464,7 @@
     "start": "开始使用",
     "model": {
       "title": "连接一个模型",
-      "subtitle": "mu 用它写代码、回答问题。三步就好，之后随时可以在设置里修改。",
+      "subtitle": "mu 用它写代码、回答问题。之后随时可以在设置里修改。",
       "model": "模型",
       "baseUrl": "接口地址",
       "key": "API 密钥",
@@ -493,21 +497,100 @@
         "openai-responses": "Responses",
         "openai-completionsHint": "兼容性最好，大多数服务和中转都用这个。",
         "openai-responsesHint": "OpenAI 的新接口，只有部分服务支持。"
-      }
+      },
+      "image": "支持识图",
+      "imageHelp": "模型能看你发的图片时打开。",
+      "reasoning": "支持思考",
+      "reasoningHelp": "模型会先想再答时打开，然后选它提供哪些思考等级。",
+      "levels": "思考等级",
+      "thinkingLevel": "默认思考等级",
+      "thinkingLevelHelp": "新对话从这一档开始，之后还可以在输入框里改。",
+      "signedInLevelHelp": "账号决定模型能用哪些等级。这里只选新对话从哪一档开始。"
     },
     "judge": {
       "title": "选一个判定器",
       "subtitle": "mu 工作时的各种小判断由判定器来回答。没有判定器也能运行，只是少了这些把关。"
+    },
+    "personality": {
+      "title": "选一个人格",
+      "subtitle": "选定后使用这一版人格提示词，替换系统提示词里的人格部分，而不是追加在后面。之后可以在设置或 QQ 里改。"
     },
     "done": {
       "title": "准备好了",
       "subtitle": "确认一下，就可以开始了。",
       "model": "模型",
       "judge": "判定器",
+      "personality": "人格",
       "none": "暂未设置",
       "noKey": "还没有密钥，配好之前各判定点按默认规则处理",
       "saveFailed": "保存没有成功：{{reason}}",
-      "modelValue": "{{provider}} / {{model}}"
+      "modelValue": "{{provider}} / {{model}}",
+      "image": "识图",
+      "thinking": "思考",
+      "qq": "QQ",
+      "startup": "自启动",
+      "yes": "开",
+      "no": "关",
+      "noThinking": "这个模型不思考",
+      "unchanged": "保持现状",
+      "qqValue": "AppID {{id}}",
+      "startupValue": "{{boot}}；{{tray}}",
+      "bootOn": "登录后启动",
+      "bootOff": "不随登录启动",
+      "trayOn": "关闭时留在托盘",
+      "trayOff": "关闭时退出"
+    },
+    "qq": {
+      "title": "QQ 网关",
+      "subtitle": "在 QQ 里私聊机器人，或在群里 @ 它，由 mu 来回答。可以先跳过，以后再配。",
+      "enable": "启用 QQ 机器人",
+      "enableHelp": "写入这台电脑的配置。网关本身仍用 mu qqbot start 启动。",
+      "appId": "AppID",
+      "secret": "AppSecret",
+      "secretPlaceholder": "只保存在这台电脑的 mu.json 里",
+      "transport": "消息怎么到达",
+      "websocket": "WebSocket",
+      "webhook": "Webhook",
+      "port": "端口",
+      "path": "路径",
+      "dmPolicy": "谁可以私聊",
+      "dmHelp": "配对：陌生人会拿到配对码，由你在这台电脑上批准。白名单要在配置文件里写 openid。",
+      "dm": {
+        "pairing": "配对后",
+        "allowlist": "仅白名单",
+        "open": "所有人",
+        "disabled": "不响应私聊"
+      },
+      "groupPolicy": "哪些群可以 @",
+      "groupHelp": "白名单只回答配置文件里列出的群。所有群都会回答 @ 了机器人的消息。",
+      "group": {
+        "open": "所有群",
+        "allowlist": "仅白名单",
+        "disabled": "不响应群"
+      },
+      "markdown": "用 Markdown 回复",
+      "mention": "群里需要 @ 才回复",
+      "mentionHelp": "关掉后，群里每一条消息都会回答。单个群仍可以单独改。",
+      "problems": {
+        "appId": "AppID 是一串数字，在 q.qq.com 的机器人管理页查看。",
+        "secret": "请填写 AppSecret，只能包含字母、数字和常见符号，不能有空格。",
+        "port": "端口要在 1 到 65535 之间。",
+        "path": "路径要以 / 开头，只能包含字母、数字、点和斜杠。"
+      }
+    },
+    "startup": {
+      "title": "开机与关闭",
+      "subtitle": "这两项只影响这台电脑上的桌面应用，之后可以在系统设置里改。",
+      "boot": "登录后自动启动",
+      "bootHelp": "登录这台电脑后自动打开 mu。",
+      "bootUnsupported": "当前环境不能设置开机自启。安装版的 macOS 或 Windows 应用才可以。",
+      "tray": "关闭窗口时留在托盘",
+      "trayHelp": "点关闭时不退出，继续在后台运行。",
+      "web": "这些选项在桌面应用里才会生效。网页里打开时先跳过即可。",
+      "problems": {
+        "boot": "登录后启动没有改成功。",
+        "tray": "关闭到托盘没有改成功。"
+      }
     },
     "intro": {
       "title": "欢迎使用 mu",
@@ -621,6 +704,33 @@
     "contextLimit": "上下文上限必须是 0，或 {{min}} 到 {{max}} 之间的整数。",
     "importMissing": "当前的 mu 版本还不能导入对话，请先更新 mu。",
     "importFailed": "mu 没能导入这些对话。"
+  },
+  "personality": {
+    "description": "每个人格都是一份完整的人格提示词。切换时替换系统提示词里的这一部分，不会追加在后面。工具、规则和项目说明保持不变。终端、QQ 和这个页面共用同一份配置，下一句消息就会用上你选的版本。",
+    "builtin": "内置",
+    "custom": "自定义",
+    "edited": "已修改",
+    "prompt": "人格提示词",
+    "promptHelp": "整段文字会替换人格部分。请写完整版本，而不是要追加的一段。",
+    "name": "名字",
+    "about": "说明",
+    "save": "保存这一版",
+    "reset": "恢复内置原文",
+    "remove": "删除",
+    "add": "添加人格",
+    "create": "添加",
+    "cancel": "取消",
+    "id": "Id",
+    "invalid": "人格配置不是合法的 JSON，所以没有修改。请先修好文件再重新载入。",
+    "problems": {
+      "unknown": "没有这个人格。",
+      "id": "id 要用小写字母开头，后面只能是小写字母、数字和短横线，最长 32 个字符。",
+      "reserved": "这个 id 是内置人格。",
+      "protected": "内置人格不能删除。可以改提示词，或恢复原文。",
+      "empty": "人格提示词不能是空的。",
+      "long": "名字不超过 40 字，说明不超过 200 字，提示词不超过 12000 字。",
+      "name": "自定义人格需要一个名字。"
+    }
   },
   "importChats": {
     "title": "导入对话",

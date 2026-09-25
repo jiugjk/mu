@@ -343,4 +343,54 @@ describe('the first-run guide', () => {
     expect(signedIn.providerKeys).toEqual({});
     expect(signedIn.settings.models.defaults).toMatchObject({ provider: 'openai-codex', model: 'gpt-5.6-sol' });
   });
+
+  it('records image input, which thinking levels the model takes, and the level a new conversation starts at', () => {
+    const added = withApiModel(newDraft(settings()), {
+      api: 'openai-completions',
+      baseUrl: 'https://relay.example.com/v1',
+      key: 'sk',
+      model: 'relay-large',
+      imageInput: true,
+      reasoning: true,
+      thinkingLevel: 'high',
+      thinkingLevelMap: { xhigh: 'xhigh' },
+    });
+    expect(added.draft.settings.models.providers[0].models[0]).toMatchObject({
+      id: 'relay-large',
+      imageInput: true,
+      reasoning: true,
+      thinkingLevelMap: { xhigh: 'xhigh' },
+      thinkingLevels: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'],
+    });
+    expect(added.draft.settings.models.defaults.thinkingLevel).toBe('high');
+
+    // A level the model does not take is not stored as the one a conversation starts at.
+    const unavailable = withApiModel(newDraft(settings()), {
+      api: 'openai-completions',
+      baseUrl: 'https://relay.example.com/v1',
+      key: 'sk',
+      model: 'm',
+      reasoning: true,
+      thinkingLevel: 'max',
+    });
+    expect(unavailable.draft.settings.models.defaults.thinkingLevel).toBe('');
+
+    const quiet = withApiModel(newDraft(settings()), {
+      api: 'openai-completions',
+      baseUrl: 'https://relay.example.com/v1',
+      key: 'sk',
+      model: 'm',
+      reasoning: false,
+      thinkingLevel: 'high',
+    });
+    expect(quiet.draft.settings.models.providers[0].models[0].thinkingLevels).toEqual(['off']);
+    expect(quiet.draft.settings.models.defaults.thinkingLevel).toBe('');
+
+    const signed = withSignedInModel(newDraft(settings()), 'openai-codex', 'gpt-5.5', undefined, 'low');
+    expect(signed.settings.models.defaults).toMatchObject({
+      provider: 'openai-codex',
+      model: 'gpt-5.5',
+      thinkingLevel: 'low',
+    });
+  });
 });

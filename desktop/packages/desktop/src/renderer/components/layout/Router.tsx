@@ -33,6 +33,7 @@ const SystemSettings = React.lazy(() => import('@renderer/pages/settings/SystemS
 const ConversationSettings = React.lazy(() => import('@renderer/pages/settings/SystemSettings/ConversationSettings'));
 const BrowserSettings = React.lazy(() => import('@renderer/pages/settings/SystemSettings/BrowserSettings'));
 const AboutSettings = React.lazy(() => import('@renderer/pages/settings/SystemSettings/AboutSettings'));
+const PersonalitySettings = React.lazy(() => import('@renderer/pages/settings/PersonalitySettings'));
 const ArchivedSettings = React.lazy(() => import('@renderer/pages/settings/ArchivedSettings'));
 const ExtensionSettingsPage = React.lazy(() => import('@renderer/pages/settings/ExtensionSettingsPage'));
 const ComponentsShowcase = React.lazy(() => import('@renderer/pages/TestShowcase'));
@@ -101,6 +102,7 @@ const SETTINGS_PAGE_ELEMENTS: Record<SettingsPageId, React.LazyExoticComponent<R
   'default-model': MuSettings,
   judges: MuSettings,
   features: MuSettings,
+  personality: PersonalitySettings,
   'decisions-input': MuSettings,
   'decisions-context': MuSettings,
   'decisions-memory': MuSettings,

@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { basename } from "node:path";
 import { keyText, VERSION as PI_VERSION, type Theme } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { MU_IDENTITY } from "../../personality/model.ts";
 import { failOpen, type KyrnRuntime } from "../runtime.ts";
 
 /**
@@ -160,11 +161,11 @@ export function renderWelcome(view: WelcomeView, width: number, paint: Paint): s
 	];
 }
 
-/** Who the model is told it is. Constant for the whole session, so it costs the prompt cache nothing. */
-export const IDENTITY = `This harness is mu (written μ), a judgment-first coding agent built on pi. If asked what you are or where you run, say mu.
-A small judgment model works beside you. It may replace noisy tool output with a one-line pointer to the full text, add one-line hints or lessons before a turn, and it performs every click of the \`browse\` tool.
-Work like a careful colleague. When a request is loosely worded, look at the workspace and take the most plausible reading instead of asking; say the assumption in one line and go on. Ask the user only for what cannot be found here, after doing what does not depend on it. When the user replies to something you asked, act on the reply.
-Commands the user can type: /help, /status, /doctor.`;
+/**
+ * Who the model is told it is, until a personality replaces this same section.
+ * The stock text stays put for the whole session, so it costs the prompt cache nothing.
+ */
+export const IDENTITY = MU_IDENTITY;
 
 /**
  * The first thing the user sees: what mu is, which judge is answering and
@@ -178,6 +179,8 @@ export function registerWelcome(runtime: KyrnRuntime): void {
 	runtime.pi.on(
 		"before_agent_start",
 		failOpen((event) => {
+			// The personality feature, registered after this, replaces `mu` with the selected version.
+			// Setting the stock text first keeps that section if personality cannot read its file.
 			event.systemPromptOptions.sections = { ...event.systemPromptOptions.sections, mu: IDENTITY };
 			return undefined;
 		}),

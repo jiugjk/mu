@@ -5,12 +5,20 @@ import type { LessonChange, LessonsView } from './lessons';
 import type { LocalJudgeAction, LocalJudgeState } from './localJudge';
 import type { LoginState, LoginStatus, SubscriptionProvider } from './login';
 import type { AvailableModels, ModelThinkingLevels, ProviderTestInput, ProviderTestResult } from './models';
+import type { PersonalityAction, PersonalityState } from './personality';
+import type { QqGatewayInput } from './qqGateway';
 import type { ActivityPage, KyrnCatalog, KyrnSettings, SaveSettings } from './types';
 
 export const kyrnBridge = {
   catalog: bridge.buildProvider<KyrnResult<KyrnCatalog>, void>('kyrn.catalog'),
   settings: bridge.buildProvider<KyrnResult<KyrnSettings>, void>('kyrn.settings'),
   save: bridge.buildProvider<KyrnResult<KyrnSettings>, SaveSettings>('kyrn.save'),
+  /** Writes `channels.qqbot` in mu.json. The secret is not read back. */
+  saveQqGateway: bridge.buildProvider<KyrnResult<{ saved: true }>, QqGatewayInput>('kyrn.qqGateway.save'),
+  /** The shared personality file: built-ins plus anything added from here, QQ, or `/personality`. */
+  personality: bridge.buildProvider<KyrnResult<PersonalityState>, void>('kyrn.personality'),
+  /** Switch, edit, add, or delete. Replaces the personality version; does not append a prompt. */
+  savePersonality: bridge.buildProvider<KyrnResult<PersonalityState>, PersonalityAction>('kyrn.personality.save'),
   /** Models the running mu last reported as usable: a snapshot kept by the backend, not a live query. */
   availableModels: bridge.buildProvider<KyrnResult<AvailableModels>, void>('kyrn.availableModels'),
   /** One minimal request to a provider's endpoint, made by the main process. */

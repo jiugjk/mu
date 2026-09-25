@@ -199,7 +199,7 @@ npm install
 
 谁能执行：
 - 一般命令需要 `allowFrom` 授权；`allowFrom` 为空、含 `"*"` 或 `dmPolicy` 为 `open` 时所有人都能用（与原版相同）。
-- **`/bot-logs`、`/bot-clear-storage`、`/bot-approve`、`/bot-group-always`、`/bot-streaming`、`/bot-pairing` 只允许 `allowFrom` 中明确列出 openid 的用户执行，`"*"` 不算**（导出的日志含其他人的对话，其余几条会删文件、改审批、改配置、批准他人）。只配了 `"*"` 时，这几条在 QQ 里不可用：先私聊发 `/bot-me` 查看自己的 openid，把它加入 `allowFrom`（可以与 `"*"` 并存）。任何命令后加 ` ?` 查看用法，例如 `/bot-streaming ?`。
+- **`/bot-logs`、`/bot-clear-storage`、`/bot-approve`、`/bot-group-always`、`/bot-streaming`、`/bot-pairing`、`/personality` 只允许 `allowFrom` 中明确列出 openid 的用户执行，`"*"` 不算**（导出的日志含其他人的对话，其余几条会删文件、改审批、改配置、批准他人）。只配了 `"*"` 时，这几条在 QQ 里不可用：先私聊发 `/bot-me` 查看自己的 openid，把它加入 `allowFrom`（可以与 `"*"` 并存）。任何命令后加 ` ?` 查看用法，例如 `/bot-streaming ?`。
 
 | 命令 | 作用 |
 | --- | --- |
@@ -214,6 +214,7 @@ npm install
 | `/bot-approve …` | 权限模式，见上。仅明确列出的用户 |
 | `/bot-group-always [on\|off]` | 所有群是否不用 @ 也回答（`defaultRequireMention`）。仅明确列出的用户 |
 | `/bot-pairing approve <配对码>` | 批准私聊配对（也可在主机上 `mu qqbot pairing approve <码>`，加 `--admin` 同时加入 `allowFrom`）。仅明确列出的用户 |
+| `/personality` | 查看、切换、增改人格。替换 `<agentDir>/mu/personality.json` 里的人格版本（与终端和应用内设置同一份），不在系统提示词后追加。仅明确列出的用户，仅私聊 |
 | `/stop` | 中止当前正在进行和排队中的回答（插队处理）。群里只有运维者或这一轮的发起人能停 |
 
 mu 自己的命令（`/status`、`/review` 等）只对 `allowFrom` 中明确列出的用户生效；其他人发的 `/xxx` 当作普通文字交给模型。`/permissions` 在 QQ 里不执行（它会绕过 `/bot-approve off` 的私聊与二次确认限制，还可能改写终端里 mu 的默认模式），请用 `/bot-approve`。
@@ -298,7 +299,7 @@ mu qqbot send qqbot:group:<group_openid> "日报" --media ./report.pdf
 - 不移植凭据备份（原版把明文 AppSecret 另存一份用于恢复）。
 - mu 自己的斜杠命令只对 `allowFrom` 中明确列出的用户生效。
 - `/bot-approve off` 只能在私聊中由明确列出的用户执行，并需二次确认。
-- `/bot-logs`、`/bot-clear-storage`、`/bot-approve`、`/bot-group-always`、`/bot-streaming`、`/bot-pairing` 只允许 `allowFrom` 中明确列出的用户执行（`"*"` 与 `dmPolicy: open` 都不算）。原版这几条与其他命令一样，`dmPolicy` 为 open 或 `allowFrom` 含 `"*"` 时所有人都能执行，包括导出含他人对话的日志。
+- `/bot-logs`、`/bot-clear-storage`、`/bot-approve`、`/bot-group-always`、`/bot-streaming`、`/bot-pairing`、`/personality` 只允许 `allowFrom` 中明确列出的用户执行（`"*"` 与 `dmPolicy: open` 都不算）。原版这几条与其他命令一样，`dmPolicy` 为 open 或 `allowFrom` 含 `"*"` 时所有人都能执行，包括导出含他人对话的日志。`/personality` 改的是 mu 的人格版本，不是 QQ 通道自己的提示。
 - 审批只认 `allowFrom` 中明确列出的用户（原版 `"*"` 时所有人都能审批，等于请求者自己批准自己）。
 - 登录不再写入 `allowFrom: ["*"]`、不覆盖已有的 `dmPolicy` 等设置；没有运维者时默认 `pairing`。
 - 非运维者的回合与只读群：文件工具限定在本会话目录，其他工具需运维者确认；会话目录按不受信任的项目加载。

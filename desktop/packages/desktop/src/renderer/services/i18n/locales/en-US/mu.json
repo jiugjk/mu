@@ -18,7 +18,8 @@
     "moreFeatures": "More features",
     "providers": "Providers",
     "defaultModel": "Default model",
-    "context": "Context"
+    "context": "Context",
+    "personality": "Personality"
   },
   "pages": {
     "decisions": {
@@ -451,6 +452,9 @@
     "steps": {
       "model": "Model",
       "judge": "Judge",
+      "personality": "Personality",
+      "qq": "QQ",
+      "startup": "Startup",
       "done": "Done"
     },
     "skipAll": "Skip setup",
@@ -460,7 +464,7 @@
     "start": "Get started",
     "model": {
       "title": "Connect a model",
-      "subtitle": "mu uses it to write code and answer you. Three steps; you can change all of it in Settings later.",
+      "subtitle": "mu uses it to write code and answer you. You can change all of it in Settings later.",
       "model": "Model",
       "baseUrl": "Base URL",
       "key": "API key",
@@ -493,21 +497,100 @@
         "openai-responses": "Responses",
         "openai-completionsHint": "Works almost everywhere; most services and relays speak it.",
         "openai-responsesHint": "OpenAI's newer API; only some services support it."
-      }
+      },
+      "image": "Understands images",
+      "imageHelp": "On when this model can read pictures you attach.",
+      "reasoning": "Thinking",
+      "reasoningHelp": "On when this model can think before it answers. Then choose which levels it offers.",
+      "levels": "Thinking levels",
+      "thinkingLevel": "Thinking level",
+      "thinkingLevelHelp": "What a new conversation starts at. You can still change it in the send box.",
+      "signedInLevelHelp": "The account decides which levels the model takes. This is only where a new conversation starts."
     },
     "judge": {
       "title": "Choose a judge",
       "subtitle": "The judge answers the small calls mu makes while it works. mu runs without one, just without these checks."
+    },
+    "personality": {
+      "title": "Choose a personality",
+      "subtitle": "This picks which version of mu's personality prompt is used. It replaces that part of the system prompt. It is not added after it. You can change it later in Settings, or from QQ."
     },
     "done": {
       "title": "All set",
       "subtitle": "Check it over, then start.",
       "model": "Model",
       "judge": "Judge",
+      "personality": "Personality",
       "none": "Not set",
       "noKey": "No key yet: judgments follow the default rules until there is one",
       "saveFailed": "Saving did not work: {{reason}}",
-      "modelValue": "{{provider}} / {{model}}"
+      "modelValue": "{{provider}} / {{model}}",
+      "image": "Images",
+      "thinking": "Thinking",
+      "qq": "QQ",
+      "startup": "Startup",
+      "yes": "On",
+      "no": "Off",
+      "noThinking": "This model does not think",
+      "unchanged": "Left as it is",
+      "qqValue": "AppID {{id}}",
+      "startupValue": "{{boot}}; {{tray}}",
+      "bootOn": "Starts at sign-in",
+      "bootOff": "Does not start at sign-in",
+      "trayOn": "close leaves it in the tray",
+      "trayOff": "close quits"
+    },
+    "qq": {
+      "title": "QQ gateway",
+      "subtitle": "Talk to mu from QQ, in a private chat or by mentioning the bot in a group. You can skip this and set it up later.",
+      "enable": "Enable the QQ bot",
+      "enableHelp": "Saved on this computer. The gateway itself still starts with mu qqbot start.",
+      "appId": "AppID",
+      "secret": "AppSecret",
+      "secretPlaceholder": "Kept only in mu.json on this computer",
+      "transport": "How messages arrive",
+      "websocket": "WebSocket",
+      "webhook": "Webhook",
+      "port": "Port",
+      "path": "Path",
+      "dmPolicy": "Who can send a private message",
+      "dmHelp": "Pairing gives a stranger a code you approve on this computer. Allowlist needs openids in the config file.",
+      "dm": {
+        "pairing": "After pairing",
+        "allowlist": "Allowlist",
+        "open": "Anyone",
+        "disabled": "No private chats"
+      },
+      "groupPolicy": "Which groups can mention it",
+      "groupHelp": "Allowlist answers only groups listed in the config file. Open answers every group that mentions the bot.",
+      "group": {
+        "open": "Every group",
+        "allowlist": "Allowlist",
+        "disabled": "No groups"
+      },
+      "markdown": "Reply in Markdown",
+      "mention": "Groups must mention the bot",
+      "mentionHelp": "Off, and it answers every message in a group. A single group can still override this.",
+      "problems": {
+        "appId": "The AppID is a number, from the bot page at q.qq.com.",
+        "secret": "Enter the AppSecret. Letters, digits and the usual symbols only, with no spaces.",
+        "port": "The port has to be from 1 to 65535.",
+        "path": "The path has to start with / and contain only letters, digits, dots and slashes."
+      }
+    },
+    "startup": {
+      "title": "Starting and closing",
+      "subtitle": "These only affect the desktop app on this computer. You can change them later in System settings.",
+      "boot": "Start when you sign in",
+      "bootHelp": "Open mu after you sign in to this computer.",
+      "bootUnsupported": "This app cannot start at sign-in. That setting is for the installed macOS or Windows app.",
+      "tray": "Leave it in the tray when closed",
+      "trayHelp": "Closing the window does not quit. mu keeps running in the background.",
+      "web": "These apply in the desktop app. In a browser, skip this step.",
+      "problems": {
+        "boot": "Start at sign-in could not be changed.",
+        "tray": "Close to tray could not be changed."
+      }
     },
     "intro": {
       "title": "Welcome to mu",
@@ -621,6 +704,33 @@
     "contextLimit": "The context cap must be 0 or a whole number from {{min}} to {{max}}.",
     "importMissing": "This version of mu cannot import conversations yet. Update mu first.",
     "importFailed": "mu could not import the conversations."
+  },
+  "personality": {
+    "description": "Each personality is a full version of the personality prompt. Switching replaces that part of the system prompt. It is not added after it. Tools, rules, and project instructions stay. The terminal, QQ, and this page share one file, and the next message uses the version you pick.",
+    "builtin": "Built in",
+    "custom": "Custom",
+    "edited": "Edited",
+    "prompt": "Personality prompt",
+    "promptHelp": "This whole text replaces the personality section. Write the full version, not a paragraph to append.",
+    "name": "Name",
+    "about": "Description",
+    "save": "Save this version",
+    "reset": "Restore built-in text",
+    "remove": "Delete",
+    "add": "Add a personality",
+    "create": "Add",
+    "cancel": "Cancel",
+    "id": "Id",
+    "invalid": "The personality file is not valid JSON, so nothing was changed. Fix the file, then reload.",
+    "problems": {
+      "unknown": "No personality with that id.",
+      "id": "An id starts with a letter and then uses letters, digits, or hyphens, up to 32 characters.",
+      "reserved": "That id is a built-in personality.",
+      "protected": "A built-in personality cannot be deleted. Edit its prompt, or restore it.",
+      "empty": "The personality prompt cannot be empty.",
+      "long": "Name up to 40 characters, description up to 200, prompt up to 12000.",
+      "name": "A custom personality needs a name."
+    }
   },
   "importChats": {
     "title": "Import conversations",

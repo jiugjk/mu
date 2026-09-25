@@ -112,7 +112,7 @@ describe('the settings rail', () => {
     expect(groupRows(container)).toEqual({
       preferences: ['appearance', 'system', 'conversations'],
       models: ['providers', 'default-model'],
-      kernel: ['judges', 'features'],
+      kernel: ['judges', 'features', 'personality'],
       decisions: [
         'decisions-input',
         'decisions-context',
@@ -223,7 +223,7 @@ describe('the settings rail', () => {
     ];
     const { container } = renderRail();
     const rows = groupRows(container);
-    expect(rows.kernel).toEqual(['ext-before', 'judges', 'ext-old', 'features']);
+    expect(rows.kernel).toEqual(['ext-before', 'judges', 'ext-old', 'features', 'personality']);
     expect(rows.capabilities).toEqual([
       'skills',
       'tools',

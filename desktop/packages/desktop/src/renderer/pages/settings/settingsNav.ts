@@ -20,6 +20,7 @@ import {
   Refresh,
   SwitchButton,
   System,
+  User,
   Terminal,
   Tool,
   Toolkit,
@@ -76,6 +77,7 @@ export type SettingsPageId =
   | 'default-model'
   | 'judges'
   | 'features'
+  | 'personality'
   | `decisions-${DecisionPage}`
   | `more-features-${FeaturePage}`
   | 'skills'
@@ -201,6 +203,14 @@ export const SETTINGS_PAGES = [
     route: '/settings/features',
     labelKey: 'mu.sections.features',
     Icon: SwitchButton,
+  },
+  {
+    id: 'personality',
+    group: 'kernel',
+    path: 'personality',
+    route: '/settings/personality',
+    labelKey: 'mu.sections.personality',
+    Icon: User,
   },
   // The decision points' context page holds the compaction settings too: one page for context.
   ...DECISION_PAGES.map(decisionsEntry),

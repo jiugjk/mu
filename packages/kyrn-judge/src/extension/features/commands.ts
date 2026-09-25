@@ -29,6 +29,7 @@ const helpZh = () => `mu ${VERSIONS.mu} · 先判断再动手的编程代理，�
   /init：让代理为这个项目写一份 AGENTS.md
   /clear：开始一段新对话（同 /new）
   /import-chat [文件]：把这个项目在 Claude Code 或 Codex 里的对话导入进来，接着在这里聊
+  /personality：人格。查看、list 列出、use <id> 切换。换的是系统提示词里的人格版本，不是在后面再加一段
 
 判断层
   你的每条消息都先交给判定器读：读的时候消息停在输入框上方（按 esc 可跳过等待），
@@ -80,6 +81,8 @@ Start here
   /init                    have the agent write AGENTS.md for this project
   /clear                   start a fresh conversation (same as /new)
   /import-chat [file]      bring a Claude Code or Codex conversation of this project into mu and continue it
+  /personality             show, list, or switch personality. Replaces that version of the system
+                           prompt; it is not appended after it
 
 Judgment layer
   Every message is read by the judge first: it waits above the editor while that happens (esc skips

@@ -4,6 +4,8 @@ import { kyrnBridge } from '../../common/kyrn/bridge';
 import { KyrnError, kyrnFailure, type KyrnResult } from '../../common/kyrn/errors';
 import type { KyrnCatalog } from '../../common/kyrn/types';
 import { httpRequest } from '../../common/adapter/httpBridge';
+import { readPersonalityState, savePersonality } from '../agent/kyrn/personality';
+import { saveQqGateway } from '../agent/kyrn/qqGateway';
 import { SettingsStore } from '../agent/kyrn/settings';
 import { availableModels } from '../agent/kyrn/config/available';
 import { LoginManager, openable, spawnAuth } from '../agent/kyrn/login';
@@ -95,6 +97,9 @@ export function initKyrnBridge(): void {
   kyrnBridge.catalog.provider(() => result(catalog));
   kyrnBridge.settings.provider(() => result(() => settings.read()));
   kyrnBridge.save.provider((input) => result(() => settings.save(input)));
+  kyrnBridge.saveQqGateway.provider((input) => result(() => saveQqGateway(agentDir, input)));
+  kyrnBridge.personality.provider(() => result(() => readPersonalityState(agentDir)));
+  kyrnBridge.savePersonality.provider((action) => result(() => savePersonality(agentDir, action)));
   kyrnBridge.availableModels.provider(() =>
     result(async () => {
       const agents = await httpRequest<Parameters<typeof findRegistration>[0]>('GET', '/api/agents/management');

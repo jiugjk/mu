@@ -12,6 +12,7 @@ const GROUP_EXCLUDED = new Set([
 	"bot-group-allways",
 	"bot-streaming",
 	"bot-me",
+	"personality",
 ]);
 
 /** /bot-help — 查看所有指令以及用途 */

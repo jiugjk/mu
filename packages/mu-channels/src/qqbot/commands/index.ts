@@ -14,6 +14,7 @@ import { botHelp } from "./bot-help.ts";
 import { botLogs } from "./bot-logs.ts";
 import { botMe } from "./bot-me.ts";
 import { botPairing } from "./bot-pairing.ts";
+import { botPersonality } from "./bot-personality.ts";
 import { botPing } from "./bot-ping.ts";
 import { botStreaming } from "./bot-streaming.ts";
 import { botUpgrade } from "./bot-upgrade.ts";
@@ -43,6 +44,7 @@ export function buildCommandList(account: ResolvedQQBotAccount, opts: CommandBui
 		botApprove(account, opts.getRuntime),
 		botGroupAlways(account, opts.getRuntime),
 		botPairing(opts.getRuntime),
+		botPersonality(),
 	);
 
 	return commands.map(withUsageHelp);

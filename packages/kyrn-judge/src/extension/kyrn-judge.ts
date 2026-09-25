@@ -48,6 +48,7 @@ import { registerMonitor } from "./features/monitor.ts";
 import { registerNotify } from "./features/notify.ts";
 import { registerPacks } from "./features/packs.ts";
 import { registerPermissions } from "./features/permissions.ts";
+import { registerPersonality } from "./features/personality.ts";
 import { registerPreflight } from "./features/preflight.ts";
 import { registerSkills } from "./features/skills.ts";
 import { registerSwarm, type SwarmRunner } from "./features/swarm.ts";
@@ -165,6 +166,8 @@ function registerKyrn(pi: ExtensionAPI, options: KyrnJudgeExtensionOptions): voi
 	// Whoever injected a provider or a config owns the setup, and that includes not reading the user's home folder.
 	const roots: HarnessRoots | undefined =
 		options.roots ?? (options.config || options.provider ? undefined : { home: homedir(), agentDir: getAgentDir() });
+	// After welcome, so it overwrites the stock `mu` section with the selected personality version.
+	registerPersonality(runtime, roots?.agentDir);
 	if (loaded.disabled) {
 		// Asking the user needs no judge, so the permission mode the user chose holds with judging off too. In Jev
 		// approval, with no Jev to ask, what Jev would have decided goes to the user.

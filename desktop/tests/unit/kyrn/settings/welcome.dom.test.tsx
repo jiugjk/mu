@@ -16,6 +16,9 @@ import { useFirstRunWelcome } from '@/renderer/pages/welcome/useFirstRunWelcome'
 const bridge = vi.hoisted(() => ({
   settings: vi.fn(),
   save: vi.fn(),
+  saveQqGateway: vi.fn(),
+  personality: vi.fn(),
+  savePersonality: vi.fn(),
   availableModels: vi.fn(),
   testProvider: vi.fn(),
   loginStatus: vi.fn(),
@@ -31,6 +34,9 @@ vi.mock('@/common/kyrn/bridge', () => ({
   kyrnBridge: {
     settings: { invoke: bridge.settings },
     save: { invoke: bridge.save },
+    saveQqGateway: { invoke: bridge.saveQqGateway },
+    personality: { invoke: bridge.personality },
+    savePersonality: { invoke: bridge.savePersonality },
     availableModels: { invoke: bridge.availableModels },
     testProvider: { invoke: bridge.testProvider },
     loginStatus: { invoke: bridge.loginStatus },
@@ -51,6 +57,15 @@ vi.mock('@/common/kyrn/bridge', () => ({
 // The real switcher changes the app's own i18next and writes the setting; here it only has to be there.
 vi.mock('@/renderer/components/settings/LanguageSwitcher', () => ({
   default: () => <div data-testid='language-switcher' />,
+}));
+const machine = vi.hoisted(() => ({
+  loadStartup: vi.fn(),
+  applyStartup: vi.fn(),
+}));
+vi.mock('@/renderer/pages/welcome/machine', () => ({
+  loadStartup: machine.loadStartup,
+  applyStartup: machine.applyStartup,
+  emptyStartup: () => ({ startOnBoot: false, bootSupported: false, closeToTray: false }),
 }));
 
 /** Someone who just installed mu: the built-in judges, no provider, no startup model, no key. */
@@ -106,7 +121,26 @@ beforeEach(() => {
     const base = newUser();
     return { ok: true, data: { ...base, ...input, revision: 'r2', models: { ...base.models, ...models } } };
   });
+  bridge.saveQqGateway.mockResolvedValue({ ok: true, data: { saved: true } });
+  bridge.savePersonality.mockResolvedValue({
+    ok: true,
+    data: { active: 'mu', entries: [], invalid: false },
+  });
+  machine.loadStartup.mockResolvedValue({ startOnBoot: false, bootSupported: true, closeToTray: false });
+  machine.applyStartup.mockResolvedValue(undefined);
 });
+
+/** From the judge step, leave the QQ gateway and startup for later and land on the summary. */
+async function skipToDone() {
+  fireEvent.click(screen.getByTestId('mu-welcome-next'));
+  await screen.findByTestId('mu-welcome-step-personality');
+  fireEvent.click(screen.getByTestId('mu-welcome-skip'));
+  await screen.findByTestId('mu-welcome-step-qq');
+  fireEvent.click(screen.getByTestId('mu-welcome-skip'));
+  await screen.findByTestId('mu-welcome-step-startup');
+  fireEvent.click(screen.getByTestId('mu-welcome-skip'));
+  await screen.findByTestId('mu-welcome-step-done');
+}
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
@@ -244,9 +278,7 @@ describe('the first-run guide', () => {
     await screen.findByTestId('mu-welcome-step-judge');
     fireEvent.click(screen.getByTestId('mu-judge-choice-jev'));
     fireEvent.change(screen.getByLabelText('TypeSafe API key'), { target: { value: 'jev-key' } });
-    fireEvent.click(screen.getByTestId('mu-welcome-next'));
-
-    await screen.findByTestId('mu-welcome-step-done');
+    await skipToDone();
     expect(screen.getByText('relay / relay-large')).toBeInTheDocument();
     expect(bridge.save).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId('mu-welcome-start'));
@@ -280,8 +312,7 @@ describe('the first-run guide', () => {
     fireEvent.click(screen.getByLabelText('Service'));
     fireEvent.click(await screen.findByText('Vercel AI Gateway', { selector: '.arco-select-option' }));
     fireEvent.change(await screen.findByLabelText('Vercel AI Gateway API key'), { target: { value: 'gateway-key' } });
-    fireEvent.click(screen.getByTestId('mu-welcome-next'));
-    await screen.findByTestId('mu-welcome-step-done');
+    await skipToDone();
     fireEvent.click(screen.getByTestId('mu-welcome-start'));
     expect(await screen.findByText('landing page')).toBeInTheDocument();
     const saved = bridge.save.mock.calls[0][0] as SaveSettings;
@@ -299,8 +330,9 @@ describe('the first-run guide', () => {
     fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk-relay' } });
     fireEvent.change(screen.getByLabelText('Model name'), { target: { value: 'relay-large' } });
     fireEvent.click(screen.getByTestId('mu-welcome-next'));
-    fireEvent.click(await screen.findByTestId('mu-welcome-next'));
-    fireEvent.click(await screen.findByTestId('mu-welcome-start'));
+    await screen.findByTestId('mu-welcome-step-judge');
+    await skipToDone();
+    fireEvent.click(screen.getByTestId('mu-welcome-start'));
     await waitFor(() => expect(bridge.save).toHaveBeenCalledTimes(1));
     const saved = bridge.save.mock.calls[0][0] as SaveSettings;
     expect(saved.models?.providers?.[0]).toMatchObject({ id: 'relay', api: 'openai-responses' });
@@ -313,8 +345,8 @@ describe('the first-run guide', () => {
     fireEvent.change(screen.getByLabelText('Base URL'), { target: { value: 'http://localhost:11434/v1' } });
     fireEvent.change(screen.getByLabelText('Model name'), { target: { value: 'qwen3' } });
     fireEvent.click(screen.getByTestId('mu-welcome-next'));
-    fireEvent.click(await screen.findByTestId('mu-welcome-next'));
-    await screen.findByTestId('mu-welcome-step-done');
+    await screen.findByTestId('mu-welcome-step-judge');
+    await skipToDone();
     expect(screen.getByText('localhost:11434 / qwen3')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('mu-welcome-start'));
     await waitFor(() => expect(bridge.save).toHaveBeenCalledTimes(1));
@@ -351,7 +383,8 @@ describe('the first-run guide', () => {
     fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk relay' } });
     fireEvent.change(screen.getByLabelText('Model name'), { target: { value: 'relay-large' } });
     fireEvent.click(screen.getByTestId('mu-welcome-next'));
-    fireEvent.click(await screen.findByTestId('mu-welcome-next'));
+    await screen.findByTestId('mu-welcome-step-judge');
+    await skipToDone();
     bridge.save.mockResolvedValueOnce({ ok: false, code: 'credential', error: 'Invalid credential' });
     fireEvent.click(await screen.findByTestId('mu-welcome-start'));
     expect(
@@ -402,6 +435,111 @@ describe('the first-run guide', () => {
     expect(screen.getByText('landing')).toBeInTheDocument();
     expect(screen.queryByText('the guide')).not.toBeInTheDocument();
   });
+
+  it('stores image input and the thinking level with the model, then the QQ gateway and startup', async () => {
+    at('/welcome', <Welcome />);
+    fireEvent.click(await screen.findByTestId('mu-welcome-begin'));
+    fireEvent.click(await screen.findByTestId('mu-welcome-way-openai'));
+    fireEvent.change(screen.getByLabelText('Base URL'), { target: { value: 'https://relay.example.com/v1' } });
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk-relay' } });
+    fireEvent.change(screen.getByLabelText('Model name'), { target: { value: 'relay-large' } });
+    fireEvent.click(screen.getByRole('switch', { name: 'Understands images' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Thinking' }));
+    fireEvent.click(screen.getByTestId('mu-welcome-level-xhigh'));
+    fireEvent.click(within(screen.getByTestId('mu-welcome-thinking-level')).getByText('High'));
+    fireEvent.click(screen.getByTestId('mu-welcome-next'));
+    await screen.findByTestId('mu-welcome-step-judge');
+    fireEvent.click(screen.getByTestId('mu-welcome-next'));
+    await screen.findByTestId('mu-welcome-step-personality');
+    fireEvent.click(screen.getByTestId('mu-welcome-skip'));
+
+    await screen.findByTestId('mu-welcome-step-qq');
+    fireEvent.click(screen.getByRole('switch', { name: 'Enable the QQ bot' }));
+    fireEvent.change(screen.getByLabelText('AppID'), { target: { value: '102345678' } });
+    fireEvent.change(screen.getByLabelText('AppSecret'), { target: { value: 'secret-key-1' } });
+    fireEvent.click(screen.getByTestId('mu-welcome-next'));
+
+    await screen.findByTestId('mu-welcome-step-startup');
+    const boot = await screen.findByRole('switch', { name: 'Start when you sign in' });
+    await waitFor(() => expect(boot).not.toBeDisabled());
+    fireEvent.click(boot);
+    fireEvent.click(screen.getByTestId('mu-welcome-next'));
+
+    await screen.findByTestId('mu-welcome-step-done');
+    expect(screen.getByText('On')).toBeInTheDocument();
+    expect(screen.getByText('High')).toBeInTheDocument();
+    expect(screen.getByText('AppID 102345678')).toBeInTheDocument();
+    expect(screen.getByText('Starts at sign-in; close quits')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('mu-welcome-start'));
+
+    await waitFor(() => expect(bridge.save).toHaveBeenCalledTimes(1));
+    const saved = bridge.save.mock.calls[0][0] as SaveSettings;
+    expect(saved.models?.providers?.[0]?.models?.[0]).toMatchObject({
+      id: 'relay-large',
+      imageInput: true,
+      reasoning: true,
+      thinkingLevelMap: { xhigh: 'xhigh' },
+    });
+    expect(saved.models?.providers?.[0]?.models?.[0]?.thinkingLevels).toEqual([
+      'off',
+      'minimal',
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+    ]);
+    expect(saved.models?.defaults?.thinkingLevel).toBe('high');
+    expect(bridge.saveQqGateway).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enabled: true,
+        appId: '102345678',
+        clientSecret: 'secret-key-1',
+        transport: 'websocket',
+        dmPolicy: 'pairing',
+      })
+    );
+    expect(machine.applyStartup).toHaveBeenCalledWith(
+      expect.objectContaining({ startOnBoot: true, bootSupported: true, closeToTray: false })
+    );
+  });
+
+  it('stays on the QQ step when the AppID is not a number, and writes nothing if that step is skipped', async () => {
+    at('/welcome', <Welcome />);
+    fireEvent.click(await screen.findByTestId('mu-welcome-begin'));
+    fireEvent.click(await screen.findByTestId('mu-welcome-skip'));
+    await screen.findByTestId('mu-welcome-step-judge');
+    fireEvent.click(screen.getByTestId('mu-welcome-next'));
+    await screen.findByTestId('mu-welcome-step-personality');
+    fireEvent.click(screen.getByTestId('mu-welcome-skip'));
+    fireEvent.click(await screen.findByRole('switch', { name: 'Enable the QQ bot' }));
+    fireEvent.change(screen.getByLabelText('AppSecret'), { target: { value: 'secret-key-1' } });
+    fireEvent.click(screen.getByTestId('mu-welcome-next'));
+    expect(screen.getByTestId('mu-welcome-step-qq')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('The AppID is a number');
+    fireEvent.click(screen.getByTestId('mu-welcome-skip'));
+    fireEvent.click(await screen.findByTestId('mu-welcome-skip'));
+    fireEvent.click(await screen.findByTestId('mu-welcome-start'));
+    await screen.findByText('landing page');
+    expect(bridge.saveQqGateway).not.toHaveBeenCalled();
+    expect(bridge.savePersonality).not.toHaveBeenCalled();
+    expect(machine.applyStartup).not.toHaveBeenCalled();
+  });
+
+  it('writes the personality that was chosen, as a switch of version rather than an extra prompt', async () => {
+    at('/welcome', <Welcome />);
+    fireEvent.click(await screen.findByTestId('mu-welcome-begin'));
+    fireEvent.click(await screen.findByTestId('mu-welcome-skip'));
+    await screen.findByTestId('mu-welcome-step-judge');
+    fireEvent.click(screen.getByTestId('mu-welcome-next'));
+    fireEvent.click(await screen.findByTestId('mu-welcome-personality-concise'));
+    fireEvent.click(screen.getByTestId('mu-welcome-next'));
+    fireEvent.click(await screen.findByTestId('mu-welcome-skip'));
+    fireEvent.click(await screen.findByTestId('mu-welcome-skip'));
+    expect(await screen.findByTestId('mu-welcome-step-done')).toHaveTextContent('Concise');
+    fireEvent.click(screen.getByTestId('mu-welcome-start'));
+    await screen.findByText('landing page');
+    expect(bridge.savePersonality).toHaveBeenCalledWith({ action: 'use', id: 'concise' });
+  });
 });
 
 describe('signing in with a subscription', () => {
@@ -413,8 +551,8 @@ describe('signing in with a subscription', () => {
   };
   const toSummary = async () => {
     fireEvent.click(screen.getByTestId('mu-welcome-next'));
-    fireEvent.click(await screen.findByTestId('mu-welcome-next'));
-    await screen.findByTestId('mu-welcome-step-done');
+    await screen.findByTestId('mu-welcome-step-judge');
+    await skipToDone();
   };
 
   it('signs in in the browser, takes a pasted code only when asked for it, and starts on that account', async () => {
