@@ -81,6 +81,10 @@ describe('the store names what went wrong with a stable code', () => {
         store.save({ ...read, judges: { ...read.judges, jev: { ...judge, baseUrl: 'http://example.com' } } })
       )
     ).toMatchObject({ code: 'endpoint' });
+    const custom = { ...judge, type: 'typesafe' as const, apiKeyEnv: 'MU_JUDGE_CUSTOM_API_KEY' };
+    expect(
+      failure(() => store.save({ ...read, tiers: ['jev-custom'], judges: { ...read.judges, 'jev-custom': custom } }))
+    ).toMatchObject({ code: 'judgeEndpoint', params: { name: 'jev-custom' } });
     // Without a manifest there is nothing to save decisions into.
     expect(failure(() => store.save({ ...read, decisionModes: { 'tool.risk': 'off' } }))).toMatchObject({
       code: 'harnessOld',

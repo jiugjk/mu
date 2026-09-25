@@ -9,7 +9,7 @@
   "apiKey": "API key",
   "keyHelp": "Once saved it is never shown again. It stays on this computer, readable only by your account.",
   "keyKeep": "Leave empty to keep the saved key",
-  "endpointRule": "Use HTTPS, or HTTP to this machine only (127.0.0.1, localhost). No user name, password, query or fragment in the address.",
+  "endpointRule": "Use HTTPS, or HTTP to this machine (127.0.0.1, localhost) or to a private-network IP address (such as 192.168.1.20). No user name, password, query or fragment in the address.",
   "sections": {
     "judges": "Judges",
     "judgeTiers": "Judge tiers",
@@ -112,32 +112,53 @@
     "order": "Order",
     "orderHelp": "The first one is the judge chosen above.",
     "tierTitle": "Tier {{index}}: {{name}}",
-    "type": "How it is reached",
-    "access": {
-      "jev": "Automatic",
-      "typesafe": "TypeSafe directly",
-      "gateway": "Through Vercel AI Gateway"
+    "service": "Service",
+    "services": {
+      "auto": {
+        "name": "Automatic",
+        "help": "TypeSafe when its key is set, otherwise OpenRouter when its key is set, otherwise the Vercel AI Gateway.",
+        "key": "TypeSafe API key"
+      },
+      "typesafe": {
+        "name": "TypeSafe",
+        "help": "Always TypeSafe directly.",
+        "key": "TypeSafe API key"
+      },
+      "openrouter": {
+        "name": "OpenRouter",
+        "help": "Always through OpenRouter, with an OpenRouter API key. It is saved for Jev alone: setting it leaves the key of OpenRouter's chat models as it is.",
+        "key": "OpenRouter API key"
+      },
+      "gateway": {
+        "name": "Vercel AI Gateway",
+        "help": "Always through the Vercel AI Gateway.",
+        "key": "Vercel AI Gateway API key"
+      },
+      "custom": {
+        "name": "Custom service",
+        "help": "Any service that speaks TypeSafe's System One protocol: one you run yourself, a relay on your network, or another provider of Jev.",
+        "key": "API key of the service"
+      }
     },
     "model": "Judge model",
     "baseUrl": "Base URL",
     "baseUrlHelp": "Leave empty to use TypeSafe's own address.",
+    "customUrlHelp": "The service's System One address. Its key is sent there and nowhere else.",
+    "baseUrlNeeded": "A custom service needs its address.",
     "customTier": "A judge you added yourself. Change it in mu's settings file.",
     "endpointDefault": "Default address of the service",
     "types": {
-      "jevHelp": "TypeSafe directly when its key is set, otherwise the Vercel AI Gateway.",
-      "typesafeHelp": "Always TypeSafe directly.",
-      "gatewayHelp": "Always through the Vercel AI Gateway.",
       "localHelp": "Runs on this computer."
     },
     "intro": "While it works, mu makes many small calls: how to handle this message, whether this step breaks a rule you set. The judge answers them. Pick one.",
     "choose": "Choose a judge",
     "custom": "The first judge right now is a custom one: see and change it under Judge tiers below.",
-    "keyPlaceholder": "Paste a TypeSafe or Vercel AI Gateway key",
+    "keyPlaceholder": "Paste the key",
     "choices": {
       "jev": {
         "title": "Jev",
         "tag": "Recommended",
-        "description": "Fast and accurate, billed per call. Needs a TypeSafe or Vercel AI Gateway key."
+        "description": "Fast and accurate, billed per call. Needs a key for TypeSafe, OpenRouter, the Vercel AI Gateway or a service of your own."
       },
       "local": {
         "title": "Local Laya",
@@ -578,6 +599,7 @@
   "errors": {
     "credential": "The key contains characters a key cannot have, such as spaces, quotes or line breaks. Paste it again.",
     "keyVariable": "{{name}} cannot hold a judge key. Use TYPESAFE_API_KEY, AI_GATEWAY_API_KEY, or a name that starts with MU_JUDGE_.",
+    "judgeEndpoint": "Jev's service has no address to send its key to. Enter the address, or pick another service.",
     "sharedKey": "{{providers}} would share one key variable. Change one of the IDs.",
     "pickBoth": "Choose a provider and a model together.",
     "modelsUnreadable": "models.json could not be read. Repair it by hand before saving providers.",

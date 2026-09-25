@@ -9,7 +9,7 @@
   "apiKey": "API キー",
   "keyHelp": "保存後は二度と表示されません。このコンピューターにだけ保存され、あなたのアカウントしか読めません。",
   "keyKeep": "空欄のままにすると保存済みのキーを保持します",
-  "endpointRule": "HTTPS を使用してください。HTTP はこのマシン（127.0.0.1、localhost）宛てにのみ使えます。アドレスにユーザー名、パスワード、クエリ、フラグメントは含められません。",
+  "endpointRule": "HTTPS を使用してください。HTTP はこのマシン（127.0.0.1、localhost）またはプライベートネットワークの IP アドレス（例: 192.168.1.20）宛てにのみ使えます。アドレスにユーザー名、パスワード、クエリ、フラグメントは含められません。",
   "sections": {
     "judges": "判定器",
     "judgeTiers": "判定の階層",
@@ -112,32 +112,53 @@
     "order": "順序",
     "orderHelp": "最初のものが上で選んだ判定器です。",
     "tierTitle": "第 {{index}} 階層：{{name}}",
-    "type": "接続方法",
-    "access": {
-      "jev": "自動",
-      "typesafe": "TypeSafe に直接接続",
-      "gateway": "Vercel AI Gateway 経由"
+    "service": "サービス",
+    "services": {
+      "auto": {
+        "name": "自動",
+        "help": "TypeSafe のキーがあれば TypeSafe、なければ OpenRouter のキーがあれば OpenRouter、どちらもなければ Vercel AI Gateway を使います。",
+        "key": "TypeSafe の API キー"
+      },
+      "typesafe": {
+        "name": "TypeSafe",
+        "help": "常に TypeSafe に直接接続します。",
+        "key": "TypeSafe の API キー"
+      },
+      "openrouter": {
+        "name": "OpenRouter",
+        "help": "常に OpenRouter を経由し、OpenRouter の API キーを使います。キーは Jev 専用に保存され、設定しても OpenRouter のチャットモデル用のキーは変わりません。",
+        "key": "OpenRouter の API キー"
+      },
+      "gateway": {
+        "name": "Vercel AI Gateway",
+        "help": "常に Vercel AI Gateway を経由します。",
+        "key": "Vercel AI Gateway の API キー"
+      },
+      "custom": {
+        "name": "カスタムサービス",
+        "help": "TypeSafe の System One プロトコルに対応したサービスなら使えます。自分で動かすサーバー、ネットワーク内の中継、Jev を提供する他のサービスなどです。",
+        "key": "このサービスの API キー"
+      }
     },
     "model": "判定モデル",
     "baseUrl": "ベース URL",
     "baseUrlHelp": "空欄なら TypeSafe の公式アドレスを使います。",
+    "customUrlHelp": "このサービスの System One アドレスです。キーはここにだけ送られます。",
+    "baseUrlNeeded": "カスタムサービスにはアドレスが必要です。",
     "customTier": "自分で追加した判定器です。変更するには mu の設定ファイルを編集してください。",
     "endpointDefault": "サービスの既定のアドレス",
     "types": {
-      "jevHelp": "TypeSafe のキーが設定されていれば TypeSafe に直接接続し、それ以外は Vercel AI Gateway を使います。",
-      "typesafeHelp": "常に TypeSafe に直接接続します。",
-      "gatewayHelp": "常に Vercel AI Gateway を経由します。",
       "localHelp": "このコンピューターで動きます。"
     },
     "intro": "mu は作業中に、このメッセージをどう扱うか、このステップが設定したルールに反していないか、といった小さな判断を何度も迫られます。それに答えるのが判定器です。1 つ選んでください。",
     "choose": "判定器を選択",
     "custom": "現在、先頭の判定器はカスタム設定です。下の「判定の階層」で確認・変更できます。",
-    "keyPlaceholder": "TypeSafe または Vercel AI Gateway のキーを貼り付け",
+    "keyPlaceholder": "キーを貼り付け",
     "choices": {
       "jev": {
         "title": "Jev",
         "tag": "おすすめ",
-        "description": "高速かつ正確で、呼び出しごとに課金されます。TypeSafe または Vercel AI Gateway のキーが必要です。"
+        "description": "高速かつ正確で、呼び出しごとに課金されます。TypeSafe、OpenRouter、Vercel AI Gateway、または自前のサービスのキーが必要です。"
       },
       "local": {
         "title": "ローカル Laya",
@@ -578,6 +599,7 @@
   "errors": {
     "credential": "キーに使用できない文字（スペース、引用符、改行など）が含まれています。もう一度貼り付けてください。",
     "keyVariable": "{{name}} には判定器のキーを保存できません。TYPESAFE_API_KEY、AI_GATEWAY_API_KEY、または MU_JUDGE_ で始まる名前を使用してください。",
+    "judgeEndpoint": "Jev のサービスにアドレスがないため、キーの送り先がありません。アドレスを入力するか、別のサービスを選んでください。",
     "otherRegistration": "別の mu コマンドがすでにアプリに登録されています。",
     "backend": "ローカルサービスから想定外の応答がありました（HTTP {{status}}）。",
     "invalid": "無効な値があります。",

@@ -9,7 +9,7 @@
   "apiKey": "API anahtarı",
   "keyHelp": "Kaydedildikten sonra bir daha gösterilmez. Yalnızca bu bilgisayarda kalır ve yalnızca sizin hesabınız okuyabilir.",
   "keyKeep": "Kayıtlı anahtarı korumak için boş bırakın",
-  "endpointRule": "HTTPS kullanın; HTTP yalnızca bu makine için (127.0.0.1, localhost). Adreste kullanıcı adı, şifre, sorgu veya parça bulunmamalı.",
+  "endpointRule": "HTTPS kullanın; HTTP yalnızca bu makine (127.0.0.1, localhost) veya özel ağdaki bir IP adresi (örneğin 192.168.1.20) için. Adreste kullanıcı adı, şifre, sorgu veya parça bulunmamalı.",
   "sections": {
     "judges": "Hakemler",
     "judgeTiers": "Hakem kademeleri",
@@ -112,32 +112,53 @@
     "order": "Sıra",
     "orderHelp": "İlki, yukarıda seçilen hakemdir.",
     "tierTitle": "{{index}}. kademe: {{name}}",
-    "type": "Erişim yolu",
-    "access": {
-      "jev": "Otomatik",
-      "typesafe": "Doğrudan TypeSafe",
-      "gateway": "Vercel AI Gateway üzerinden"
+    "service": "Hizmet",
+    "services": {
+      "auto": {
+        "name": "Otomatik",
+        "help": "Anahtarı ayarlıysa TypeSafe, değilse anahtarı ayarlıysa OpenRouter, o da değilse Vercel AI Gateway.",
+        "key": "TypeSafe API anahtarı"
+      },
+      "typesafe": {
+        "name": "TypeSafe",
+        "help": "Her zaman doğrudan TypeSafe.",
+        "key": "TypeSafe API anahtarı"
+      },
+      "openrouter": {
+        "name": "OpenRouter",
+        "help": "Her zaman OpenRouter üzerinden, bir OpenRouter API anahtarıyla. Yalnızca Jev için kaydedilir; ayarlamak OpenRouter sohbet modellerinin anahtarını değiştirmez.",
+        "key": "OpenRouter API anahtarı"
+      },
+      "gateway": {
+        "name": "Vercel AI Gateway",
+        "help": "Her zaman Vercel AI Gateway üzerinden.",
+        "key": "Vercel AI Gateway API anahtarı"
+      },
+      "custom": {
+        "name": "Özel hizmet",
+        "help": "TypeSafe'in System One protokolünü konuşan herhangi bir hizmet: kendi çalıştırdığınız bir hizmet, ağınızdaki bir aktarıcı ya da Jev sunan başka bir sağlayıcı.",
+        "key": "Hizmetin API anahtarı"
+      }
     },
     "model": "Hakem modeli",
     "baseUrl": "Temel URL",
     "baseUrlHelp": "Boş bırakılırsa TypeSafe'in kendi adresi kullanılır.",
+    "customUrlHelp": "Hizmetin System One adresi. Anahtarı yalnızca buraya gönderilir.",
+    "baseUrlNeeded": "Özel bir hizmetin adresi olmalıdır.",
     "customTier": "Kendi eklediğiniz bir hakem. Değiştirmek için mu'nun ayar dosyasını düzenleyin.",
     "endpointDefault": "Hizmetin varsayılan adresi",
     "types": {
-      "jevHelp": "Anahtarı ayarlıysa doğrudan TypeSafe, değilse Vercel AI Gateway.",
-      "typesafeHelp": "Her zaman doğrudan TypeSafe.",
-      "gatewayHelp": "Her zaman Vercel AI Gateway üzerinden.",
       "localHelp": "Bu bilgisayarda çalışır."
     },
     "intro": "mu çalışırken pek çok küçük soruyla karşılaşır: bu mesaj nasıl ele alınmalı, bu adım koyduğunuz bir kuralı çiğniyor mu? Bunları hakem yanıtlar. Birini seçin.",
     "choose": "Bir hakem seçin",
     "custom": "Şu an ilk sıradaki hakem özel bir hakem: aşağıda, Hakem kademeleri bölümünde görüp değiştirebilirsiniz.",
-    "keyPlaceholder": "TypeSafe veya Vercel AI Gateway anahtarını yapıştırın",
+    "keyPlaceholder": "Anahtarı yapıştırın",
     "choices": {
       "jev": {
         "title": "Jev",
         "tag": "Önerilen",
-        "description": "Hızlı ve isabetli, çağrı başına ücretlendirilir. TypeSafe veya Vercel AI Gateway anahtarı gerekir."
+        "description": "Hızlı ve isabetli, çağrı başına ücretlendirilir. TypeSafe, OpenRouter, Vercel AI Gateway ya da kendi hizmetinizin anahtarı gerekir."
       },
       "local": {
         "title": "Yerel Laya",
@@ -578,6 +599,7 @@
   "errors": {
     "credential": "Anahtar, bir anahtarda bulunamayacak karakterler (boşluk, tırnak işareti veya satır sonu gibi) içeriyor. Yeniden yapıştırın.",
     "keyVariable": "{{name}} bir hakem anahtarı tutamaz. TYPESAFE_API_KEY, AI_GATEWAY_API_KEY veya MU_JUDGE_ ile başlayan bir ad kullanın.",
+    "judgeEndpoint": "Jev'in hizmetinin, anahtarını gönderebileceği bir adresi yok. Adresi girin ya da başka bir hizmet seçin.",
     "sharedKey": "{{providers}} aynı anahtar değişkenini paylaşacak. ID'lerden birini değiştirin.",
     "pickBoth": "Sağlayıcıyı ve modeli birlikte seçin.",
     "modelsUnreadable": "models.json okunamadı. Sağlayıcıları kaydetmeden önce dosyayı elle onarın.",

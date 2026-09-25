@@ -107,6 +107,83 @@ describe('native mu settings', () => {
       f.cleanup();
     }
   });
+  it('offers Jev through OpenRouter as a built-in, with a key of its own', () => {
+    const f = fixture();
+    try {
+      const read = f.store.read();
+      expect(read.judges['jev-openrouter']).toEqual({
+        type: 'typesafe',
+        model: '~typesafe/jev-latest',
+        baseUrl: 'https://openrouter.ai/api/v1/systemone',
+        apiKeyEnv: 'MU_JUDGE_OPENROUTER_API_KEY',
+        timeoutMs: 10000,
+      });
+      expect(read.keys.MU_JUDGE_OPENROUTER_API_KEY).toBe(false);
+      // Asked as it is, the built-in stays out of the file; its key goes to the .env.
+      const saved = f.store.save({
+        ...read,
+        tiers: ['jev-openrouter'],
+        credentials: [{ name: 'MU_JUDGE_OPENROUTER_API_KEY', value: 'fixture-openrouter' }],
+      });
+      expect(saved.keys.MU_JUDGE_OPENROUTER_API_KEY).toBe(true);
+      const raw = JSON.parse(readFileSync(join(f.dir, 'kyrn.json'), 'utf8'));
+      expect(raw.tiers).toEqual(['jev-openrouter']);
+      expect(raw.judges['jev-openrouter']).toBeUndefined();
+    } finally {
+      f.cleanup();
+    }
+  });
+  it('refuses to put a custom service in the order without an address, so its key never goes to TypeSafe', () => {
+    const f = fixture();
+    try {
+      const read = f.store.read();
+      const custom = {
+        type: 'typesafe' as const,
+        model: 'jev-latest',
+        baseUrl: '',
+        apiKeyEnv: 'MU_JUDGE_CUSTOM_API_KEY',
+        timeoutMs: 10000,
+      };
+      const input = { ...read, tiers: ['jev-custom'], judges: { ...read.judges, 'jev-custom': custom } };
+      expect(() => f.store.save(input)).toThrow('no base URL');
+      // Nor OpenRouter's key, once someone took the address away.
+      const bare = { ...read.judges['jev-openrouter'], baseUrl: '' };
+      expect(() => f.store.save({ ...read, judges: { ...read.judges, 'jev-openrouter': bare } })).not.toThrow();
+      expect(() =>
+        f.store.save({
+          ...f.store.read(),
+          tiers: ['jev-openrouter'],
+          judges: { ...f.store.read().judges, 'jev-openrouter': bare },
+        })
+      ).toThrow('no base URL');
+      // With its address it is saved, and the store reads it back with its key's state.
+      const address = 'http://192.168.1.20:8000/v1/systemone';
+      const saved = f.store.save({
+        ...f.store.read(),
+        tiers: ['jev-custom'],
+        judges: { ...f.store.read().judges, 'jev-custom': { ...custom, baseUrl: address } },
+      });
+      expect(saved.judges['jev-custom']).toMatchObject({ baseUrl: address, apiKeyEnv: 'MU_JUDGE_CUSTOM_API_KEY' });
+      expect(saved.keys.MU_JUDGE_CUSTOM_API_KEY).toBe(false);
+    } finally {
+      f.cleanup();
+    }
+  });
+  it('leaves a judge the order already had as it is to whoever wrote it, and saves other changes', () => {
+    const f = fixture();
+    try {
+      writeFileSync(
+        join(f.dir, 'kyrn.json'),
+        JSON.stringify({
+          tiers: ['relay'],
+          judges: { relay: { type: 'typesafe', apiKeyEnv: 'MU_JUDGE_CUSTOM_API_KEY' } },
+        })
+      );
+      expect(f.store.save({ ...f.store.read(), mode: 'active' }).mode).toBe('active');
+    } finally {
+      f.cleanup();
+    }
+  });
   it('rejects credentialed or non-HTTPS external endpoints before changing disk', () => {
     const f = fixture();
     try {

@@ -9,7 +9,7 @@
   "apiKey": "Clave de API",
   "keyHelp": "Una vez guardada, la clave no se vuelve a mostrar. Se queda en este ordenador y solo tu cuenta puede leerla.",
   "keyKeep": "Déjalo vacío para conservar la clave guardada",
-  "endpointRule": "Usa HTTPS, o HTTP solo hacia este ordenador (127.0.0.1, localhost). Sin nombre de usuario, contraseña, consulta ni fragmento en la dirección.",
+  "endpointRule": "Usa HTTPS, o HTTP solo hacia este ordenador (127.0.0.1, localhost) o hacia una dirección IP de red privada (como 192.168.1.20). Sin nombre de usuario, contraseña, consulta ni fragmento en la dirección.",
   "sections": {
     "judges": "Jueces",
     "judgeTiers": "Niveles de jueces",
@@ -112,32 +112,53 @@
     "order": "Orden",
     "orderHelp": "El primero es el juez elegido arriba.",
     "tierTitle": "Nivel {{index}}: {{name}}",
-    "type": "Forma de acceso",
-    "access": {
-      "jev": "Automático",
-      "typesafe": "TypeSafe directamente",
-      "gateway": "A través de Vercel AI Gateway"
+    "service": "Servicio",
+    "services": {
+      "auto": {
+        "name": "Automático",
+        "help": "TypeSafe si su clave está definida; si no, OpenRouter si su clave está definida; si no, Vercel AI Gateway.",
+        "key": "Clave de API de TypeSafe"
+      },
+      "typesafe": {
+        "name": "TypeSafe",
+        "help": "Siempre TypeSafe directamente.",
+        "key": "Clave de API de TypeSafe"
+      },
+      "openrouter": {
+        "name": "OpenRouter",
+        "help": "Siempre a través de OpenRouter, con una clave de API de OpenRouter. Se guarda solo para Jev: configurarla no cambia la clave de los modelos de chat de OpenRouter.",
+        "key": "Clave de API de OpenRouter"
+      },
+      "gateway": {
+        "name": "Vercel AI Gateway",
+        "help": "Siempre a través de Vercel AI Gateway.",
+        "key": "Clave de API de Vercel AI Gateway"
+      },
+      "custom": {
+        "name": "Servicio personalizado",
+        "help": "Cualquier servicio que hable el protocolo System One de TypeSafe: uno que ejecutes tú, un relé en tu red u otro proveedor de Jev.",
+        "key": "Clave de API del servicio"
+      }
     },
     "model": "Modelo del juez",
     "baseUrl": "URL base",
     "baseUrlHelp": "Déjalo vacío para usar la dirección de TypeSafe.",
+    "customUrlHelp": "La dirección System One del servicio. Su clave solo se envía ahí.",
+    "baseUrlNeeded": "Un servicio personalizado necesita su dirección.",
     "customTier": "Un juez que añadiste tú. Se cambia en el archivo de ajustes de mu.",
     "endpointDefault": "Dirección predeterminada del servicio",
     "types": {
-      "jevHelp": "TypeSafe directamente si su clave está definida; si no, Vercel AI Gateway.",
-      "typesafeHelp": "Siempre TypeSafe directamente.",
-      "gatewayHelp": "Siempre a través de Vercel AI Gateway.",
       "localHelp": "Se ejecuta en este ordenador."
     },
     "intro": "Mientras trabaja, mu hace muchas pequeñas valoraciones: cómo tratar este mensaje, si este paso rompe una regla que has fijado. El juez las responde. Elige uno.",
     "choose": "Elige un juez",
     "custom": "Ahora el primer juez es uno personalizado: puedes verlo y cambiarlo abajo, en «Niveles de jueces».",
-    "keyPlaceholder": "Pega una clave de TypeSafe o de Vercel AI Gateway",
+    "keyPlaceholder": "Pega la clave",
     "choices": {
       "jev": {
         "title": "Jev",
         "tag": "Recomendado",
-        "description": "Rápido y preciso, se cobra por llamada. Necesita una clave de TypeSafe o de Vercel AI Gateway."
+        "description": "Rápido y preciso, se cobra por llamada. Necesita una clave de TypeSafe, OpenRouter, Vercel AI Gateway o de un servicio propio."
       },
       "local": {
         "title": "Laya local",
@@ -578,6 +599,7 @@
   "errors": {
     "credential": "La clave contiene caracteres no permitidos, como espacios, comillas o saltos de línea. Vuelve a pegarla.",
     "keyVariable": "{{name}} no puede guardar una clave del juez. Usa TYPESAFE_API_KEY, AI_GATEWAY_API_KEY o un nombre que empiece por MU_JUDGE_.",
+    "judgeEndpoint": "El servicio de Jev no tiene dirección a la que enviar su clave. Escribe la dirección o elige otro servicio.",
     "sharedKey": "{{providers}} compartirían la misma variable de clave. Cambia uno de los ID.",
     "pickBoth": "Elige un proveedor y un modelo a la vez.",
     "modelsUnreadable": "No se pudo leer models.json. Repáralo a mano antes de guardar proveedores.",

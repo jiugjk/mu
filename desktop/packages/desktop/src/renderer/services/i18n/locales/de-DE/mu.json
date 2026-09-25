@@ -9,7 +9,7 @@
   "apiKey": "API-Schlüssel",
   "keyHelp": "Nach dem Speichern wird der Schlüssel nie wieder angezeigt. Er bleibt auf diesem Computer und ist nur für dein Konto lesbar.",
   "keyKeep": "Leer lassen, um den gespeicherten Schlüssel zu behalten",
-  "endpointRule": "Verwende HTTPS; HTTP nur für diesen Rechner (127.0.0.1, localhost). Keine Benutzernamen, Passwörter, Abfrageparameter oder Fragmente in der Adresse.",
+  "endpointRule": "Verwende HTTPS; HTTP nur für diesen Rechner (127.0.0.1, localhost) oder eine IP-Adresse im privaten Netzwerk (etwa 192.168.1.20). Keine Benutzernamen, Passwörter, Abfrageparameter oder Fragmente in der Adresse.",
   "sections": {
     "judges": "Judges",
     "judgeTiers": "Judge-Stufen",
@@ -112,32 +112,53 @@
     "order": "Reihenfolge",
     "orderHelp": "Der erste ist der Judge, der oben gewählt ist.",
     "tierTitle": "Stufe {{index}}: {{name}}",
-    "type": "Anbindung",
-    "access": {
-      "jev": "Automatisch",
-      "typesafe": "Direkt über TypeSafe",
-      "gateway": "Über das Vercel AI Gateway"
+    "service": "Dienst",
+    "services": {
+      "auto": {
+        "name": "Automatisch",
+        "help": "TypeSafe, wenn dessen Schlüssel gesetzt ist, sonst OpenRouter, wenn dessen Schlüssel gesetzt ist, sonst das Vercel AI Gateway.",
+        "key": "API-Schlüssel für TypeSafe"
+      },
+      "typesafe": {
+        "name": "TypeSafe",
+        "help": "Immer direkt über TypeSafe.",
+        "key": "API-Schlüssel für TypeSafe"
+      },
+      "openrouter": {
+        "name": "OpenRouter",
+        "help": "Immer über OpenRouter, mit einem API-Schlüssel von OpenRouter. Er wird nur für Jev gespeichert: Das Setzen ändert den Schlüssel der Chatmodelle von OpenRouter nicht.",
+        "key": "API-Schlüssel für OpenRouter"
+      },
+      "gateway": {
+        "name": "Vercel AI Gateway",
+        "help": "Immer über das Vercel AI Gateway.",
+        "key": "API-Schlüssel für das Vercel AI Gateway"
+      },
+      "custom": {
+        "name": "Eigener Dienst",
+        "help": "Jeder Dienst, der TypeSafes System-One-Protokoll spricht: einer, den du selbst betreibst, ein Relay in deinem Netzwerk oder ein anderer Anbieter von Jev.",
+        "key": "API-Schlüssel des Dienstes"
+      }
     },
     "model": "Judge-Modell",
     "baseUrl": "Basis-URL",
     "baseUrlHelp": "Leer lassen, dann gilt TypeSafes eigene Adresse.",
+    "customUrlHelp": "Die System-One-Adresse des Dienstes. Sein Schlüssel wird nur dorthin geschickt.",
+    "baseUrlNeeded": "Ein eigener Dienst braucht seine Adresse.",
     "customTier": "Ein Judge, den du selbst hinzugefügt hast. Ändern kannst du ihn in der Einstellungsdatei von mu.",
     "endpointDefault": "Standardadresse des Dienstes",
     "types": {
-      "jevHelp": "Direkt über TypeSafe, wenn dessen Schlüssel gesetzt ist, sonst über das Vercel AI Gateway.",
-      "typesafeHelp": "Immer direkt über TypeSafe.",
-      "gatewayHelp": "Immer über das Vercel AI Gateway.",
       "localHelp": "Läuft auf diesem Rechner."
     },
     "intro": "Während mu arbeitet, fallen viele kleine Fragen an: wie es mit dieser Nachricht umgehen soll, ob dieser Schritt gegen eine deiner Vorgaben verstößt. Der Judge beantwortet sie. Wähle einen aus.",
     "choose": "Judge wählen",
     "custom": "Der erste Judge ist gerade ein benutzerdefinierter: Unten unter „Judge-Stufen“ kannst du ihn ansehen und ändern.",
-    "keyPlaceholder": "Schlüssel von TypeSafe oder Vercel AI Gateway einfügen",
+    "keyPlaceholder": "Schlüssel einfügen",
     "choices": {
       "jev": {
         "title": "Jev",
         "tag": "Empfohlen",
-        "description": "Schnell und genau, Abrechnung pro Aufruf. Braucht einen Schlüssel von TypeSafe oder Vercel AI Gateway."
+        "description": "Schnell und genau, Abrechnung pro Aufruf. Braucht einen Schlüssel für TypeSafe, OpenRouter, das Vercel AI Gateway oder einen eigenen Dienst."
       },
       "local": {
         "title": "Laya (lokal)",
@@ -578,6 +599,7 @@
   "errors": {
     "credential": "Der Schlüssel enthält Zeichen, die ein Schlüssel nicht haben darf, etwa Leerzeichen, Anführungszeichen oder Zeilenumbrüche. Füge ihn erneut ein.",
     "keyVariable": "{{name}} kann keinen Judge-Schlüssel enthalten. Verwende TYPESAFE_API_KEY, AI_GATEWAY_API_KEY oder einen Namen, der mit MU_JUDGE_ beginnt.",
+    "judgeEndpoint": "Der Dienst von Jev hat keine Adresse, an die sein Schlüssel gehen kann. Gib die Adresse ein oder wähle einen anderen Dienst.",
     "sharedKey": "{{providers}} würden sich eine Schlüsselvariable teilen. Ändere eine der IDs.",
     "pickBoth": "Wähle Anbieter und Modell zusammen aus.",
     "modelsUnreadable": "models.json konnte nicht gelesen werden. Repariere die Datei von Hand, bevor du Anbieter speicherst.",

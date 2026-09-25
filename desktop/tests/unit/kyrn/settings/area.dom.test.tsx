@@ -1327,12 +1327,13 @@ describe('the kernel pages', () => {
     const tags = [...order.querySelectorAll('.arco-tag')].map((tag) => tag.textContent);
     expect(tags).toEqual([enMu.judges.choices.jev.title, enMu.judges.choices.local.title]);
     expect(order).not.toHaveTextContent(/\bjev\b|\blaya\b/);
-    // Jev, first: how it is reached and its model. Its key is asked for in the choice above, which chose it.
+    // Jev, first: its service and its model. Its key is asked for in the choice above, which chose it.
     const jev = within(tiers).getByTestId('mu-judge-tier-0');
     expect(jev).toHaveTextContent(`Tier 1: ${enMu.judges.choices.jev.title}`);
-    expect(within(jev).getByLabelText(enMu.judges.type)).toBeInTheDocument();
+    expect(within(jev).getByLabelText(enMu.judges.service)).toBeInTheDocument();
     expect(within(jev).getByLabelText(enMu.judges.model)).toHaveValue('jev-latest');
-    expect(within(jev).queryByLabelText(enMu.apiKey)).not.toBeInTheDocument();
+    expect(within(jev).queryByLabelText(enMu.judges.services.auto.key)).not.toBeInTheDocument();
+    expect(within(choice).getByLabelText(enMu.judges.services.auto.key)).toBeInTheDocument();
     // Laya: its name and nothing to fill in.
     const laya = within(tiers).getByTestId('mu-judge-tier-1');
     expect(laya).toHaveTextContent(`Tier 2: ${enMu.judges.choices.local.title}`);
@@ -1345,7 +1346,7 @@ describe('the kernel pages', () => {
     expect(within(tiers).queryByRole('button', { expanded: false })).not.toBeInTheDocument();
   });
 
-  it('keeps Jev’s way in as a profile of its own: picking one puts that profile in the order', async () => {
+  it('keeps each of Jev’s services as a profile of its own: picking one puts that profile in the order', async () => {
     const gateway = {
       type: 'gateway' as const,
       model: 'typesafe-ai/jev',
@@ -1359,8 +1360,8 @@ describe('the kernel pages', () => {
     });
     render(<SettingsArea section='judges' />, { wrapper });
     const jev = await screen.findByTestId('mu-judge-tier-0');
-    fireEvent.click(within(jev).getByLabelText(enMu.judges.type));
-    fireEvent.click(await screen.findByText(enMu.judges.access.gateway, { selector: '.arco-select-option' }));
+    fireEvent.click(within(jev).getByLabelText(enMu.judges.service));
+    fireEvent.click(await screen.findByText(enMu.judges.services.gateway.name, { selector: '.arco-select-option' }));
     // The gateway's own model, and still one Jev in the order.
     await waitFor(() =>
       expect(within(screen.getByTestId('mu-judge-tier-0')).getByLabelText(enMu.judges.model)).toHaveValue(
@@ -1374,13 +1375,13 @@ describe('the kernel pages', () => {
     expect(sent.tiers).toEqual(['jev-gateway']);
   });
 
-  it('shows a base URL only for TypeSafe, and accepts a private-network HTTP address', async () => {
+  it('shows a base URL only for TypeSafe and a custom service, and accepts a private-network HTTP address', async () => {
     bridge.settings.mockResolvedValue({ ok: true, data: settings() });
     render(<SettingsArea section='judges' />, { wrapper });
     const jev = await screen.findByTestId('mu-judge-tier-0');
     expect(within(jev).queryByLabelText(enMu.judges.baseUrl)).not.toBeInTheDocument();
-    fireEvent.click(within(jev).getByLabelText(enMu.judges.type));
-    fireEvent.click(await screen.findByText(enMu.judges.access.typesafe, { selector: '.arco-select-option' }));
+    fireEvent.click(within(jev).getByLabelText(enMu.judges.service));
+    fireEvent.click(await screen.findByText(enMu.judges.services.typesafe.name, { selector: '.arco-select-option' }));
     const field = await within(screen.getByTestId('mu-judge-tier-0')).findByLabelText(enMu.judges.baseUrl);
     fireEvent.change(field, { target: { value: 'http://example.com/v1' } });
     expect(screen.getByTestId('mu-judge-tier-0')).toHaveTextContent(enMu.endpointRule);
@@ -1389,21 +1390,111 @@ describe('the kernel pages', () => {
     fireEvent.click(screen.getByText('Save'));
     await waitFor(() => expect(bridge.save).toHaveBeenCalled());
     const sent = bridge.save.mock.calls[0][0] as SaveSettings;
-    expect(sent.judges.jev).toMatchObject({
+    // TypeSafe's own profile, made for it: the automatic one keeps no address it never had.
+    expect(sent.tiers).toEqual(['jev-direct']);
+    expect(sent.judges['jev-direct']).toMatchObject({
       type: 'typesafe',
       baseUrl: 'http://192.168.31.124:8000/v1/systemone',
     });
+    expect(sent.judges.jev).toEqual(settings().judges.jev);
   });
 
   it('asks for the key of a Jev further down the order, which the choice above does not show', async () => {
     bridge.settings.mockResolvedValue({ ok: true, data: settings({ tiers: ['laya', 'jev'], keys: {} }) });
     render(<SettingsArea section='judges' />, { wrapper });
     const jev = await screen.findByTestId('mu-judge-tier-1');
-    fireEvent.change(within(jev).getByLabelText(enMu.apiKey), { target: { value: 'jev-key' } });
+    fireEvent.change(within(jev).getByLabelText(enMu.judges.services.auto.key), { target: { value: 'jev-key' } });
     expect(screen.getByTestId('mu-save-bar')).toHaveTextContent('Unsaved changes in: Judges');
     // Laya, first, is installed and started from the choice above: one panel for it on the page.
     expect(within(screen.getByTestId('mu-judge-tier-0')).queryByTestId('mu-laya')).not.toBeInTheDocument();
     expect(screen.getAllByTestId('mu-laya')).toHaveLength(1);
+  });
+
+  it('reaches Jev through OpenRouter from the choice, with OpenRouter’s own key and nothing typed for another', async () => {
+    const openRouter = {
+      type: 'typesafe' as const,
+      model: '~typesafe/jev-latest',
+      baseUrl: 'https://openrouter.ai/api/v1/systemone',
+      apiKeyEnv: 'MU_JUDGE_OPENROUTER_API_KEY',
+      timeoutMs: 10000,
+    };
+    // As the store sends it: the built-in profile, and the state of its key.
+    bridge.settings.mockResolvedValue({
+      ok: true,
+      data: settings({
+        judges: { ...settings().judges, 'jev-openrouter': openRouter },
+        keys: { TYPESAFE_API_KEY: false, MU_JUDGE_OPENROUTER_API_KEY: false },
+      }),
+    });
+    render(<SettingsArea section='judges' />, { wrapper });
+    const choice = await screen.findByTestId('mu-judge-choice-jev');
+    // Automatic, first: TypeSafe's key. A key typed there stays TypeSafe's.
+    expect(within(choice).getByLabelText(enMu.judges.service)).toBeInTheDocument();
+    expect(choice).toHaveTextContent(enMu.judges.services.auto.help);
+    fireEvent.change(within(choice).getByLabelText(enMu.judges.services.auto.key), {
+      target: { value: 'typesafe-key' },
+    });
+    fireEvent.click(within(choice).getByLabelText(enMu.judges.service));
+    fireEvent.click(await screen.findByText(enMu.judges.services.openrouter.name, { selector: '.arco-select-option' }));
+    const key = await within(screen.getByTestId('mu-judge-choice-jev')).findByLabelText(
+      enMu.judges.services.openrouter.key
+    );
+    expect(key).toHaveValue('');
+    // OpenRouter's address is its own: nothing to type.
+    expect(
+      within(screen.getByTestId('mu-judge-choice-jev')).queryByLabelText(enMu.judges.baseUrl)
+    ).not.toBeInTheDocument();
+    expect(within(screen.getByTestId('mu-judge-tier-0')).getByLabelText(enMu.judges.model)).toHaveValue(
+      '~typesafe/jev-latest'
+    );
+    fireEvent.change(key, { target: { value: 'openrouter-key' } });
+    fireEvent.click(screen.getByText('Save'));
+    await waitFor(() => expect(bridge.save).toHaveBeenCalled());
+    const sent = bridge.save.mock.calls[0][0] as SaveSettings;
+    expect(sent.tiers).toEqual(['jev-openrouter']);
+    expect(sent.credentials).toEqual([
+      { name: 'TYPESAFE_API_KEY', value: 'typesafe-key' },
+      { name: 'MU_JUDGE_OPENROUTER_API_KEY', value: 'openrouter-key' },
+    ]);
+  });
+
+  it('asks a custom service for its address, and says why it cannot be saved without one', async () => {
+    render(<SettingsArea section='judges' />, { wrapper });
+    const choice = await screen.findByTestId('mu-judge-choice-jev');
+    fireEvent.click(within(choice).getByLabelText(enMu.judges.service));
+    fireEvent.click(await screen.findByText(enMu.judges.services.custom.name, { selector: '.arco-select-option' }));
+    const tile = screen.getByTestId('mu-judge-choice-jev');
+    const address = await within(tile).findByLabelText(enMu.judges.baseUrl);
+    // Empty: the problem, in the choice and on the tier alike.
+    expect(within(tile).getByRole('alert')).toHaveTextContent(enMu.judges.baseUrlNeeded);
+    expect(address).toHaveClass('arco-input-error');
+    expect(screen.getByTestId('mu-judge-tier-0')).toHaveTextContent(enMu.judges.baseUrlNeeded);
+    fireEvent.change(within(tile).getByLabelText(enMu.judges.services.custom.key), { target: { value: 'relay-key' } });
+    // The store refuses it, and the save bar says so in words.
+    bridge.save.mockResolvedValueOnce({
+      ok: false,
+      code: 'judgeEndpoint',
+      params: { name: 'jev-custom' },
+      error: 'Judge jev-custom has no base URL, and its key is not sent to TypeSafe',
+    });
+    fireEvent.click(screen.getByText('Save'));
+    expect(await screen.findByText(`Not saved: ${enMu.errors.judgeEndpoint}`)).toBeInTheDocument();
+    // An address a key must not go to is the other problem; a private-network one is fine.
+    fireEvent.change(address, { target: { value: 'http://relay.example.com/v1/systemone' } });
+    expect(within(tile).getByRole('alert')).toHaveTextContent(enMu.endpointRule);
+    fireEvent.change(address, { target: { value: 'http://192.168.1.20:8000/v1/systemone' } });
+    expect(within(tile).queryByRole('alert')).not.toBeInTheDocument();
+    expect(tile).toHaveTextContent(enMu.judges.customUrlHelp);
+    fireEvent.click(screen.getByText('Save'));
+    await waitFor(() => expect(bridge.save).toHaveBeenCalledTimes(2));
+    const sent = bridge.save.mock.calls[1][0] as SaveSettings;
+    expect(sent.tiers).toEqual(['jev-custom']);
+    expect(sent.judges['jev-custom']).toMatchObject({
+      type: 'typesafe',
+      baseUrl: 'http://192.168.1.20:8000/v1/systemone',
+      apiKeyEnv: 'MU_JUDGE_CUSTOM_API_KEY',
+    });
+    expect(sent.credentials).toEqual([{ name: 'MU_JUDGE_CUSTOM_API_KEY', value: 'relay-key' }]);
   });
 
   it('puts the switches that carry the product on the features page, and every other feature on the next', async () => {
