@@ -332,7 +332,9 @@ describe("lsp diagnostics feature", () => {
 			`#!/bin/sh\nexec "${process.execPath}" "${FAKE_SERVER}" '${JSON.stringify({ log })}'\n`,
 		);
 		chmodSync(join(bin, "typescript-language-server"), 0o755);
-		const found = await start(verdict(no), { lsp: { builtin: true, servers: {} } });
+		// The server starts on the first edit, which on a cold, busy machine takes longer than the usual settle wait;
+		// the wait ends as soon as the server has spoken, so a longer one only costs a slow run.
+		const found = await start(verdict(no), { lsp: { builtin: true, servers: {}, settleMs: 15_000 } });
 		await found.run("Write it.", [
 			write("notes.md", "nothing for a language server\n", "Notes first."),
 			write("a.ts", "const x = 1; // !error TS2322 Type 'string' is not assignable\n", "Now the code."),
