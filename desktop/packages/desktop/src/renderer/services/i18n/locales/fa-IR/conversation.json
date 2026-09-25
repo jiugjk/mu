@@ -91,7 +91,8 @@
     "batchArchiveSuccess_other": "{{count}} موضوع بایگانی شد",
     "archiveProjectConfirm_one": "پروژهٔ «{{name}}» بایگانی شود؟ {{count}} گفتگوی آن هم بایگانی می‌شود. می‌توانید آن را از «بایگانی» در تنظیمات بازیابی یا حذف کنید.",
     "archiveProjectConfirm_other": "پروژهٔ «{{name}}» بایگانی شود؟ {{count}} گفتگوی آن هم بایگانی می‌شود. می‌توانید آن‌ها را از «بایگانی» در تنظیمات بازیابی یا حذف کنید.",
-    "projectActions": "عملیات پروژه"
+    "projectActions": "عملیات پروژه",
+    "conversationActions": "عملیات چت"
   },
   "historySearch": {
     "tooltip": "جستجوی پیام‌ها",

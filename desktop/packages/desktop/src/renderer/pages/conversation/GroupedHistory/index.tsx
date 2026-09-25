@@ -7,6 +7,7 @@
 import type { TChatConversation } from '@/common/config/storage';
 import AionModal from '@/renderer/components/base/AionModal';
 import { useLayoutContext } from '@/renderer/hooks/context/LayoutContext';
+import { useRovingRows } from '@/renderer/hooks/ui/useRovingRows';
 import { useCronJobsMap } from '@/renderer/pages/cron';
 import { restrictToVerticalAxis } from '@/renderer/utils/ui/dndModifiers';
 import { DndContext, closestCenter } from '@dnd-kit/core';
@@ -27,6 +28,56 @@ import { useConversations } from './hooks/useConversations';
 import { useDragAndDrop } from './hooks/useDragAndDrop';
 import type { ConversationRowProps, WorkspaceGroupedHistoryProps } from './types';
 
+type SectionLabelProps = {
+  sectionKey: string;
+  label: string;
+  folded: boolean;
+  /** The list's Tab stops (`useRovingRows`): the label is one of the rows the arrow keys move through. */
+  tabIndexOf: (rowKey: string) => number;
+  onToggle: (sectionKey: string) => void;
+  trailing?: React.ReactNode;
+};
+
+/**
+ * A section's label (pinned, projects, conversations), which folds the section: a button for the keyboard too. A
+ * component of its own, so that it keeps the focus when its section folds or the list's Tab stop moves.
+ */
+const SectionLabel: React.FC<SectionLabelProps> = ({ sectionKey, label, folded, tabIndexOf, onToggle, trailing }) => {
+  const rowKey = `section:${sectionKey}`;
+  return (
+    <div
+      className='group/label sider-section-label flex items-center px-12px h-28px select-none sticky top-0 z-10 mt-8px cursor-pointer'
+      role='button'
+      tabIndex={tabIndexOf(rowKey)}
+      data-roving-row={rowKey}
+      aria-expanded={!folded}
+      onClick={() => onToggle(sectionKey)}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        onToggle(sectionKey);
+      }}
+    >
+      <span className='text-14px text-t-tertiary sider-section-title group-hover/label:text-t-primary transition-colors font-[500] leading-none'>
+        {label}
+      </span>
+      <span className='ms-2px flex items-center justify-center opacity-0 group-hover/label:opacity-100 transition-opacity text-t-tertiary shrink-0'>
+        <Right
+          theme='outline'
+          size={12}
+          className={classNames('transition-transform duration-150', { 'rotate-90': !folded })}
+        />
+      </span>
+      {trailing && (
+        <div className='ms-auto' onClick={(e) => e.stopPropagation()}>
+          {trailing}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const WorkspaceGroupedHistory: React.FC<WorkspaceGroupedHistoryProps> = ({
   onSessionClick,
   collapsed = false,
@@ -37,6 +88,13 @@ const WorkspaceGroupedHistory: React.FC<WorkspaceGroupedHistoryProps> = ({
 }) => {
   const { id } = useParams();
   const { t } = useTranslation();
+  // The list is one stop in the Tab order and the arrow keys move through its rows: sections, projects, conversations.
+  const {
+    listRef: rowListRef,
+    onFocus: onRowFocus,
+    onKeyDown: onRowKeyDown,
+    tabIndexOf: rowTabIndex,
+  } = useRovingRows(id ?? null);
   const navigate = useNavigate();
   const layout = useLayoutContext();
   const isMobile = layout?.isMobile ?? false;
@@ -57,35 +115,6 @@ const WorkspaceGroupedHistory: React.FC<WorkspaceGroupedHistoryProps> = ({
     collapsedSections,
     toggleSection,
   } = useConversations();
-
-  const SectionLabel = useCallback(
-    ({ sectionKey, label, trailing }: { sectionKey: string; label: string; trailing?: React.ReactNode }) => {
-      const isCollapsed = collapsedSections.has(sectionKey);
-      return (
-        <div
-          className='group/label sider-section-label flex items-center px-12px h-28px select-none sticky top-0 z-10 mt-8px cursor-pointer'
-          onClick={() => toggleSection(sectionKey)}
-        >
-          <span className='text-14px text-t-tertiary sider-section-title group-hover/label:text-t-primary transition-colors font-[500] leading-none'>
-            {label}
-          </span>
-          <span className='ms-2px flex items-center justify-center opacity-0 group-hover/label:opacity-100 transition-opacity text-t-tertiary shrink-0'>
-            <Right
-              theme='outline'
-              size={12}
-              className={classNames('transition-transform duration-150', { 'rotate-90': !isCollapsed })}
-            />
-          </span>
-          {trailing && (
-            <div className='ms-auto' onClick={(e) => e.stopPropagation()}>
-              {trailing}
-            </div>
-          )}
-        </div>
-      );
-    },
-    [collapsedSections, toggleSection]
-  );
 
   // Sync active conversation ref when route changes (for URL navigation)
   // This doesn't trigger state update, avoiding double render
@@ -173,6 +202,7 @@ const WorkspaceGroupedHistory: React.FC<WorkspaceGroupedHistoryProps> = ({
       checked: selectedConversationIds.has(conversation.id),
       selected: id === conversation.id,
       menuVisible: dropdownVisibleId !== null && dropdownVisibleId === conversation.id,
+      tabIndex: rowTabIndex(conversation.id),
       onToggleChecked: toggleSelectedConversation,
       onConversationClick: handleConversationClick,
       onOpenMenu: handleOpenMenu,
@@ -196,6 +226,7 @@ const WorkspaceGroupedHistory: React.FC<WorkspaceGroupedHistoryProps> = ({
       selectedConversationIds,
       id,
       dropdownVisibleId,
+      rowTabIndex,
       toggleSelectedConversation,
       handleConversationClick,
       handleOpenMenu,
@@ -381,7 +412,7 @@ const WorkspaceGroupedHistory: React.FC<WorkspaceGroupedHistoryProps> = ({
         </div>
       </AionModal>
 
-      <div>
+      <div ref={rowListRef} onFocus={onRowFocus} onKeyDown={onRowKeyDown}>
         {/* L1: Pinned section */}
         <DndContext
           sensors={sensors}
@@ -391,7 +422,15 @@ const WorkspaceGroupedHistory: React.FC<WorkspaceGroupedHistoryProps> = ({
         >
           {pinnedConversations.length > 0 && (
             <div className='min-w-0'>
-              {!collapsed && <SectionLabel sectionKey='pinned' label={t('conversation.history.pinnedSection')} />}
+              {!collapsed && (
+                <SectionLabel
+                  sectionKey='pinned'
+                  label={t('conversation.history.pinnedSection')}
+                  folded={collapsedSections.has('pinned')}
+                  tabIndexOf={rowTabIndex}
+                  onToggle={toggleSection}
+                />
+              )}
               {!collapsedSections.has('pinned') && (
                 <SortableContext items={pinnedIds} strategy={verticalListSortingStrategy}>
                   <div className='min-w-0'>
@@ -416,7 +455,15 @@ const WorkspaceGroupedHistory: React.FC<WorkspaceGroupedHistoryProps> = ({
         {/* L1: Projects section — workspace folders, peer to conversations */}
         {projectGroups.length > 0 && (
           <div className='min-w-0'>
-            {!collapsed && <SectionLabel sectionKey='projects' label={t('conversation.history.projectsSection')} />}
+            {!collapsed && (
+              <SectionLabel
+                sectionKey='projects'
+                label={t('conversation.history.projectsSection')}
+                folded={collapsedSections.has('projects')}
+                tabIndexOf={rowTabIndex}
+                onToggle={toggleSection}
+              />
+            )}
             {!collapsedSections.has('projects') &&
               projectGroups.map((group) => {
                 const projectMenu = (
@@ -438,6 +485,8 @@ const WorkspaceGroupedHistory: React.FC<WorkspaceGroupedHistoryProps> = ({
                 return (
                   <div key={group.workspace} className='min-w-0'>
                     <WorkspaceCollapse
+                      rowKey={`project:${group.workspace}`}
+                      tabIndex={rowTabIndex(`project:${group.workspace}`)}
                       expanded={expandedWorkspaces.includes(group.workspace)}
                       onToggle={() => handleToggleWorkspace(group.workspace)}
                       siderCollapsed={collapsed}
@@ -457,7 +506,7 @@ const WorkspaceGroupedHistory: React.FC<WorkspaceGroupedHistoryProps> = ({
                               aria-label={t('conversation.history.newConversationInProject')}
                               className={classNames(
                                 'flex-center cursor-pointer transition-colors text-t-secondary hover:text-t-primary size-20px rd-4px sider-action-btn',
-                                isMobile ? 'flex' : 'hidden group-hover:flex'
+                                isMobile ? 'flex' : 'hidden group-hover:flex group-focus-within:flex'
                               )}
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -509,7 +558,13 @@ const WorkspaceGroupedHistory: React.FC<WorkspaceGroupedHistoryProps> = ({
         {conversationOnlySections.length > 0 && (
           <div className='min-w-0'>
             {!collapsed && (
-              <SectionLabel sectionKey='conversations' label={t('conversation.history.conversationsSection')} />
+              <SectionLabel
+                sectionKey='conversations'
+                label={t('conversation.history.conversationsSection')}
+                folded={collapsedSections.has('conversations')}
+                tabIndexOf={rowTabIndex}
+                onToggle={toggleSection}
+              />
             )}
             {!collapsedSections.has('conversations') &&
               conversationOnlySections.map((section) => (

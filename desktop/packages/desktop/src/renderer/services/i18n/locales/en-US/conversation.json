@@ -91,7 +91,8 @@
     "batchArchiveSuccess_other": "Archived {{count}} topics",
     "archiveProjectConfirm_one": "Archive project \"{{name}}\"? Its {{count}} conversation will be archived too. You can restore or delete it from Archived in Settings.",
     "archiveProjectConfirm_other": "Archive project \"{{name}}\"? Its {{count}} conversations will be archived too. You can restore or delete them from Archived in Settings.",
-    "projectActions": "Project actions"
+    "projectActions": "Project actions",
+    "conversationActions": "Conversation actions"
   },
   "historySearch": {
     "tooltip": "Search messages",

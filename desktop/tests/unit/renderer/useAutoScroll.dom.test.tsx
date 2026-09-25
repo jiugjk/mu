@@ -363,6 +363,41 @@ describe('useAutoScroll', () => {
     });
   });
 
+  // A jump from the message search to an old message loads a page of rows around it. Those rows grow the list, and
+  // a list still following its end scrolled back to the last message before the jump arrived.
+  it('stops following the end after a jump, so rows loaded for the jump do not pull the view back', () => {
+    const scroller = createScroller({ scrollTop: 600 });
+    const content = createContent();
+    const { result } = renderHook(() =>
+      useAutoScroll({
+        messages: [createLeftMessage('hello')],
+        itemCount: 1,
+      })
+    );
+
+    attachElements(result, scroller, content);
+    act(() => {
+      vi.runAllTimers();
+    });
+    vi.mocked(scroller.scrollTo).mockClear();
+
+    const target = document.createElement('div');
+    target.scrollIntoView = vi.fn();
+    scroller.scrollHeight = 40_000;
+    act(() => {
+      // The older rows have grown the list and asked to follow before the jump runs.
+      resizeObserverCallback?.([], {} as ResizeObserver);
+      result.current.scrollElementIntoView(target, { behavior: 'smooth', block: 'center' });
+    });
+    act(() => {
+      resizeObserverCallback?.([], {} as ResizeObserver);
+      vi.runAllTimers();
+    });
+
+    expect(target.scrollIntoView).toHaveBeenCalled();
+    expect(scroller.scrollTo).not.toHaveBeenCalled();
+  });
+
   it('scrolls a target element into view for explicit message jumps', () => {
     const { result } = renderHook(() =>
       useAutoScroll({

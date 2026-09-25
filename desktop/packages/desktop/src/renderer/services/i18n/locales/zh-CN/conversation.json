@@ -91,7 +91,8 @@
     "batchArchiveSuccess_other": "已归档 {{count}} 个话题",
     "archiveProjectConfirm_one": "确定归档项目「{{name}}」吗？项目下的 {{count}} 个对话也会一起归档。归档后可在设置的归档页恢复或删除。",
     "archiveProjectConfirm_other": "确定归档项目「{{name}}」吗？项目下的 {{count}} 个对话也会一起归档。归档后可在设置的归档页恢复或删除。",
-    "projectActions": "项目操作"
+    "projectActions": "项目操作",
+    "conversationActions": "会话操作"
   },
   "historySearch": {
     "tooltip": "检索会话",

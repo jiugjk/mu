@@ -12,11 +12,12 @@ import { CronJobIndicator } from '@/renderer/pages/cron';
 import { resolveConversationLeadingMark } from '@/renderer/pages/conversation/utils/conversationAssistantIdentity';
 import { cleanupSiderTooltips, getSiderTooltipProps } from '@/renderer/utils/ui/siderTooltip';
 import { useLayoutContext } from '@/renderer/hooks/context/LayoutContext';
+import { useMenuKeyboard } from '@/renderer/hooks/ui/useMenuKeyboard';
 import { Checkbox, Dropdown, Menu, Spin, Tooltip } from '@arco-design/web-react';
 import { Attention, EditOne, Export, FolderClose, Inbox, MoreOne, Pushpin, Timer } from '@icon-park/react';
 import ForkBranchIcon from '@renderer/components/base/ForkBranchIcon';
 import classNames from 'classnames';
-import React from 'react';
+import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import type { ConversationRowProps } from './types';
@@ -34,6 +35,7 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
     checked,
     selected,
     menuVisible,
+    tabIndex = 0,
     dimIcon = false,
     dragHandle,
   } = props;
@@ -163,6 +165,27 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
     onConversationClick(conversation);
   };
 
+  // The row is a button for the keyboard: Tab reaches it, Enter or Space opens the conversation (or checks it in batch
+  // mode). Keys pressed on the row's menu button or inside its menu bubble up here and are theirs, not the row's.
+  const handleRowKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget) return;
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    handleRowClick();
+  };
+
+  const setMenuOpen = useCallback(
+    (open: boolean) => {
+      if (open) {
+        onOpenMenu(conversation);
+        return;
+      }
+      onMenuVisibleChange(conversation.id, false);
+    },
+    [conversation, onMenuVisibleChange, onOpenMenu]
+  );
+  const menuKeyboard = useMenuKeyboard<HTMLSpanElement>(menuVisible, setMenuOpen);
+
   const handleRowContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
@@ -179,7 +202,7 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
     }
 
     return (
-      <span className='absolute end-8px top-1/2 -translate-y-1/2 flex items-center justify-center group-hover:hidden'>
+      <span className='absolute end-8px top-1/2 -translate-y-1/2 flex items-center justify-center group-hover:hidden group-focus-within:hidden'>
         <span className='h-8px w-8px rounded-full bg-[rgb(var(--primary-6))] shadow-[0_0_0_2px_rgba(var(--primary-6),0.18)]' />
       </span>
     );
@@ -202,8 +225,13 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
             'bg-[rgba(var(--primary-6),0.08)]': batchMode && checked,
           }
         )}
+        role='button'
+        tabIndex={tabIndex}
+        data-roving-row={conversation.id}
+        aria-label={displayName}
         aria-current={selected ? 'page' : undefined}
         onClick={handleRowClick}
+        onKeyDown={handleRowKeyDown}
         onContextMenu={handleRowContextMenu}
       >
         {batchMode && (
@@ -276,7 +304,7 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
             className={classNames(
               'absolute top-1/2 -translate-y-1/2 flex items-center justify-center size-16px',
               trailingBesideMenu ? 'end-32px' : 'end-8px',
-              !batchMode && !isMobile && 'group-hover:hidden'
+              !batchMode && !isMobile && 'group-hover:hidden group-focus-within:hidden'
             )}
             style={{ lineHeight: 0 }}
             data-testid={`conversation-status-${conversation.id}`}
@@ -294,7 +322,7 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
               'absolute end-8px top-1/2 -translate-y-1/2 items-center justify-end !collapsed-hidden',
               {
                 flex: isMobile || menuVisible,
-                'hidden group-hover:flex': !isMobile && !menuVisible,
+                'hidden group-hover:flex group-focus-within:flex': !isMobile && !menuVisible,
               }
             )}
             onClick={(event) => {
@@ -304,6 +332,8 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
             <Dropdown
               droplist={
                 <Menu
+                  ref={menuKeyboard.menuRef}
+                  onKeyDown={menuKeyboard.onMenuKeyDown}
                   onClickMenuItem={(key) => {
                     if (key === 'pin') {
                       onTogglePin(conversation);
@@ -380,18 +410,25 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
               unmountOnExit={false}
             >
               <span
+                ref={menuKeyboard.buttonRef}
                 data-testid={`conversation-row-menu-${conversation.id}`}
+                role='button'
+                tabIndex={0}
+                aria-label={t('conversation.history.conversationActions')}
+                aria-haspopup='menu'
+                aria-expanded={menuVisible}
                 className={classNames(
                   'flex-center cursor-pointer transition-colors text-t-secondary hover:text-t-primary size-20px rd-4px sider-action-btn',
                   {
                     flex: isMobile || menuVisible,
-                    'hidden group-hover:flex': !isMobile && !menuVisible,
+                    'hidden group-hover:flex group-focus-within:flex': !isMobile && !menuVisible,
                   }
                 )}
                 onClick={(event) => {
                   event.stopPropagation();
                   onOpenMenu(conversation);
                 }}
+                onKeyDown={menuKeyboard.onButtonKeyDown}
               >
                 <MoreOne theme='outline' size='14' fill='currentColor' className='block leading-none' />
               </span>

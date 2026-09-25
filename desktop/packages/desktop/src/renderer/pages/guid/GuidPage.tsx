@@ -660,6 +660,7 @@ const GuidPage: React.FC = () => {
     <ConfigProvider
       locale={arcoConfig.locale}
       rtl={arcoConfig.rtl}
+      componentConfig={arcoConfig.componentConfig}
       effectGlobalModal={false}
       effectGlobalNotice={false}
       getPopupContainer={() => guidContainerRef.current || document.body}

@@ -91,7 +91,8 @@
     "batchArchiveSuccess_other": "{{count}} konuşma arşivlendi",
     "archiveProjectConfirm_one": "“{{name}}” projesi arşivlensin mi? İçindeki {{count}} konuşma da arşivlenecek. Ayarlar'daki Arşiv bölümünden geri yükleyebilir veya silebilirsiniz.",
     "archiveProjectConfirm_other": "“{{name}}” projesi arşivlensin mi? İçindeki {{count}} konuşma da arşivlenecek. Ayarlar'daki Arşiv bölümünden geri yükleyebilir veya silebilirsiniz.",
-    "projectActions": "Proje işlemleri"
+    "projectActions": "Proje işlemleri",
+    "conversationActions": "Konuşma işlemleri"
   },
   "historySearch": {
     "tooltip": "Mesajları ara",

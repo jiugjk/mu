@@ -77,6 +77,9 @@ const BTW_COMMAND_RE = /^\/btw(?:\s+([\s\S]*))?$/i;
 // Max items shown in the `@` dropdown (both data sources); the result panel skin
 // is unbounded (streaming append) — this caps only the inline mention menu.
 const AT_FILE_MENTION_LIMIT = 8;
+// One object for every render: the text area measures its height whenever this prop changes, and each measurement
+// makes the browser recompute the styles of the whole window, which in a long conversation costs more with every turn.
+const MULTI_LINE_AUTO_SIZE = { minRows: 1, maxRows: 10 };
 
 const DraftBoxActionIcon: React.FC<{ size?: number; color?: string; strokeWidth?: number }> = ({
   size = 16,
@@ -2149,7 +2152,7 @@ const SendBox: React.FC<{
                 syncHighlightScroll(event.currentTarget);
               }}
               {...compositionHandlers}
-              autoSize={isSingleLine ? false : { minRows: 1, maxRows: 10 }}
+              autoSize={isSingleLine ? false : MULTI_LINE_AUTO_SIZE}
               onKeyDown={createKeyDownHandler(handlePrimaryAction, (event) => {
                 return (
                   handleAddToDraftShortcut(event) ||

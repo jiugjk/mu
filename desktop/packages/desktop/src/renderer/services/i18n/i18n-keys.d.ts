@@ -1646,6 +1646,7 @@ export type I18nKey =
   | 'conversation.history.cancelDelete'
   | 'conversation.history.cancelEdit'
   | 'conversation.history.confirmDelete'
+  | 'conversation.history.conversationActions'
   | 'conversation.history.conversationsSection'
   | 'conversation.history.createCronTask'
   | 'conversation.history.deleteConfirm'

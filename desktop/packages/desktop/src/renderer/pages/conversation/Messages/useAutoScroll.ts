@@ -124,8 +124,14 @@ export function useAutoScroll({ messages, itemCount }: UseAutoScrollOptions): Us
     (element: HTMLElement | null, options?: ScrollElementIntoViewOptions) => {
       if (!element) return;
 
-      userScrolledRef.current = false;
-      setShowScrollButton(false);
+      // A jump to a message is the reader choosing where to read: the list stops following the end until they come
+      // back to it. Following on, the rows a jump loads (an older page of the conversation) grew the list and pulled
+      // the view back to its last message before the jump could arrive.
+      userScrolledRef.current = true;
+      if (pendingAutoFollowFrameRef.current !== null) {
+        cancelAnimationFrame(pendingAutoFollowFrameRef.current);
+        pendingAutoFollowFrameRef.current = null;
+      }
       markProgrammaticScroll();
       element.scrollIntoView({
         behavior: options?.behavior ?? 'smooth',

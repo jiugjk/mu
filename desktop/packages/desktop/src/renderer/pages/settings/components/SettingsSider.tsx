@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Tooltip } from '@arco-design/web-react';
 import { getSiderTooltipProps } from '@/renderer/utils/ui/siderTooltip';
+import { rowButtonProps } from '@/renderer/utils/ui/rowButton';
 import {
   SETTINGS_ANCHOR_REMAP,
   SETTINGS_GROUPS,
@@ -152,20 +153,23 @@ const SettingsSider: React.FC<{ collapsed?: boolean; tooltipEnabled?: boolean }>
             const isSelected = isSettingsRouteActive(pathname, `/settings/${item.path}`);
             return (
               <Tooltip key={item.id} {...siderTooltipProps} content={item.label} position='right'>
+                {/* A button for the keyboard too: Tab reaches every page, Enter or Space opens it. Named by the page's
+                    whole name, which the folded rail does not show. */}
                 <div
                   data-settings-id={item.id}
                   data-settings-path={item.path}
                   aria-current={isSelected ? 'page' : undefined}
+                  aria-label={item.label}
                   className={classNames(
                     'settings-sider__item h-32px rd-6px flex items-center gap-8px group cursor-pointer relative overflow-hidden shrink-0 transition-colors',
                     collapsed ? 'w-full justify-center px-0' : 'justify-start px-8px',
                     { 'hover:bg-fill-1': !isSelected }
                   )}
-                  onClick={() => {
+                  {...rowButtonProps(() => {
                     Promise.resolve(navigate(`/settings/${item.path}`, { replace: true })).catch((error) => {
                       console.error('Navigation failed:', error);
                     });
-                  }}
+                  })}
                 >
                   {/* Leading icon — 22px slot to align with main sider rows */}
                   <span className='size-22px flex items-center justify-center shrink-0 line-height-0'>

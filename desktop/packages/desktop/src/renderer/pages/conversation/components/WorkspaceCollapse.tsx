@@ -27,6 +27,9 @@ interface WorkspaceCollapseProps {
   stickyHeader?: boolean;
   /** 吸顶时距滚动容器顶部的偏移(px)，用于让位给上方常驻的分区标题 */
   stickyTop?: number;
+  /** The header's key among the rows the arrow keys move through (`useRovingRows`), and its place in the Tab order. */
+  rowKey?: string;
+  tabIndex?: number;
 }
 
 /**
@@ -42,6 +45,8 @@ const WorkspaceCollapse: React.FC<WorkspaceCollapseProps> = ({
   trailing,
   stickyHeader = false,
   stickyTop,
+  rowKey,
+  tabIndex = 0,
 }) => {
   // 侧栏折叠时，强制展开内容并隐藏头部
   const showContent = siderCollapsed || expanded;
@@ -57,9 +62,21 @@ const WorkspaceCollapse: React.FC<WorkspaceCollapseProps> = ({
           className={classNames(stickyEnabled && 'sticky z-[9] bg-[var(--bg-2)]')}
           style={stickyEnabled ? { top: stickyTop ?? 0 } : undefined}
         >
+          {/* A button for the keyboard too: Tab reaches the header, Enter or Space folds or unfolds the project. Keys
+              pressed on the buttons at its end bubble up here and are theirs. */}
           <div
             className='flex items-center gap-8px h-34px ps-10px pe-8px cursor-pointer hover:bg-fill-3 rd-8px transition-colors min-w-0 group'
+            role='button'
+            tabIndex={tabIndex}
+            data-roving-row={rowKey}
+            aria-expanded={expanded}
             onClick={onToggle}
+            onKeyDown={(event) => {
+              if (event.target !== event.currentTarget) return;
+              if (event.key !== 'Enter' && event.key !== ' ') return;
+              event.preventDefault();
+              onToggle();
+            }}
           >
             <span className='size-22px flex items-center justify-center shrink-0 text-t-primary'>
               {expanded ? (

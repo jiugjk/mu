@@ -91,7 +91,8 @@
     "batchArchiveSuccess_other": "已歸檔 {{count}} 個話題",
     "archiveProjectConfirm_one": "確定歸檔專案「{{name}}」嗎？專案下的 {{count}} 個對話也會一起歸檔。歸檔後可在設定的歸檔頁恢復或刪除。",
     "archiveProjectConfirm_other": "確定歸檔專案「{{name}}」嗎？專案下的 {{count}} 個對話也會一起歸檔。歸檔後可在設定的歸檔頁恢復或刪除。",
-    "projectActions": "專案操作"
+    "projectActions": "專案操作",
+    "conversationActions": "對話操作"
   },
   "historySearch": {
     "tooltip": "搜尋訊息",

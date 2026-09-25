@@ -91,7 +91,8 @@
     "batchArchiveSuccess_other": "{{count}} sujets archivés",
     "archiveProjectConfirm_one": "Archiver le projet « {{name}} » ? {{count}} conversation de ce projet sera aussi archivée. Vous pourrez la restaurer ou la supprimer depuis « Archives » dans les paramètres.",
     "archiveProjectConfirm_other": "Archiver le projet « {{name}} » ? Ses {{count}} conversations seront aussi archivées. Vous pourrez les restaurer ou les supprimer depuis « Archives » dans les paramètres.",
-    "projectActions": "Actions du projet"
+    "projectActions": "Actions du projet",
+    "conversationActions": "Actions du chat"
   },
   "historySearch": {
     "tooltip": "Rechercher des messages",
