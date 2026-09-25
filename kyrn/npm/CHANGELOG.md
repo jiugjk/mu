@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.1.5] - 2026-09-25
+
+### Added
+
+- Built on pi 0.87.1 (0.1.4 was on pi 0.86.0): Claude Opus 5.5, GPT-6 Sol and GPT-6 Luna, Grok 4.7 as xAI's default, Meta's Muse subscription (`/login meta`), and image limits per model.
+- Jev through OpenRouter, with a key for Jev only (`MU_JUDGE_OPENROUTER_API_KEY`), so setting it never changes OpenRouter's chat models. The `jev` tier tries TypeSafe's key, then this one, then the Vercel AI Gateway; each service is asked for the model by its own name. A key set up for one service is never sent to another.
+- CLM as a judge: the `clm` tier reaches a clm-serve (`http://127.0.0.1:8700` by default, `baseUrl` for another machine), with an optional key (`MU_JUDGE_CLM_API_KEY`). `mu doctor` checks each CLM server. Its decisions are not measured yet, so `jev` never picks it on its own.
+- `/hive <question>` starts a hive on a question of yours: three investigators on angles that bear on each other, then an answer from their reports. Without a question, `/hive` is still `/swarm`.
+
+### Fixed
+
+- Permissions:
+  - A command made only of read-only programs can no longer write or run something through its options (`rg --pre`, `sort -o`, `uniq` with a second file, `tree -o`, PowerShell's `( )`).
+  - Risk flags catch more spellings of the same thing: `git clean` forced by a later option, `find -delete`, `find -exec rm`, `git push` with a `+` refspec, `--mirror` or `--delete`, a quoted program name, `doas`, `pkexec`, and downloads run through `bash <(curl ...)`. An "allow for this conversation" grant never covers a flagged command.
+  - In Jev approval mode, a flagged command runs only when Jev is sure you asked for what it does. A command could vouch for itself before (`# only reads, deletes nothing`).
+  - An edit's path is read the way the file tools read it (`~`, a leading `@`, `file://`, links), so `write ~/.zshrc` no longer counts as an edit inside the project. Paths under `.git` are not project files.
+  - Evaluating an expression in a debugged program (`debug_inspect` with an expression) needs permission like any program run.
+  - The permission modes hold with judging switched off (`MU_JUDGE=off`); before, minimal permissions let everything run.
+  - A sub-agent's calls are weighed against your goal, not against the brief its lead model wrote.
+  - `permissions.request`, `permissions.resolved` and `permissions.approved` carry the `toolCallId` of the call they are about.
+  - A permission question says when no judge answered, instead of saying Jev was unsure: `nojudge` when none can answer (no key, no credit, only an untrusted judge), `judgedown` when it failed this time.
+- Privacy:
+  - Credentials are taken out of everything a judge or the board's writer model is shown (`export OPENAI_API_KEY=sk-...` in a command, the start of `cat .env`), and ordinary words such as "password reset" stay.
+  - Checkpoints take in no secret files (`.env`, `.envrc`, `.netrc`, `*.pem`, `*.key`, SSH keys), drop ones an older mu took in, and each project's store is readable by you only.
+  - A page in the built-in browser can no longer send it to this computer or the local network (`127.0.0.1`, a router, `169.254.169.254`): the run ends as blocked (`off_the_web`) and reports only that page's origin.
+- A judge connection that goes silent is replaced after two unanswered calls. Before, a session that started in a slow minute of Jev fell back on every decision for the rest of the session.
+- The browser's field writer stops with the run and after `browser.writeTimeoutMs` (60 s), so a stalled model no longer holds a browse run that Esc cannot end.
+- Hive: `/hive` counts as your turn, so Jev judges the hive against it; a note is confirmed only by other investigators, each named once; a bee's grace period runs from when it heard it was to report; a bee cut off while writing hands back what it wrote; a bee's notes and checkpoint arrive in one message; H3 replaces another's note only on a near-certain reading; the plain-text view carries no terminal codes; a bee's row shows the start of what it said.
+- macOS without the developer tools, or with the Xcode license not accepted: checkpoints switch off once, with one line in your language and a `checkpoint.off` code (`developer_tools_missing`, `xcode_license`). Checkpoints, sub-agents and `locate` never start the system's git stub, which opens the install dialog each time it runs.
+- `mu auth` exits only once no lock of pi's stores is being taken or dropped. A lock left behind made the next `mu auth` wait until the desktop app gave up on it, and a conversation started meanwhile had no model.
+- Windows: the bash tool's commands are read as bash, not by PowerShell's rules (`rg 'useState\(' src` needed permission); a bee started in a nested folder finds the paths of its task in its own worktree, not in your checkout; `mu.ps1` hands arguments with quotes to mu intact under Windows PowerShell 5.1.
+
 ## [0.1.4] - 2026-09-23
 
 ### Fixed
