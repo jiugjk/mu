@@ -49,8 +49,10 @@ import { MU, removeHome, runScript, SYSTEM_PATH } from "./fixtures/launcher.ts";
 
 /**
  * There is no Windows machine and no WSL where this is developed. What the launcher would do there is proven
- * here by calling its decisions with win32 and linux parameters and an in-memory file system. What that cannot
- * prove (cmd.exe, junctions on NTFS, a real console) is listed in kyrn/docs/features/windows-and-wsl.md.
+ * here by calling its decisions with win32 and linux parameters and an in-memory file system. The tests that build
+ * the app view and run the launcher for real also run on GitHub's Windows runners (.github/workflows/windows-tests.yml),
+ * where they go through mu.cmd in cmd.exe and make junctions on NTFS. What neither proves (a real console, WSL) is
+ * listed in kyrn/docs/features/windows-and-wsl.md.
  */
 const repo = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 

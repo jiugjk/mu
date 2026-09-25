@@ -251,7 +251,8 @@ describe("mu migrate", () => {
 		try {
 			await new Promise((started) => session.once("spawn", started));
 
-			// On a fresh Windows runner the PowerShell call behind it has taken half a minute.
+			// About 30 s on GitHub's Windows runners: with the home moved, the PowerShell call behind it finds no module
+			// cache and reads the runner's hundreds of modules again. (0.3 s with the runner's own home.)
 			const refused = run("mu", ["migrate", "--dry-run"], { HOME: dir }, 110_000);
 
 			expect(refused.code).toBe(1);
