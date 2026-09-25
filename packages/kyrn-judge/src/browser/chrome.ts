@@ -316,6 +316,20 @@ export interface LaunchOptions {
 	readonly headless?: boolean;
 	/** The machine to look at. Tests pass one; everything else uses this machine. */
 	readonly host?: BrowserHost;
+	/** How long Chrome may take to open its DevTools port, in milliseconds: 15 s. Tests shorten it. */
+	readonly portWaitMs?: number;
+}
+
+/** Resolves once `child` has exited, or after `ms` whatever it does. */
+function exitOf(child: ChildProcess, ms: number): Promise<void> {
+	if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
+	return new Promise((resolve) => {
+		const timer = setTimeout(resolve, ms);
+		child.once("exit", () => {
+			clearTimeout(timer);
+			resolve();
+		});
+	});
 }
 
 /**
@@ -352,7 +366,7 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
 		failure = error;
 	});
 
-	const deadline = Date.now() + 15_000;
+	const deadline = Date.now() + (options.portWaitMs ?? 15_000);
 	while (Date.now() < deadline) {
 		const endpoint = readEndpoint(profileDir);
 		if (endpoint && (await isAlive(endpoint))) return { endpoint, process: child, profileDir };
@@ -368,6 +382,9 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
 			});
 		await new Promise((resolve) => setTimeout(resolve, 100));
 	}
+	// Waited for, a while: a Chrome still on its way out holds its profile, so the next start in it (another try, the next
+	// browsing step) would find the profile taken, and Windows would not even let its folder be removed.
 	child.kill();
+	await exitOf(child, 5_000);
 	throw codedError("Chrome did not open its DevTools port in time", { code: "devtools_port_timeout" });
 }
