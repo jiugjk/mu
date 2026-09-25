@@ -106,7 +106,7 @@ Each decision point is `active`, `shadow` (asked and logged, changes nothing: fo
 
 ## Judges
 
-- **Jev** (hosted). Bounded questions with probabilities. Measured from the authors' own sessions: one warm question in about 0.3 s over HTTP/2; 16 chunks of tool output judged in one request in 0.44 s, the state billed once. Verdicts, probabilities and timings go to the ledger: `mu ledger`, or the judgments tab of the desktop app.
+- **Jev** (hosted). Bounded questions with probabilities. Reached through TypeSafe, OpenRouter, the Vercel AI Gateway or any service that speaks the same protocol, each with its own address and key (`TYPESAFE_API_KEY`, `MU_JUDGE_OPENROUTER_API_KEY`, `AI_GATEWAY_API_KEY`): the desktop app's judges page picks one, and by default the first whose key is set is used. Measured from the authors' own sessions: one warm question in about 0.3 s over HTTP/2; 16 chunks of tool output judged in one request in 0.44 s, the state billed once. Verdicts, probabilities and timings go to the ledger: `mu ledger`, or the judgments tab of the desktop app.
 - **Laya** (local). A 322M-parameter judge that runs on your machine and never touches the network. Nothing is downloaded without your consent. Reliable on simple predicates, weaker on meta-judgments: run it in shadow next to Jev and read the ledger before giving it a decision point.
 - **Any LLM**, as a tier: `llm:<provider>/<model>`.
 
