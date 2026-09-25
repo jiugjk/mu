@@ -140,6 +140,17 @@ const WebviewHost: React.FC<WebviewHostProps> = ({
 
   // Navigation state
   const [currentUrl, setCurrentUrl] = useState(url);
+  const currentUrlRef = useRef(currentUrl);
+  currentUrlRef.current = currentUrl;
+  /**
+   * The webview's `src`: only an address the owner gives (the `url` prop) or the person asks for, never where the page
+   * went by itself (a link, a redirect, a script, history.pushState). Electron loads whatever `src` is set to, even the
+   * address the page is already on, so writing the page's own address back reloaded it: a second time after a
+   * redirect, fully after a route change in a single-page app, and as a GET after a form's POST.
+   */
+  const [source, setSource] = useState(url);
+  /** Whether the page has been ready once: from then on its webContents takes loadURL. */
+  const guestReadyRef = useRef(false);
   const [inputUrl, setInputUrl] = useState(url);
   const [isLoading, setIsLoading] = useState(true);
   const [zoomFactor, setZoomFactor] = useState(1);
@@ -179,6 +190,20 @@ const WebviewHost: React.FC<WebviewHostProps> = ({
 
   const isStarOffice = isStarOfficeUrl(currentUrl);
 
+  /**
+   * Sends the page to an address, once: through `src` until the page has been ready (that also starts it), then
+   * through loadURL. A load that fails says so with did-fail-load, heard below; the promise's rejection adds only a
+   * console error (ERR_ABORTED when a newer navigation replaces it).
+   */
+  const load = useCallback((targetUrl: string) => {
+    const webviewEl = webviewRef.current;
+    if (webviewEl && guestReadyRef.current) {
+      webviewEl.loadURL(targetUrl).catch(() => {});
+      return;
+    }
+    setSource(targetUrl);
+  }, []);
+
   // Single funnel for URL change notifications: every navigation path
   // (address bar, link click, back/forward, did-navigate) lands on currentUrl,
   // so watching it here avoids sprinkling callbacks across each handler.
@@ -199,6 +224,8 @@ const WebviewHost: React.FC<WebviewHostProps> = ({
     internalNavRef.current.clear();
     setCanGoBack(false);
     setCanGoForward(false);
+    // An address the page is not on: go there (the page's own address is not loaded again, as before).
+    if (url !== currentUrlRef.current) load(url);
     setCurrentUrl(url);
     setInputUrl(url);
     setIsLoading(true);
@@ -236,9 +263,9 @@ const WebviewHost: React.FC<WebviewHostProps> = ({
       setCurrentUrl(targetUrl);
       setInputUrl(targetUrl);
 
-      webviewEl.src = targetUrl;
+      load(targetUrl);
     },
-    [currentUrl]
+    [currentUrl, load]
   );
 
   // Webview event listeners
@@ -349,6 +376,7 @@ const WebviewHost: React.FC<WebviewHostProps> = ({
     };
 
     const handleDomReady = () => {
+      guestReadyRef.current = true;
       setWebviewReady(true);
       syncNavState();
       if (!pristineRef.current) injectClickInterceptor();
@@ -856,7 +884,7 @@ const WebviewHost: React.FC<WebviewHostProps> = ({
       >
         <webview
           ref={webviewRef as any}
-          src={currentUrl}
+          src={source}
           className='border-0 absolute start-0 top-0'
           style={{
             opacity: veilsWhileLoading && isLoading ? 0 : 1,
