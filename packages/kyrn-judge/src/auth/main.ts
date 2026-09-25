@@ -1,3 +1,4 @@
+import { constants } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { Provider } from "@earendil-works/pi-ai";
@@ -6,6 +7,7 @@ import { defaultModelPerProvider, ModelRuntime } from "@earendil-works/pi-coding
 import { featureOptions, loadConfig } from "../config.ts";
 import { antigravityProvider, geminiCliProvider } from "../google-login/providers.ts";
 import { muEnv, muHome } from "../naming.ts";
+import { exitWhenUnlocked } from "./exit.ts";
 import { runAuth } from "./runner.ts";
 
 /**
@@ -14,6 +16,9 @@ import { runAuth } from "./runner.ts";
  * which the launcher sets, else ~/.mu/agent.
  */
 const agentDir = muEnv("AGENT_DIR") || join(muHome(), "agent");
+/** The files pi keeps under a lock, named once so the exit waits for the same ones pi opens (exit.ts). */
+const authPath = join(agentDir, "auth.json");
+const modelsStorePath = join(agentDir, "models-store.json");
 const say = (message: Readonly<Record<string, unknown>>) => process.stdout.write(`${JSON.stringify(message)}\n`);
 
 /**
@@ -41,8 +46,9 @@ function googleProviders(): Provider[] {
 
 async function main(): Promise<number> {
 	const runtime = await ModelRuntime.create({
-		authPath: join(agentDir, "auth.json"),
+		authPath,
 		modelsPath: join(agentDir, "models.json"),
+		modelsStorePath,
 		refreshOnCreate: false,
 	});
 	return runAuth(process.argv.slice(2), {
@@ -60,11 +66,18 @@ async function main(): Promise<number> {
 	});
 }
 
+let leaving = false;
+const leave = (code: number): void => {
+	if (leaving) return;
+	leaving = true;
+	void exitWhenUnlocked(code, [authPath, modelsStorePath], (exitCode) => process.exit(exitCode));
+};
+
 // Exits once the answer is out: a sign-in's callback server or an idle connection must not keep the process alive.
-main().then(
-	(code) => process.exit(code),
-	(error: unknown) => {
-		say({ type: "error", message: error instanceof Error ? error.message : String(error) });
-		process.exit(1);
-	},
-);
+// A run the app ends (SIGTERM, at its time limit or when it quits) ends the same way, with no lock left either.
+for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"] as const)
+	process.on(signal, () => leave(128 + constants.signals[signal]));
+main().then(leave, (error: unknown) => {
+	say({ type: "error", message: error instanceof Error ? error.message : String(error) });
+	leave(1);
+});
