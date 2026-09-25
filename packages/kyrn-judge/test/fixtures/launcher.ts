@@ -43,12 +43,14 @@ export function runScript(script: string, args: readonly string[], env: Record<s
 }
 
 /**
- * Runs mu.ps1 as PowerShell runs a script file. `shell` is Windows PowerShell 5.1 (powershell.exe, on every Windows)
- * or PowerShell 7 (pwsh.exe). Node quotes each argument and PowerShell reads it back whole, so the script gets `args`
- * exactly, as from a PowerShell prompt. The execution policy is set aside for this run: what is tested is the script.
+ * Runs mu.ps1 as a person does at a PowerShell prompt, `& mu.ps1 'one argument' 'another'`: each argument is a string
+ * of its own, which reaches the script whole. They travel in variables of their own, so neither Node's quoting nor
+ * PowerShell's reading of a command line (`-File` takes `-name:value` apart) comes in between. `shell` is Windows
+ * PowerShell 5.1 (powershell.exe, on every Windows) or PowerShell 7 (pwsh.exe). The execution policy is set aside for
+ * this run: what is tested is the script.
  *
- * `legacy` calls the script from a session that passes arguments to programs as PowerShell 7 did before 7.3, which a
- * person can still choose ($PSNativeCommandArgumentPassing). The arguments then travel in variables of their own.
+ * `legacy` asks for the argument passing of PowerShell 7 before 7.3, which a person can still choose
+ * ($PSNativeCommandArgumentPassing).
  */
 export function runPowerShell(
 	shell: string,
@@ -56,15 +58,15 @@ export function runPowerShell(
 	env: Record<string, string>,
 	{ legacy = false, timeout = 60_000 } = {},
 ) {
-	const flags = ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass"];
-	const script = join(BIN, "mu.ps1");
 	const named = Object.fromEntries(args.map((arg, index) => [`MU_TEST_ARG${index}`, arg]));
 	const words = args.map((_arg, index) => `$env:MU_TEST_ARG${index}`).join(" ");
-	const command = `$PSNativeCommandArgumentPassing = 'Legacy'; & $env:MU_TEST_SCRIPT ${words}; exit $LASTEXITCODE`;
-	const result = spawnSync(shell, legacy ? [...flags, "-Command", command] : [...flags, "-File", script, ...args], {
+	const passing = legacy ? "$PSNativeCommandArgumentPassing = 'Legacy'; " : "";
+	const command = `${passing}& $env:MU_TEST_SCRIPT ${words}; exit $LASTEXITCODE`;
+	const flags = ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command];
+	const result = spawnSync(shell, flags, {
 		encoding: "utf8",
 		input: "",
-		env: scriptEnv(legacy ? { ...env, ...named, MU_TEST_SCRIPT: script } : env),
+		env: scriptEnv({ ...env, ...named, MU_TEST_SCRIPT: join(BIN, "mu.ps1") }),
 		timeout,
 		windowsHide: true,
 	});
