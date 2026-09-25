@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { delimiter, join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 import { LocalJudge, type LocalJudgeDeps, type TaskProcess } from '@/process/agent/kyrn/localJudge';
@@ -36,7 +37,7 @@ function judge(patch: Partial<LocalJudgeDeps> = {}, files: string[] = []) {
     platform: 'darwin',
     arch: 'arm64',
     home: HOME,
-    env: { PATH: '/usr/bin:/bin' },
+    env: { PATH: ['/usr/bin', '/bin'].join(delimiter) },
     exists: (path) => found.has(path),
     health: async () => false,
     spawn: (command, args, options) => {
@@ -50,9 +51,10 @@ function judge(patch: Partial<LocalJudgeDeps> = {}, files: string[] = []) {
   return { local, spawned, children };
 }
 
-const UV = `${HOME}/.local/bin/uv`;
-const PYTHON = `${ROOT}/kyrn/local-judge/.venv/bin/python`;
-const WEIGHTS = `${ROOT}/kyrn/local-judge/models/laya-multilingual-coreml/coreml_config.json`;
+// Spelled by this machine's join and delimiter, as the judge builds its paths whatever platform it is told it runs on.
+const UV = join(HOME, '.local', 'bin', 'uv');
+const PYTHON = join(ROOT, 'kyrn', 'local-judge', '.venv', 'bin', 'python');
+const WEIGHTS = join(ROOT, 'kyrn', 'local-judge', 'models', 'laya-multilingual-coreml', 'coreml_config.json');
 
 describe('the local judge as the app manages it', () => {
   it('says whether this machine can run it, whether it is installed and whether it answers', async () => {
@@ -80,8 +82,11 @@ describe('the local judge as the app manages it', () => {
 
     const started = await local.run('setup', true);
     expect(started.task).toMatchObject({ id: 1, action: 'setup', phase: 'running' });
-    expect(spawned[0]).toMatchObject({ command: '/bin/bash', args: [`${ROOT}/kyrn/bin/kyrn-judge-local`, 'setup'] });
-    expect(spawned[0].path?.split(':')[0]).toBe(`${HOME}/.local/bin`);
+    expect(spawned[0]).toMatchObject({
+      command: '/bin/bash',
+      args: [join(ROOT, 'kyrn', 'bin', 'kyrn-judge-local'), 'setup'],
+    });
+    expect(spawned[0].path?.split(delimiter)[0]).toBe(join(HOME, '.local', 'bin'));
     // A second click while it works starts nothing.
     await local.run('start');
     expect(spawned).toHaveLength(1);

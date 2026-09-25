@@ -14,7 +14,8 @@ import {
 import type { BundleCheck } from '@process/services/localJudgeOnnx/bundle';
 
 const HOME = '/home/someone';
-const FOLDER = `${HOME}/.mu/local-judge/laya-multilingual-onnx`;
+// Spelled by this machine's join, as the judge builds the folder whatever platform it is told it runs on.
+const FOLDER = join(HOME, '.mu', 'local-judge', 'laya-multilingual-onnx');
 const READY: BundleCheck = { paths: {}, missing: [], wrong: [], ready: true };
 const EMPTY: BundleCheck = { paths: {}, missing: ['model.onnx', 'onnx_config.json'], wrong: [], ready: false };
 

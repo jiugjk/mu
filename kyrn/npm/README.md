@@ -27,7 +27,8 @@ mu is built on [pi](https://github.com/earendil-works/pi). It hands the small qu
 
 Without one, mu works like pi with the extra tools.
 
-- **Jev** (hosted): set `AI_GATEWAY_API_KEY` (Vercel AI Gateway) or `TYPESAFE_API_KEY` in your environment, or put it in `~/.mu/.env` as `KEY=value`. mu reads that file as data and never prints it.
+- **Jev** (hosted): set `TYPESAFE_API_KEY` (TypeSafe), `MU_JUDGE_OPENROUTER_API_KEY` (Jev on OpenRouter) or `AI_GATEWAY_API_KEY` (Vercel AI Gateway) in your environment, or put it in `~/.mu/.env` as `KEY=value`. mu reads that file as data and never prints it.
+- **CLM** (self-hosted; its encoder needs a GPU): start `clm-serve` from [Contrastive-LM/CLM](https://github.com/Contrastive-LM/CLM), then `/mu judge clm`. For a server on another machine, add `"judges": { "clm": { "type": "clm", "baseUrl": "http://<host>:8700" } }` to `~/.mu/agent/mu.json`. A server started with `CLM_API_KEY` needs the same value in `MU_JUDGE_CLM_API_KEY`. `mu doctor` checks the server.
 - **Laya** (local, macOS on Apple Silicon): `mu judge setup` installs it into `~/.mu/local-judge`. It downloads about 930 MB, only when you run that command.
 - **Any model you already use:** `/mu judge llm:<provider>/<model>`.
 

@@ -8,7 +8,8 @@ import type { JsonRecord } from '@/process/agent/kyrn/piRpc';
 
 const roots: string[] = [];
 const temp = (name: string): string => {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), `mu-adopt-${name}-`)));
+  // The long name of every folder, as the adapter resolves it (Windows gives the temp folder by its short name).
+  const dir = realpathSync.native(mkdtempSync(join(tmpdir(), `mu-adopt-${name}-`)));
   roots.push(dir);
   return dir;
 };

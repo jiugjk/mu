@@ -133,8 +133,11 @@ describe('custom model providers in models.json', () => {
         models: [{ id: 'claude-x', reasoning: true, input: ['text', 'image'], contextWindow: 200000 }],
       });
       expect(f.env()).toBe('MU_PROVIDER_MY_PROXY_API_KEY=sk-fixture-secret\n');
-      expect(statSync(join(f.root, '.env')).mode & 0o777).toBe(0o600);
-      expect(statSync(join(f.dir, 'models.json')).mode & 0o777).toBe(0o600);
+      // Windows has no mode bits: a file in the user's profile is theirs through the folder's access rules.
+      if (process.platform !== 'win32') {
+        expect(statSync(join(f.root, '.env')).mode & 0o777).toBe(0o600);
+        expect(statSync(join(f.dir, 'models.json')).mode & 0o777).toBe(0o600);
+      }
       expect(JSON.stringify(saved)).not.toContain('sk-fixture-secret');
       expect(readFileSync(join(f.dir, 'models.json'), 'utf8')).not.toContain('sk-fixture-secret');
       const added = saved.models.providers.find((item) => item.id === 'my-proxy')!;

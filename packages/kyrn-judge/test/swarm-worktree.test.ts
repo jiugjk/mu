@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	checkRepo,
@@ -61,7 +61,9 @@ describe("worktree: where it can be used", () => {
 		const repo = makeRepo(root, { "src/a.txt": "a\n" });
 		expect(await checkRepo(runGit, join(repo, ".git"))).toMatchObject({ ok: false, problem: "not-a-repo" });
 		const fine = await checkRepo(runGit, join(repo, "src"));
-		expect(fine).toMatchObject({ ok: true, repo: { root: repo, prefix: "src/", gitDir: join(repo, ".git") } });
+		expect(fine).toMatchObject({ ok: true, repo: { prefix: "src/" } });
+		// As git writes them: with forward slashes on Windows.
+		expect(fine.ok && [resolve(fine.repo.root), resolve(fine.repo.gitDir)]).toEqual([repo, join(repo, ".git")]);
 
 		writeFileSync(join(repo, ".git", "MERGE_HEAD"), "0".repeat(40));
 		expect(await checkRepo(runGit, repo)).toMatchObject({
@@ -211,9 +213,9 @@ describe("worktree: one task's isolated checkout", () => {
 		writeFileSync(join(parent, "a.txt"), "one\nparent's uncommitted line\n");
 
 		const check = await checkRepo(runGit, parent);
-		expect(check).toMatchObject({ ok: true, repo: { root: parent } });
+		expect(check.ok && resolve(check.repo.root)).toBe(parent);
 		// Its own git directory, where a merge or rebase of THIS checkout would leave its files.
-		expect(check.ok && check.repo.gitDir).toContain(join(".git", "worktrees"));
+		expect(check.ok && resolve(check.repo.gitDir)).toContain(join(".git", "worktrees"));
 
 		const { worktree } = await open(parent, join(root, "kyrn-swarm-t", "w0"));
 		expect(readFileSync(join(worktree.dir, "a.txt"), "utf8")).toContain("parent's uncommitted line");

@@ -120,7 +120,7 @@ describe("delegate with worktree isolation", () => {
 		const cwd = assignment.cwd ?? "";
 		// Directly under the temp directory, under the name the desktop app accepts for a run.
 		expect(dirname(dirname(cwd))).toBe(tmpdir());
-		expect(cwd).toMatch(/kyrn-swarm-[0-9a-f]{8}\/w0$/);
+		expect(cwd).toMatch(/kyrn-swarm-[0-9a-f]{8}[\\/]w0$/);
 		expect(cwd.startsWith(harness.repo)).toBe(false);
 		expect(assignment.trusted).toBe(true);
 		expect(task.instructions).toContain(`${cwd}/src/a.txt`);
@@ -284,6 +284,14 @@ describe("delegate with worktree isolation", () => {
 		};
 		expect(rebase("Edit /var/proj/src/a.ts and /private/var/proj/b.ts", parent, "/tmp/w0")).toBe(
 			"Edit /tmp/w0/src/a.ts and /tmp/w0/b.ts",
+		);
+		// On Windows git writes the root and the prefix with forward slashes; the session's folder has backslashes.
+		const windows = {
+			repo: { root: "C:/Users/me/repo", prefix: "packages/app/", gitDir: "", head: "" },
+			cwd: "C:\\Users\\me\\repo\\packages\\app",
+		};
+		expect(rebase("Edit C:\\Users\\me\\repo\\packages\\app\\a.ts and C:/Users/me/repo/b.ts", windows, "T:\\w0")).toBe(
+			"Edit T:\\w0\\packages\\app\\a.ts and T:\\w0/b.ts",
 		);
 	});
 

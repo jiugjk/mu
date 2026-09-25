@@ -2,7 +2,7 @@
 // `mu doctor`: is this installation able to run, and what is it configured to do?
 //
 // Reads configuration, never credentials: for the login it only checks that the
-// file exists, and for the Jev key only that the variable is set.
+// file exists, and for a judge's key only that the variable is set.
 import { existsSync, readFileSync, readlinkSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -156,12 +156,12 @@ const JEV_ROUTES = {
 	"jev-gateway": { type: "gateway" },
 	gateway: { type: "gateway" },
 };
+// Parsed the way the launcher parses it (quotes, `export `), and only asked whether a name has a value.
+const fromFile = existsSync(envFile) ? parseEnvFile(readFileSync(envFile, "utf8")).entries : [];
+const has = (name) => Boolean(process.env[name]) || fromFile.some(([key, value]) => key === name && value !== "");
+const where = `to ${tilde(envFile)} or to your environment`;
 const jevTier = tiers.find((tier) => ["jev", "typesafe", "gateway"].includes((config?.judges?.[tier] ?? JEV_ROUTES[tier])?.type));
 if (jevTier) {
-	// Parsed the way the launcher parses it (quotes, `export `), and only asked whether a name has a value.
-	const fromFile = existsSync(envFile) ? parseEnvFile(readFileSync(envFile, "utf8")).entries : [];
-	const has = (name) => Boolean(process.env[name]) || fromFile.some(([key, value]) => key === name && value !== "");
-	const where = `to ${tilde(envFile)} or to your environment`;
 	const judge = config?.judges?.[jevTier] ?? JEV_ROUTES[jevTier];
 	if (judge.type === "jev") {
 		// The order the registry tries: TypeSafe directly, Jev on OpenRouter, the Vercel AI Gateway.
@@ -183,7 +183,9 @@ if (jevTier) {
 		const via = judge.type === "gateway" ? "through the Vercel AI Gateway" : `at ${host}`;
 		// Keys for another service than TypeSafe are refused without an address of their own (kyrn-judge/src/registry.ts).
 		const unsent =
-			judge.type === "typesafe" && ["MU_JUDGE_OPENROUTER_API_KEY", "MU_JUDGE_CUSTOM_API_KEY"].includes(name) && !judge.baseUrl;
+			judge.type === "typesafe" &&
+		["MU_JUDGE_OPENROUTER_API_KEY", "MU_JUDGE_CUSTOM_API_KEY", "MU_JUDGE_CLM_API_KEY"].includes(name) &&
+		!judge.baseUrl;
 		row(
 			has(name) && !unsent ? "ok" : "fix",
 			"jev key",
@@ -192,6 +194,61 @@ if (jevTier) {
 				: has(name)
 					? `${name} is set: Jev is called ${via} (value not shown)`
 					: `missing: add ${name} ${where} (Jev is called ${via})`,
+		);
+	}
+}
+
+// CLM-8B behind `clm-serve` (github.com/Contrastive-LM/CLM), for the tiers and routes that use it.
+/** As packages/kyrn-judge/src/providers/typesafe.ts reads a CLM address: `http://host:8700` is enough. */
+function clmEndpoint(baseUrl) {
+	const url = (baseUrl || "http://127.0.0.1:8700").replace(/\/+$/, "");
+	if (!URL.canParse(url)) return url;
+	const path = new URL(url).pathname;
+	return path === "/" ? `${url}/v1/systemone` : path === "/v1" ? `${url}/systemone` : url;
+}
+const judgeOf = (tier) => config?.judges?.[tier] ?? JEV_ROUTES[tier] ?? (tier === "clm" ? { type: "clm" } : undefined);
+const routeTiers = Object.values(config?.routes ?? {}).flatMap((value) => (Array.isArray(value) ? value : String(value).split(",")));
+const clmJudges = [...new Set([...tiers, ...routeTiers].map((tier) => String(tier).trim()))]
+	.map(judgeOf)
+	.filter((judge) => judge?.type === "clm");
+for (const endpoint of new Set(clmJudges.map((judge) => clmEndpoint(judge.baseUrl)))) {
+	const judges = clmJudges.filter((judge) => clmEndpoint(judge.baseUrl) === endpoint);
+	const base = endpoint.replace(/\/v1\/systemone$/, "");
+	const host = URL.canParse(endpoint) ? new URL(endpoint).host : endpoint;
+	const startedAt = performance.now();
+	let health;
+	try {
+		health = await (await fetch(`${base}/health`, { signal: AbortSignal.timeout(3000) })).json();
+	} catch {}
+	const ms = Math.round(performance.now() - startedAt);
+	if (health?.ok !== true) {
+		row("fix", "clm", `${base} does not answer: start clm-serve there, or point the judge's baseUrl in mu.json at one`);
+		continue;
+	}
+	const served = Array.isArray(health.models) ? health.models : [];
+	const missing = [...new Set(judges.map((judge) => judge.model || "clm-latest"))].filter((model) => !served.includes(model));
+	if (health.embedder === false) {
+		row("fix", "clm", `${host} answers, but its encoder does not: every question fails until the embedding server is up`);
+	} else if (missing.length > 0) {
+		row("fix", "clm", `${host} does not serve ${missing.join(", ")} (it serves ${served.join(", ")})`);
+	} else {
+		row("ok", "clm", `${host} · ${served.join(", ")} · ${ms} ms`);
+	}
+	if (health.mock) row("--", "", "this server runs CLM's mock encoder: its answers are noise, not CLM's");
+	// /health is open to anyone; /v1/models asks for the key when the server was started with one.
+	let status = 0;
+	try {
+		status = (await fetch(`${base}/v1/models`, { signal: AbortSignal.timeout(3000) })).status;
+	} catch {}
+	const keyNames = [...new Set(judges.map((judge) => judge.apiKeyEnv ?? "MU_JUDGE_CLM_API_KEY"))];
+	const unset = keyNames.filter((name) => !has(name));
+	if (status === 401) {
+		row(
+			unset.length > 0 ? "fix" : "--",
+			"",
+			unset.length > 0
+				? `it asks for a key: add ${unset.join(", ")} ${where}`
+				: `it asks for a key: ${keyNames.join(", ")} is set (value not shown)`,
 		);
 	}
 }
@@ -213,7 +270,8 @@ row(
 	chrome ? `${chrome.executable}${chrome.side === "windows" ? "  (on the Windows side, reached over mirrored networking)" : ""}` : advice,
 );
 for (const line of moreAdvice) row("--", "", line);
-const canRelate = (tier) => tier.startsWith("jev") || tier === "gateway" || tier.startsWith("llm:") || config?.judges?.[tier]?.type === "llm";
+const canRelate = (tier) =>
+	tier.startsWith("jev") || tier === "gateway" || tier.startsWith("llm:") || ["llm", "clm"].includes(judgeOf(tier)?.type);
 const browseTiers = config?.routes?.["browser.step"] ?? tiers;
 const routed = Object.entries(config?.routes ?? {});
 if (routed.length > 0) row("--", "routes", routed.map(([id, value]) => `${id} -> ${[value].flat().join(" > ")}`).join(" · "));

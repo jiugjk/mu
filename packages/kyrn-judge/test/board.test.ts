@@ -1,6 +1,6 @@
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import {
 	type AssistantMessage,
@@ -311,9 +311,10 @@ describe("board switches", () => {
 		store.set("/q", false);
 		expect(new BoardProjects(dir).get("/p")).toBe(true);
 		expect(new BoardProjects(dir).get("/q")).toBe(false);
+		// Kept by the project's full path, as this machine writes it (D:\p on Windows).
 		expect(JSON.parse(readFileSync(join(dir, "board.json"), "utf8"))).toEqual({
 			version: 1,
-			projects: { "/p": true, "/q": false },
+			projects: { [resolve("/p")]: true, [resolve("/q")]: false },
 		});
 		if (process.platform !== "win32") expect(statSync(join(dir, "board.json")).mode & 0o777).toBe(0o600);
 		writeFileSync(join(dir, "board.json"), "{broken");
@@ -331,7 +332,7 @@ describe("board switches", () => {
 		expect(new BoardProjects(dir).model()).toBe("anthropic/claude-opus-4-6");
 		expect(JSON.parse(readFileSync(join(dir, "board.json"), "utf8"))).toEqual({
 			version: 1,
-			projects: { "/p": true, "/q": false },
+			projects: { [resolve("/p")]: true, [resolve("/q")]: false },
 			model: "anthropic/claude-opus-4-6",
 		});
 		store.setModel(SESSION_MODEL);

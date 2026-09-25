@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
 	buildSessionContext,
@@ -711,7 +711,8 @@ describe("importing into mu's sessions", () => {
 
 		const manager = SessionManager.open(imported.sessionFile);
 		expect(manager.getSessionName()).toBe("Write a hello script in shell");
-		expect(manager.getCwd()).toBe(CWD);
+		// pi keeps the folder as this machine spells it: <drive>:\tmp\... on Windows.
+		expect(manager.getCwd()).toBe(resolve(CWD));
 		expect(shape(buildSessionContext(manager.getEntries()).messages)).toHaveLength(10);
 		expect(readFile(imported.sessionFile)[0]).toMatchObject({ type: "session", id: imported.sessionId });
 

@@ -404,7 +404,10 @@ export class Isolation {
  */
 export function rebase(instructions: string, parent: { repo: Repo; cwd: string }, dir: string): string {
 	const prefix = parent.repo.prefix.replace(/[\\/]$/, "");
-	const asSpelled = prefix && parent.cwd.endsWith(prefix) ? parent.cwd.slice(0, -prefix.length - 1) : parent.cwd;
+	// git writes the prefix with forward slashes, and on Windows the working directory has backslashes: compared as
+	// they are, `packages/app` never ended `C:\repo\packages\app`, and a path into packages\app lost that part.
+	const nested = prefix && parent.cwd.replaceAll("\\", "/").endsWith(`/${prefix}`);
+	const asSpelled = nested ? parent.cwd.slice(0, -prefix.length - 1) : parent.cwd;
 	// The longer spelling first: one may be the beginning of the other (/var and /private/var).
 	const roots = [...new Set([parent.repo.root, asSpelled])].sort((a, b) => b.length - a.length);
 	return roots.reduce((text, root) => (root ? text.split(root).join(dir) : text), instructions);

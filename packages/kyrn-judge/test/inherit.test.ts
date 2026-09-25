@@ -361,8 +361,12 @@ describe("MCP server definitions", () => {
 		expect(byName.db).toMatchObject({ scope: "project", source: join(project, ".mcp.json") });
 		expect(byName.browser).toMatchObject({ scope: "project", tool: "cursor" });
 
+		// Keyed by the file below the home, with forward slashes whatever this machine writes.
 		const reasons = Object.fromEntries(
-			scan.skipped.map((entry) => [`${entry.name}@${entry.source.slice(home.length)}`, entry.reason]),
+			scan.skipped.map((entry) => [
+				`${entry.name}@${entry.source.slice(home.length).replaceAll("\\", "/")}`,
+				entry.reason,
+			]),
 		);
 		expect(reasons["linear@/.claude.json"]).toContain("switched off for this project in Claude Code");
 		expect(reasons["old@/.claude.json"]).toContain("HTTP+SSE");

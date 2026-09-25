@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { LspClient, type LspClientOptions } from "../src/lsp/client.ts";
+import { uriStyleFor } from "../src/lsp/uri.ts";
 
 const FAKE_SERVER = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "fake-lsp-server.mjs");
 
@@ -15,7 +16,9 @@ describe("lsp client against the fake server", () => {
 	const dirs: string[] = [];
 	afterEach(async () => {
 		await Promise.all(clients.splice(0).map((client) => client.stop()));
-		for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+		// A server that was killed on Windows goes through taskkill, which takes a moment: until it has, the folder the
+		// server runs in cannot be removed.
+		for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 	});
 
 	function setup(config: Record<string, unknown> = {}, options: Partial<LspClientOptions> = {}) {
@@ -26,7 +29,7 @@ describe("lsp client against the fake server", () => {
 			command: process.execPath,
 			args: [FAKE_SERVER, JSON.stringify({ log, ...config })],
 			root,
-			uriStyle: { kind: "posix" },
+			uriStyle: uriStyleFor({ platform: process.platform }),
 			languageId: () => "fake",
 			quietMs: 40,
 			baselineMs: 2000,
@@ -183,7 +186,7 @@ describe("lsp client against the fake server", () => {
 			command: join(root, "no-such-server"),
 			args: [],
 			root,
-			uriStyle: { kind: "posix" },
+			uriStyle: uriStyleFor({ platform: process.platform }),
 			languageId: () => "fake",
 		});
 		clients.push(client);

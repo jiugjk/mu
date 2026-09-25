@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
@@ -88,6 +88,11 @@ describe("what needs permission", () => {
 		]) {
 			expect(permissionNeed("bash", { command }, cwd), command).toBeUndefined();
 		}
+		// The bash tool is bash on Windows too (Git Bash), where the quoted parenthesis is text. PowerShell reads what
+		// the powershell tool runs, and a background command on Windows, which may run in PowerShell there.
+		const search = { command: "rg 'useState\\(' src" };
+		expect(permissionNeed("powershell", search, cwd)).toBeDefined();
+		expect(permissionNeed("bg_start", search, cwd) !== undefined).toBe(process.platform === "win32");
 	});
 
 	it("says what a call is, and what allowing it for the conversation would cover", () => {
@@ -101,10 +106,14 @@ describe("what needs permission", () => {
 			inProject: true,
 			grant: { key: "edit" },
 		});
-		expect(permissionNeed("write", { path: "/etc/hosts" }, cwd)).toMatchObject({
+		const hosts =
+			process.platform === "win32"
+				? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "drivers", "etc", "hosts")
+				: "/etc/hosts";
+		expect(permissionNeed("write", { path: hosts }, cwd)).toMatchObject({
 			kind: "outside",
 			// Where the file really is: /etc is a link to /private/etc on macOS.
-			grant: { key: `outside:${realpathSync("/etc/hosts")}`, label: "/etc/hosts" },
+			grant: { key: `outside:${realpathSync.native(hosts)}`, label: hosts },
 		});
 		expect(permissionNeed("write", { path: "../other/x" }, cwd)).toMatchObject({ kind: "outside" });
 		expect(permissionNeed("sg_rewrite", { pattern: "a", apply: true }, cwd)).toMatchObject({ kind: "edit" });
@@ -154,7 +163,8 @@ describe("what needs permission", () => {
 				permissionNeed("sg_rewrite", { pattern: "a", rewrite: "b", apply: true, paths: ["src"] }, project),
 			).toMatchObject({ kind: "edit", inProject: true });
 			expect(permissionNeed("write", { path: "link/x.txt" }, project)?.grant).toEqual({
-				key: `outside:${join(realpathSync(elsewhere), "x.txt")}`,
+				// The long name of every folder on Windows too, not a short one such as RUNNER~1 that the temp folder may have.
+				key: `outside:${join(realpathSync.native(elsewhere), "x.txt")}`,
 				label: "link/x.txt",
 			});
 		} finally {
@@ -235,9 +245,12 @@ describe("what needs permission", () => {
 	});
 
 	it("leaves mu's own settings to the user, however a command spells the folder", () => {
-		const protectedPaths = ["/home/me/.mu/agent", "~/.mu/agent"];
-		expect(permissionNeed("write", { path: "/home/me/.mu/agent/mu.json" }, cwd, protectedPaths)).toMatchObject({
-			protected: "/home/me/.mu/agent",
+		// A home as this machine writes one: /home/me, or <drive>:\home\me on Windows.
+		const home = resolve("/home/me");
+		const agentDir = join(home, ".mu", "agent");
+		const protectedPaths = protectedSpellings(agentDir, home, process.platform);
+		expect(permissionNeed("write", { path: join(agentDir, "mu.json") }, cwd, protectedPaths)).toMatchObject({
+			protected: agentDir,
 		});
 		const command = permissionNeed(
 			"bash",

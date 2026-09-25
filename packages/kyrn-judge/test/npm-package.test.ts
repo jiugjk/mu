@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { isBuiltin } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build, type Plugin } from "esbuild";
 import { createJiti } from "jiti";
@@ -130,7 +130,8 @@ describe("the judgment layer's bundle", () => {
 		expect(await bundle(source, file, leftToJiti)).toEqual(["@earendil-works/pi-tui"]);
 		const transpiled: string[] = [];
 		await expect(loadLikePi(file, transpiled)).rejects.toThrow("transpiled with Babel");
-		expect(transpiled).toEqual([file]);
+		// jiti names the file with forward slashes on Windows too.
+		expect(transpiled.map((name) => resolve(name))).toEqual([file]);
 		expect(() => checkNativeImport(file)).toThrow("Node cannot import");
 	});
 

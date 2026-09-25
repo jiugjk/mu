@@ -67,6 +67,9 @@ describe('a project inside WSL runs mu inside WSL', () => {
 });
 
 describe('the start script inside the distribution', () => {
+  // The script runs in the Linux distribution, which a POSIX machine stands in for. On Windows itself there is no such
+  // bash with a home and nvm to try it in; the syntax check at the end runs there too.
+  const posix = process.platform !== 'win32';
   let home = '';
   afterEach(() => {
     if (home) rmSync(home, { recursive: true, force: true });
@@ -81,7 +84,7 @@ describe('the start script inside the distribution', () => {
     });
   }
 
-  it('finds mu where nvm installed it, and starts it for RPC with the session when there is one', () => {
+  it.runIf(posix)('finds mu where nvm installed it, and starts it for RPC with the session when there is one', () => {
     home = mkdtempSync(join(tmpdir(), 'mu-wsl-'));
     const bin = join(home, '.nvm', 'versions', 'node', 'v24.16.0', 'bin');
     mkdirSync(bin, { recursive: true });
@@ -95,7 +98,7 @@ describe('the start script inside the distribution', () => {
     expect(start().stdout).toContain('args:--mode rpc\n');
   });
 
-  it('says what to install when mu is not in the distribution', () => {
+  it.runIf(posix)('says what to install when mu is not in the distribution', () => {
     home = mkdtempSync(join(tmpdir(), 'mu-wsl-'));
     const missing = start();
     expect(missing.status).toBe(127);

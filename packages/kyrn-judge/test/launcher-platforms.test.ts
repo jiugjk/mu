@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import {
 	existsSync,
 	lstatSync,
@@ -6,11 +5,11 @@ import {
 	mkdtempSync,
 	readFileSync,
 	readlinkSync,
-	rmSync,
+	unlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -47,11 +46,14 @@ import {
 	usage,
 } from "../../../kyrn/bin/mu.mjs";
 import { isWsl } from "../src/platform.ts";
+import { MU, removeHome, runScript, SYSTEM_PATH } from "./fixtures/launcher.ts";
 
 /**
  * There is no Windows machine and no WSL where this is developed. What the launcher would do there is proven
- * here by calling its decisions with win32 and linux parameters and an in-memory file system. What that cannot
- * prove (cmd.exe, junctions on NTFS, a real console) is listed in kyrn/docs/features/windows-and-wsl.md.
+ * here by calling its decisions with win32 and linux parameters and an in-memory file system. The tests that build
+ * the app view and run the launcher for real also run on GitHub's Windows runners (.github/workflows/windows-tests.yml),
+ * where they go through mu.cmd in cmd.exe and make junctions on NTFS. What neither proves (a real console, WSL) is
+ * listed in kyrn/docs/features/windows-and-wsl.md.
  */
 const repo = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -62,7 +64,8 @@ function temp(): string {
 	return dir;
 }
 afterEach(() => {
-	while (dirs.length > 0) rmSync(dirs.pop() as string, { recursive: true, force: true });
+	// Some are homes the launcher really ran in, with an app view that leads into this repository.
+	while (dirs.length > 0) removeHome(dirs.pop() as string);
 });
 
 /** A file system that is a list of paths: files carry text, folders are named with a trailing separator. */
@@ -193,23 +196,29 @@ describe("the app view", () => {
 			JSON.stringify({ name: "@earendil-works/pi-coding-agent", version: "1.0.0" }),
 		);
 		const app = join(dir, "home/app");
+		// This machine's own kind of view: links, or on Windows junctions and copies.
+		const platform = process.platform;
+		const windows = platform === "win32";
 
-		expect(ensureAppView({ platform: "darwin", app, upstream })).toHaveLength(6);
-		expect(readlinkSync(join(app, "src"))).toBe(join(upstream, "src"));
-		expect(readlinkSync(join(app, "README.md"))).toBe(join(upstream, "README.md"));
+		expect(ensureAppView({ platform, app, upstream })).toHaveLength(6);
+		// A junction's target comes back with a trailing backslash.
+		const target = readlinkSync(join(app, "src"));
+		expect(windows ? resolve(target) : target).toBe(join(upstream, "src"));
+		if (windows) expect(readFileSync(join(app, "README.md"), "utf8")).toBe("readme");
+		else expect(readlinkSync(join(app, "README.md"))).toBe(join(upstream, "README.md"));
 		const manifest = JSON.parse(readFileSync(join(app, "package.json"), "utf8"));
 		expect(manifest).toMatchObject({
 			name: "@earendil-works/pi-coding-agent",
 			piConfig: { name: "mu", configDir: ".mu" },
 		});
-		expect(ensureAppView({ platform: "darwin", app, upstream })).toEqual([]);
+		expect(ensureAppView({ platform, app, upstream })).toEqual([]);
 
 		// A link that is gone comes back; a folder someone put there by hand is never emptied.
-		rmSync(join(app, "docs"));
+		unlinkSync(join(app, "docs"));
 		mkdirSync(join(app, "docs"));
 		writeFileSync(join(app, "docs/mine.md"), "keep");
-		rmSync(join(app, "src"));
-		expect(ensureAppView({ platform: "darwin", app, upstream })).toEqual(["symlink src"]);
+		unlinkSync(join(app, "src"));
+		expect(ensureAppView({ platform, app, upstream })).toEqual([windows ? "junction src" : "symlink src"]);
 		expect(readFileSync(join(app, "docs/mine.md"), "utf8")).toBe("keep");
 	});
 
@@ -760,7 +769,7 @@ describe("mu import", () => {
 		expect(planImport({ ...electron, fs: disk({ [source]: "" }) }).error).toContain("npm ci --ignore-scripts");
 	});
 
-	it.skipIf(process.platform === "win32")("imports through the launcher without tsx", () => {
+	it("imports through the launcher without tsx", () => {
 		const dir = temp();
 		const transcript = join(dir, "claude", "projects", "p", "0b9c6f7e-1111-4222-8333-444455556666.jsonl");
 		mkdirSync(dirname(transcript), { recursive: true });
@@ -792,19 +801,14 @@ describe("mu import", () => {
 				.join("\n"),
 		);
 		const agentDir = join(dir, "mu-agent");
-		const result = spawnSync(join(repo, "kyrn/bin/mu"), ["import", "--json", transcript], {
-			encoding: "utf8",
-			env: {
-				PATH: `${dirname(process.execPath)}:/usr/bin:/bin`,
-				HOME: dir,
-				MU_AGENT_DIR: agentDir,
-				CLAUDE_CONFIG_DIR: join(dir, "claude"),
-			},
-			timeout: 60_000,
+		const result = runScript(MU, ["import", "--json", transcript], {
+			HOME: dir,
+			MU_AGENT_DIR: agentDir,
+			CLAUDE_CONFIG_DIR: join(dir, "claude"),
 		});
-		expect(result.stderr).toBe("");
-		expect(result.status).toBe(0);
-		const [imported] = (JSON.parse(result.stdout) as { results: { status: string; sessionFile: string }[] }).results;
+		expect(result.err).toBe("");
+		expect(result.code).toBe(0);
+		const [imported] = (JSON.parse(result.out) as { results: { status: string; sessionFile: string }[] }).results;
 		expect(imported.status).toBe("imported");
 		expect(imported.sessionFile.startsWith(join(agentDir, "sessions"))).toBe(true);
 		expect(readFileSync(imported.sessionFile, "utf8")).toContain('"customType":"mu.import"');
@@ -1055,23 +1059,16 @@ describe("mu migrate without pgrep", () => {
 });
 
 describe("the launcher, run for real on this machine", () => {
-	const mu = join(repo, "kyrn/bin/mu");
 	const installed = existsSync(join(repo, "node_modules/.bin/tsx"));
-	const nodeDir = dirname(process.execPath);
-	const run = (args: string[], env: Record<string, string>) => {
-		const result = spawnSync(mu, args, {
-			encoding: "utf8",
-			input: "",
-			env: { PATH: `${nodeDir}:/usr/bin:/bin`, ...env },
-			timeout: 60_000,
-		});
-		return { code: result.status, out: result.stdout, err: result.stderr };
-	};
+	const windows = process.platform === "win32";
+	const run = (args: string[], env: Record<string, string>) => runScript(MU, args, env);
+	/** A search path without the Node that runs these tests: `first`, then the system's own folders. */
+	const bare = (...first: string[]) => [...first, ...SYSTEM_PATH].join(delimiter);
 
-	it.skipIf(process.platform === "win32")("refuses a Node that is too old before any JavaScript runs", () => {
+	it.skipIf(windows)("refuses a Node that is too old before any JavaScript runs", () => {
 		const dir = temp();
 		writeFileSync(join(dir, "node"), '#!/bin/sh\necho "v20.20.1"\n', { mode: 0o755 });
-		const refused = run(["help"], { HOME: dir, PATH: `${dir}:/usr/bin:/bin` });
+		const refused = run(["help"], { HOME: dir, PATH: bare(dir) });
 		expect(refused.code).toBe(1);
 		expect(refused.err).toContain("mu needs Node >= 22.19 (found v20.20.1)");
 
@@ -1079,39 +1076,75 @@ describe("the launcher, run for real on this machine", () => {
 		const nvm = join(dir, ".nvm/versions/node/v24.0.0/bin");
 		mkdirSync(nvm, { recursive: true });
 		writeFileSync(join(nvm, "node"), `#!/bin/sh\nexec "${process.execPath}" "$@"\n`, { mode: 0o755 });
-		expect(run(["help"], { HOME: dir, PATH: `${dir}:/usr/bin:/bin` })).toMatchObject({ code: 0 });
+		expect(run(["help"], { HOME: dir, PATH: bare(dir) })).toMatchObject({ code: 0 });
 	});
 
-	it.skipIf(process.platform === "win32")("unlinks what it linked, and only a link", () => {
+	// mu.cmd's own check, which cmd runs. Windows has no nvm to look in.
+	it.runIf(windows)("refuses a Node that is too old, or none at all, before any JavaScript runs, in cmd too", () => {
+		const dir = temp();
+		const none = run(["help"], { HOME: dir, PATH: bare(dir) });
+		expect(none.code).toBe(1);
+		expect(none.err).toContain("no node was found on PATH");
+
+		writeFileSync(join(dir, "node.cmd"), "@echo v20.20.1\r\n");
+		const refused = run(["help"], { HOME: dir, PATH: bare(dir) });
+		expect(refused.code).toBe(1);
+		expect(refused.err).toContain("mu needs Node.js 22.19 or newer, found 20.20.");
+	});
+
+	it("unlinks what it linked, and nothing else", () => {
 		const dir = temp();
 		const links = join(dir, "bin");
+		// A link on POSIX; on Windows, where a link to a script cannot be run, a small mu.cmd.
+		const linked = join(links, windows ? "mu.cmd" : "mu");
 		expect(run(["link"], { HOME: dir, MU_LINK_DIR: links }).code).toBe(0);
-		expect(lstatSync(join(links, "mu")).isSymbolicLink()).toBe(true);
+		if (!windows) expect(lstatSync(linked).isSymbolicLink()).toBe(true);
 		// Through the link, as a user would call it.
-		expect(
-			spawnSync(join(links, "mu"), ["help"], {
-				encoding: "utf8",
-				env: { PATH: `${nodeDir}:/usr/bin:/bin`, HOME: dir },
-			}).stdout,
-		).toContain("mu link | unlink");
+		expect(runScript(linked, ["help"], { HOME: dir }).out).toContain("mu link | unlink");
 		expect(run(["unlink"], { HOME: dir, MU_LINK_DIR: links }).out).toContain("removed");
-		expect(existsSync(join(links, "mu"))).toBe(false);
-		writeFileSync(join(links, "mu"), "a file");
-		expect(run(["unlink"], { HOME: dir, MU_LINK_DIR: links }).out).toContain("is not a link; nothing removed");
+		expect(existsSync(linked)).toBe(false);
+		writeFileSync(linked, "a file");
+		expect(run(["unlink"], { HOME: dir, MU_LINK_DIR: links }).out).toContain(
+			windows ? "is not a shim written by mu link; nothing removed" : "is not a link; nothing removed",
+		);
 	});
 
-	it.skipIf(!installed)("starts pi as a child too, the way Windows has to, and passes its exit code on", () => {
-		const dir = temp();
-		const child = run(["--version"], { HOME: dir, MU_LAUNCH: "spawn" });
-		const replaced = run(["--version"], { HOME: dir });
+	it.runIf(windows)("reaches mu.cmd through the shim `mu link` writes, below a user name that is not ASCII", () => {
+		// cmd reads a batch file in the console's code page: the shim names mu.cmd relative to itself, through %~dp0,
+		// which cmd fills in itself.
+		const dir = join(temp(), "白鹤");
+		const bin = join(dir, "code", "mu", "kyrn", "bin");
+		const links = join(dir, ".local", "bin");
+		mkdirSync(bin, { recursive: true });
+		mkdirSync(links, { recursive: true });
+		writeFileSync(join(bin, "mu.cmd"), "@echo reached %*\r\n");
+		const shim = shimContent({ linkDir: links, bin });
+		expect(shim).toContain('"%~dp0..\\..\\code\\mu\\kyrn\\bin\\mu.cmd" %*');
+		writeFileSync(join(links, "mu.cmd"), shim);
 
-		expect(child).toMatchObject({ code: 0, out: replaced.out });
-		expect(child.out).toMatch(/^\d+\.\d+\.\d+/);
-		// An exit code that is not zero comes through as well: a home without a login makes the doctor exit with 1.
-		const doctor = run(["doctor"], { HOME: dir, MU_LAUNCH: "spawn" });
-		expect(doctor.out).toContain("login");
-		expect(doctor.code).toBe(1);
+		const reached = runScript(join(links, "mu.cmd"), ["help"], { HOME: dir });
+
+		expect(reached.code).toBe(0);
+		expect(reached.out).toContain("reached help");
 	});
+
+	// Three starts of pi, through tsx: on GitHub's Windows runners each takes over ten seconds.
+	it.skipIf(!installed)(
+		"starts pi as a child too, the way Windows has to, and passes its exit code on",
+		() => {
+			const dir = temp();
+			const child = run(["--version"], { HOME: dir, MU_LAUNCH: "spawn" });
+			const replaced = run(["--version"], { HOME: dir });
+
+			expect(child).toMatchObject({ code: 0, out: replaced.out });
+			expect(child.out).toMatch(/^\d+\.\d+\.\d+/);
+			// An exit code that is not zero comes through as well: a home without a login makes the doctor exit with 1.
+			const doctor = run(["doctor"], { HOME: dir, MU_LAUNCH: "spawn" });
+			expect(doctor.out).toContain("login");
+			expect(doctor.code).toBe(1);
+		},
+		120_000,
+	);
 });
 
 describe("mu qqbot", () => {

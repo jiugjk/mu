@@ -1,6 +1,6 @@
 # Windows 与 WSL：跨平台启动器、浏览器发现、POSIX 假设清单
 
-更新日期：2026-09-22。状态：**代码和单元测试完成，macOS 上实跑通过；没有在任何真实的 Windows 或 WSL 机器上运行过。** 凡是 Windows / WSL 专属的行为，本文都逐条标了“未在真机验证”，第 8 节是拿到 Windows 机器后先查什么。
+更新日期：2026-09-25。状态：**代码和单元测试完成，macOS 上实跑通过；Windows 上由 CI（`windows-tests.yml`，windows-2022）跑通全部单元测试，并经 cmd.exe 实跑了 `mu.cmd`；交互控制台、`mu.ps1` 和 WSL 仍没有在真机上运行过。** 正文里“未在真机验证”的标记写于 CI 之前，以第 7 节的两张清单为准；第 8 节是还要查的。
 
 ## 1. 做了什么
 
@@ -109,17 +109,25 @@ sidecar 是 Core ML，只能在 Apple Silicon 的 macOS 上跑。非 macOS 上�
 - 真实 Chrome：`test/browser.test.ts` 在本机用真 Chrome 通过（`launchChrome` 改动后 macOS 行为不变）；`extension`、`features`、`manifest`、`naming`、`agents`、`swarm-run`、`cli` 测试通过。
 - 手工实跑（临时 HOME）：`mu help`、`mu version`、`mu --version`、`mu doctor`（多了 platform 一行，临时 HOME 没被写入）、`mu judge status`、`mu ledger`。没有对真实的 `~/.mu` 运行过 `mu link` 或 `mu migrate`。
 
-**没有验证**（全部因为没有 Windows / WSL 机器）：
+已验证（Windows，GitHub Actions 的 windows-2022，2026-09-25，run 36108731023）：
 
-- `mu.cmd`、`mu.ps1` 从未被 cmd.exe / PowerShell 执行过；`mu link` 写出的垫片也没有。
-- NTFS 上的 junction 创建、`readlink` 读回的形态、`unlink` 删除 junction。
-- Windows 上经 tsx 启动 pi、控制台里的 Ctrl+C、退出码。
-- `tasklist` 与 `Get-CimInstance` 的真实输出（测试用的是按文档格式手写的样本；非英文 Windows 的 `tasklist` 表头不同，所以用了 `/NH` 不读表头）。
+- 判断层全部单元测试（859 通过，38 跳过）和桌面端 mu 的单元测试（996 通过，104 跳过）。Windows 上跳过的是那里没有意义的用例：文件权限位、chmod 造成的读写失败、WSL 启动脚本、用 shell 脚本写的替身程序。
+- `mu.cmd` 经 cmd.exe 实跑：help、link、unlink、migrate、`--version`、doctor、import，退出码原样传出；PATH 上没有 node 和 node 太旧时的拒绝；用户目录名含非 ASCII 字符时，`mu link` 写出的垫片仍能调到 `mu.cmd`。经 tsx 启动 pi 也在其中。
+- NTFS 上应用视图的 junction 与复制、过期后重建；真实的 `tasklist` + `Get-CimInstance` 找到正在运行的会话。
+- 由此发现并修掉两个产品问题：Windows 上 bash 工具的命令被按 PowerShell 的规则读，`rg 'useState\(' src` 这样的只读搜索也要批准（pi 在 Windows 上用 Git Bash 跑 bash 工具）；子代理从仓库的子目录启动时，路径没有搬进它的工作树（git 给的前缀用 `/`，会话目录用 `\`）。
+
+**没有验证**（没有 Windows / WSL 真机）：
+
+- `mu.ps1` 从未被 PowerShell 执行过。
+- Windows 控制台里交互运行 pi、Ctrl+C。
+- 非英文 Windows 上 `tasklist` 的输出（CI 是英文系统；因为表头不同，用了 `/NH` 不读表头）。
 - Windows、Linux、WSL 上真实的浏览器发现与启动；snap / flatpak 的 profile 位置；mirrored 模式下经回环连接 Windows 侧 Chrome；`\\wsl.localhost` 上的 profile。
 - Git Bash 里运行 `kyrn/bin/mu`。
 - `process.execve` 只在 Node 24.16 上试过（22.19 未装）。
 
 ## 8. 拿到 Windows 机器后先查什么
+
+第 1、2、5 项已由 CI 验证（见第 7 节），第 6 项验证了 doctor 能跑、退出码对，找到的是哪个浏览器还没看过。
 
 1. `kyrn\bin\mu.cmd help`、`version`：能跑、退出码为 0；把 PATH 里的 node 换成旧版，看到“needs Node.js 22.19 or newer”而不是语法错误。
 2. `mu.cmd --version`：`%USERPROFILE%\.mu\app` 下 `src`、`docs`、`examples` 是 junction（`dir /AL`），两个 `.md` 是文件，`package.json` 里 `piConfig.name` 是 `mu`；再跑一次不应重建任何东西。
