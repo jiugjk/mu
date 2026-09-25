@@ -245,7 +245,7 @@ ctrl+o 展开：每只蜂最近 5 步（`14s ago  read packages/…`）、最新
 
 **按决策点路由判断模型**：`"routes": {"browser.step": ["luna"]}` 或 `/kyrn route browser.step luna`，让某一个决策点用自己的判断模型，其余不变。
 
-**Jev 两条接入路径**：档名 `jev` 在有 `TYPESAFE_API_KEY` 时直连 TypeSafe（`POST https://api.typesafe.ai/v1/systemone`，是非题类型叫 `noul`），否则走 Vercel AI Gateway；`jev-direct` / `jev-gateway` 可显式指定。实测（从国内直连）：连接预热后 10 道题一次请求 0.5–1.5 s，冷连接 2.5 s，偶发 5 s 以上；超时设为 10 s。用 Jev 驱动浏览器：同一个 MDN 任务 3 个动作、4 次判断、总共 6 s（LLM 判断是 23 s）。
+**Jev 的接入服务**：档名 `jev` 按设置了哪个密钥自动选：有 `TYPESAFE_API_KEY` 时直连 TypeSafe（`POST https://api.typesafe.ai/v1/systemone`，是非题类型叫 `noul`）；否则有 `MU_JUDGE_OPENROUTER_API_KEY` 时经 OpenRouter（`https://openrouter.ai/api/v1/systemone`，同一协议，模型名 `~typesafe/jev-latest`）；都没有则走 Vercel AI Gateway。`jev-direct` / `jev-openrouter` / `jev-gateway` 可显式指定。自己的中转或其他提供 Jev 的服务写成 `{"type": "typesafe", "baseUrl": "…", "apiKeyEnv": "MU_JUDGE_CUSTOM_API_KEY"}`；OpenRouter 和自定义服务的密钥没有自己的 `baseUrl` 时，这个判定器直接报错，密钥不会发到 TypeSafe。实测（从国内直连）：连接预热后 10 道题一次请求 0.5–1.5 s，冷连接 2.5 s，偶发 5 s 以上；超时设为 10 s。用 Jev 驱动浏览器：同一个 MDN 任务 3 个动作、4 次判断、总共 6 s（LLM 判断是 23 s）。
 
 **闲聊识别**：`turn_type` 原来没有"与代码无关的闲聊"这一类，`other` 把它们全吸走了；现在加了 `chat` 类，并有一条规则兜底——问候/致谢永远算闲聊；会话还没开始干活（没有任何工具调用）时，不含任何代码/工程痕迹的消息算闲聊。判断模型有明确选择时以它为准。
 
