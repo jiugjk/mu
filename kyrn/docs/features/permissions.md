@@ -89,10 +89,11 @@ Tell the desktop session before changing the version, the location or the accept
 | kind | payload | when |
 | --- | --- | --- |
 | `permissions.mode` | `{ mode, label, conversationSwitch: true, modes: [{ id, label, description }] }` | at session start and on every switch. `conversationSwitch` says `--here` is understood; an older harness would read `jev --here` as an unknown word |
-| `permissions.request` | `{ id, mode, tool, kind, summary, reason, flag?, grant?: { key, label }, answers: string[] }` | right before the picker opens |
-| `permissions.resolved` | `{ id, answer: "once" \| "session" \| "deny" }` | once the picker is answered |
+| `permissions.request` | `{ id, toolCallId, mode, tool, kind, summary, reason, flag?, grant?: { key, label }, answers: string[] }` | right before the picker opens |
+| `permissions.resolved` | `{ id, toolCallId, answer: "once" \| "session" \| "deny" }` | once the picker is answered |
 | `permissions.approved` | `{ tool, kind, summary, by: "jev" \| "grant" }` | a call that needed permission ran without asking you |
 
+- `toolCallId` is the id of the tool call the question is about: the same id as in pi's tool events and in that call's tool result. A client marks that call's own row with it. What the model is told about a refused call stays in English in the tool result.
 - `kind` is one of `edit`, `shell`, `run`, `outside`, `delegate` or `other`.
 - `reason` is one of `ask` (minimal mode), `unsure`, `beyond`, `unrelated`, `flagged` or `protected`.
 - `answers` holds the exact option strings the picker offers, in order. The picker is the normal extension `select` dialog (over RPC, `extension_ui_request` with `method: "select"`), so the desktop answers it with the chosen string.

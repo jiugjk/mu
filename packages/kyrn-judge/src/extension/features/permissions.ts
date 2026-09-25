@@ -246,6 +246,9 @@ export function registerPermissions(runtime: KyrnRuntime, roots: HarnessRoots | 
 		const deny = say(ANSWERS.deny);
 		runtime.present("permissions.request", {
 			id,
+			// The call this is about, here and in `permissions.resolved`: a client marks that call's own row by it, in
+			// its own words. The model is still told in English why a refused call did not run.
+			toolCallId: event.toolCallId,
 			mode,
 			tool: event.toolName,
 			kind: need.kind,
@@ -279,7 +282,7 @@ export function registerPermissions(runtime: KyrnRuntime, roots: HarnessRoots | 
 			ctx.ui.setStatus(PENDING_STATUS, undefined);
 		}
 		const answer = picked === once ? "once" : session && picked === session ? "session" : "deny";
-		runtime.present("permissions.resolved", { id, answer });
+		runtime.present("permissions.resolved", { id, toolCallId: event.toolCallId, answer });
 		if (answer === "session" && grant) grants.add(grant.key);
 		if (answer !== "deny") return undefined;
 		return {

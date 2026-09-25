@@ -379,8 +379,8 @@ describe("permission modes in a session", () => {
 		return { harness, ran, asked, status, notes, of };
 	}
 
-	const call = (name: string, args: Record<string, string>) =>
-		fauxAssistantMessage([fauxToolCall(name, args)], { stopReason: "toolUse" });
+	const call = (name: string, args: Record<string, string>, id?: string) =>
+		fauxAssistantMessage([fauxToolCall(name, args, { id })], { stopReason: "toolUse" });
 	const results = (harness: Harness) =>
 		harness.session.messages
 			.filter((message) => message.role === "toolResult")
@@ -396,7 +396,7 @@ describe("permission modes in a session", () => {
 			{ mode: "ask", pick: (options) => options.find((option) => option.startsWith("Allow for this conversation")) },
 		);
 		harness.setResponses([
-			call("edit", { path: "src/a.ts" }),
+			call("edit", { path: "src/a.ts" }, "call-edit-a"),
 			call("edit", { path: "src/b.ts" }),
 			call("bash", { command: "ls" }),
 			fauxAssistantMessage("Edited both."),
@@ -412,6 +412,7 @@ describe("permission modes in a session", () => {
 		expect(status).toEqual(["Waiting for your permission: edit src/a.ts", undefined]);
 		expect(of("permissions.request")).toEqual([
 			expect.objectContaining({
+				toolCallId: "call-edit-a",
 				mode: "ask",
 				tool: "edit",
 				kind: "edit",
@@ -420,7 +421,9 @@ describe("permission modes in a session", () => {
 				answerIds: ["once", "session", "deny"],
 			}),
 		]);
-		expect(of("permissions.resolved")).toEqual([{ id: "permission-1", answer: "session" }]);
+		expect(of("permissions.resolved")).toEqual([
+			{ id: "permission-1", toolCallId: "call-edit-a", answer: "session" },
+		]);
 		expect(of("permissions.approved")).toEqual([expect.objectContaining({ tool: "edit", by: "grant" })]);
 	});
 
@@ -441,12 +444,22 @@ describe("permission modes in a session", () => {
 		expect(asked[1].options).toEqual(["Allow once", "Don't allow"]);
 	});
 
+	// QA on macOS, 2026-09-25: the app has to know which tool call a permission is about to mark that call's row.
+	// Both events name the call; what the model is told about a refusal stays as it was.
 	it("minimal permissions: a no stops the call and tells the model not to go around it", async () => {
-		const { harness, ran } = await start(() => ({}), { mode: "ask", pick: (options) => options.at(-1) });
-		harness.setResponses([call("bash", { command: "npm install left-pad" }), fauxAssistantMessage("Skipped it.")]);
+		const { harness, ran, of } = await start(() => ({}), { mode: "ask", pick: (options) => options.at(-1) });
+		harness.setResponses([
+			call("bash", { command: "npm install left-pad" }, "call-install"),
+			fauxAssistantMessage("Skipped it."),
+		]);
 		await harness.session.prompt("Add left-pad");
 		expect(ran).toEqual([]);
 		expect(results(harness)[0]).toContain("The user did not allow this (npm install left-pad)");
+		expect(results(harness)[0]).toContain('"toolCallId":"call-install"');
+		expect(of("permissions.request")).toEqual([
+			expect.objectContaining({ id: "permission-1", toolCallId: "call-install", reason: "ask" }),
+		]);
+		expect(of("permissions.resolved")).toEqual([{ id: "permission-1", toolCallId: "call-install", answer: "deny" }]);
 	});
 
 	it("Jev approves: edits in the project go ahead, a command Jev is sure of runs, and what it doubts reaches the user with why", async () => {

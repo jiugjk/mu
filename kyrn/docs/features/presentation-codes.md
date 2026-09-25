@@ -207,6 +207,7 @@ These fields are added:
 
 - `flagCode`, for a flagged command: `recursive_or_forced_delete`, `discards_git_work`, `force_push`, `drops_database_objects`, `overwrites_device`, `opens_permissions_recursively`, `runs_downloaded_script`, `runs_as_administrator` or `runs_as_root`.
 - `answerIds`, in the order of `answers`: `once`, `session` (when offered) and `deny`. These are the same ids `permissions.resolved` reports.
+- `toolCallId`, here and in `permissions.resolved`: the tool call the question is about. Show the answer on that call's row in your own words. The call's tool result keeps the English reason the model reads.
 
 The mode labels and descriptions are already in Chinese or English. Key your own strings on `mode` and `modes[].id`.
 
