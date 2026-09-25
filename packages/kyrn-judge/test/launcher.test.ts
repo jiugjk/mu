@@ -13,10 +13,10 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { BIN, MU, removeHome, runScript, searchPath } from "./fixtures/launcher.ts";
+import { BIN, MU, removeHome, runPowerShell, runScript, searchPath, WINDOWS_POWERSHELL } from "./fixtures/launcher.ts";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 /** Starting pi needs the repository's dependencies; a bare git worktree has none. */
@@ -77,6 +77,39 @@ describe("the mu launcher", () => {
 		expect(run("mu", ["link"], { HOME: dir, MU_LINK_DIR: links }).code).toBe(1);
 		expect(readFileSync(linked, "utf8")).toBe("someone else's file");
 	});
+
+	// mu.ps1 is there so that a prompt reaches mu exactly, which cmd cannot promise. `mu import` repeats an option it
+	// does not know word for word, so what it says is what node was given.
+	it.runIf(windows)(
+		"hands every argument to mu exactly from PowerShell: quotes, &, %, spaces and backslashes",
+		() => {
+			const dir = home();
+			const pwsh = (process.env.PATH ?? "")
+				.split(delimiter)
+				.map((folder) => join(folder, "pwsh.exe"))
+				.find((file) => existsSync(file));
+			const runs = [
+				{ shell: WINDOWS_POWERSHELL, legacy: false },
+				...(pwsh
+					? [
+							{ shell: pwsh, legacy: false },
+							{ shell: pwsh, legacy: true },
+						]
+					: []),
+			];
+			for (const { shell, legacy } of runs) {
+				for (const option of ['--say "hi" & 100% done', "--dir=C:\\my dir\\", '--quote=a\\"b']) {
+					const result = runPowerShell(shell, ["import", option], { HOME: dir }, { legacy });
+					const output = `${result.out}${result.err}`;
+					const said = output.split(/\r?\n/).find((line) => line.includes("unknown option "));
+					const where = `${shell}${legacy ? " (legacy arguments)" : ""}\n${output}`;
+					expect(said?.slice(said.indexOf("unknown option ") + "unknown option ".length), where).toBe(option);
+					expect(result.code, where).toBe(2);
+				}
+			}
+		},
+		180_000,
+	);
 
 	// These start pi, through tsx: on GitHub's Windows runners that takes over ten seconds.
 	it.skipIf(!installed)(

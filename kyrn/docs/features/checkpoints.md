@@ -39,6 +39,8 @@
 
 没有退回到“只拍这一回合要改的文件”：检查点拍在回合的第一次改动之前，那时不知道这一回合会改哪些文件（`bash` 命令不写文件名），只拍一部分的话，`/rewind` 会声称还原了一个它根本没见过的状态。所以宁可关掉并说清楚。
 
+**机器上的 git 用不了时，整个会话也不拍**（2026-09-25，macOS QA）。除了找不到 git（`git_missing`），macOS 上还有两种：Xcode 许可还没同意时，每个 git 命令都以 69 退出并说明原因（`xcode_license`），以前每个改文件的回合都用英文说一次 “mu: no checkpoint for this turn (git init exited with 69: …)”；没装命令行开发者工具的 Mac 上，`/usr/bin/git` 只是个桩，每运行一次就弹一次系统的安装对话框（`developer_tools_missing`）。后一种在第一次运行 git 之前就查出来：PATH 上找到的 git 是 `/usr/bin/git`，而 `xcode-select -p` 失败或它指的目录不存在，那个桩一次也不运行（`checkpoint/git.ts` 的 `spawnGit`）。两种都和 `git_missing` 一样：说一行、发一次 `checkpoint.off`，`/checkpoints` 和 `/rewind` 说同一行；同意许可或装好工具之后，新开的会话就有检查点。
+
 ## 4. `/checkpoints` 与 `/rewind`
 
 | 命令 | 作用 |

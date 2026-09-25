@@ -9,6 +9,8 @@ import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHarness, type Harness } from "../../coding-agent/test/suite/harness.ts";
 import { parseConfig } from "../src/config.ts";
+import type { DecisionMode } from "../src/decision.ts";
+import { JudgeError } from "../src/errors.ts";
 import { riskFlag } from "../src/extension/features/guard.ts";
 import { permissionEnv } from "../src/extension/features/swarm.ts";
 import { createKyrnJudgeExtension } from "../src/extension/kyrn-judge.ts";
@@ -31,6 +33,13 @@ const verdict = (option: string, p = 0.95): Answer => ({
 	choice: option,
 	probabilities: { [option]: p },
 });
+/** A judge that fails Jev mode's approval question with this error, and answers everything else neutrally. */
+const failing =
+	(error: Error): MockResponder =>
+	(request) => {
+		if ("verdict" in request.questions) throw error;
+		return {};
+	};
 
 describe("what needs permission", () => {
 	const cwd = "/work/project";
@@ -322,6 +331,8 @@ describe("permission modes in a session", () => {
 		/** Picks an answer from the offered ones. Left out, there is no UI: nobody can be asked, and the session does not start until a prompt. */
 		pick?: (options: string[], title: string) => string | undefined;
 		agentDir?: string;
+		/** The decisions' own mode. Default: active. */
+		judging?: DecisionMode;
 	}
 
 	async function start(responder: MockResponder, setup: Setup = {}) {
@@ -344,7 +355,7 @@ describe("permission modes in a session", () => {
 			extensionFactories: [
 				createKyrnJudgeExtension({
 					provider: new MockJudgeProvider(responder),
-					mode: "active",
+					mode: setup.judging ?? "active",
 					config: parseConfig({
 						features: { memory: false, ...(setup.mode ? { permissions: { mode: setup.mode } } : {}) },
 					}),
@@ -379,8 +390,8 @@ describe("permission modes in a session", () => {
 		return { harness, ran, asked, status, notes, of };
 	}
 
-	const call = (name: string, args: Record<string, string>) =>
-		fauxAssistantMessage([fauxToolCall(name, args)], { stopReason: "toolUse" });
+	const call = (name: string, args: Record<string, string>, id?: string) =>
+		fauxAssistantMessage([fauxToolCall(name, args, { id })], { stopReason: "toolUse" });
 	const results = (harness: Harness) =>
 		harness.session.messages
 			.filter((message) => message.role === "toolResult")
@@ -396,7 +407,7 @@ describe("permission modes in a session", () => {
 			{ mode: "ask", pick: (options) => options.find((option) => option.startsWith("Allow for this conversation")) },
 		);
 		harness.setResponses([
-			call("edit", { path: "src/a.ts" }),
+			call("edit", { path: "src/a.ts" }, "call-edit-a"),
 			call("edit", { path: "src/b.ts" }),
 			call("bash", { command: "ls" }),
 			fauxAssistantMessage("Edited both."),
@@ -412,6 +423,7 @@ describe("permission modes in a session", () => {
 		expect(status).toEqual(["Waiting for your permission: edit src/a.ts", undefined]);
 		expect(of("permissions.request")).toEqual([
 			expect.objectContaining({
+				toolCallId: "call-edit-a",
 				mode: "ask",
 				tool: "edit",
 				kind: "edit",
@@ -420,7 +432,9 @@ describe("permission modes in a session", () => {
 				answerIds: ["once", "session", "deny"],
 			}),
 		]);
-		expect(of("permissions.resolved")).toEqual([{ id: "permission-1", answer: "session" }]);
+		expect(of("permissions.resolved")).toEqual([
+			{ id: "permission-1", toolCallId: "call-edit-a", answer: "session" },
+		]);
 		expect(of("permissions.approved")).toEqual([expect.objectContaining({ tool: "edit", by: "grant" })]);
 	});
 
@@ -441,12 +455,22 @@ describe("permission modes in a session", () => {
 		expect(asked[1].options).toEqual(["Allow once", "Don't allow"]);
 	});
 
+	// QA on macOS, 2026-09-25: the app has to know which tool call a permission is about to mark that call's row.
+	// Both events name the call; what the model is told about a refusal stays as it was.
 	it("minimal permissions: a no stops the call and tells the model not to go around it", async () => {
-		const { harness, ran } = await start(() => ({}), { mode: "ask", pick: (options) => options.at(-1) });
-		harness.setResponses([call("bash", { command: "npm install left-pad" }), fauxAssistantMessage("Skipped it.")]);
+		const { harness, ran, of } = await start(() => ({}), { mode: "ask", pick: (options) => options.at(-1) });
+		harness.setResponses([
+			call("bash", { command: "npm install left-pad" }, "call-install"),
+			fauxAssistantMessage("Skipped it."),
+		]);
 		await harness.session.prompt("Add left-pad");
 		expect(ran).toEqual([]);
 		expect(results(harness)[0]).toContain("The user did not allow this (npm install left-pad)");
+		expect(results(harness)[0]).toContain('"toolCallId":"call-install"');
+		expect(of("permissions.request")).toEqual([
+			expect.objectContaining({ id: "permission-1", toolCallId: "call-install", reason: "ask" }),
+		]);
+		expect(of("permissions.resolved")).toEqual([{ id: "permission-1", toolCallId: "call-install", answer: "deny" }]);
 	});
 
 	it("Jev approves: edits in the project go ahead, a command Jev is sure of runs, and what it doubts reaches the user with why", async () => {
@@ -518,6 +542,70 @@ describe("permission modes in a session", () => {
 			flagCode: "recursive_or_forced_delete",
 			answerIds: ["once", "deny"],
 		});
+	});
+
+	/** One command in Jev mode that reaches the user, who refuses it: what the question said, and the event's payload. */
+	async function refusedInJev(responder: MockResponder, command: string, judging?: DecisionMode) {
+		const { harness, ran, asked, of } = await start(responder, {
+			mode: "jev",
+			judging,
+			pick: (options) => options.at(-1),
+		});
+		harness.setResponses([call("bash", { command }), fauxAssistantMessage("Left it.")]);
+		await harness.session.prompt("Ship the release");
+		expect(ran).toEqual([]);
+		expect(asked).toHaveLength(1);
+		return { title: asked[0].title, request: of("permissions.request")[0] };
+	}
+
+	// QA on macOS, 2026-09-25: a judge that never answered was reported as Jev being unsure of the step.
+	it("Jev approves: a judge that cannot answer yet, or did not answer this time, is named in the question", async () => {
+		const noKey = await refusedInJev(
+			failing(new JudgeError("auth", "No API key is configured for Jev")),
+			"npm publish",
+		);
+		expect(noKey.request).toMatchObject({ reason: "nojudge" });
+		expect(noKey.title).toContain("No judge is available yet, so mu asks about each step.");
+		for (const error of [
+			new JudgeError("timeout", "Judge call exceeded 8000 ms"),
+			new JudgeError("server", "The judge answered 502"),
+			new JudgeError("payment_required", "The judge answered 402"),
+			new Error("socket hang up"),
+		]) {
+			const down = await refusedInJev(failing(error), "npm publish");
+			expect(down.request, error.message).toMatchObject({ reason: "judgedown" });
+			expect(down.title, error.message).toContain("The judge did not answer this time, so mu asks you.");
+		}
+		vi.stubEnv("MU_LANG", "zh-CN");
+		expect((await refusedInJev(failing(new JudgeError("auth", "no key")), "npm publish")).title).toContain(
+			"还没有可用的判定器，所以每一步都先问你。",
+		);
+		expect((await refusedInJev(failing(new Error("socket hang up")), "npm publish")).title).toContain(
+			"判定器这次没有回答，所以先问你。",
+		);
+	});
+
+	it("Jev approves: a flagged command keeps its flag when the judge fails, and judging switched off asks as before", async () => {
+		const flagged = await refusedInJev((request) => {
+			if ("requested" in request.questions) throw new JudgeError("auth", "No API key is configured for Jev");
+			return {};
+		}, "rm -rf dist");
+		expect(flagged.request).toMatchObject({ reason: "flagged", flagCode: "recursive_or_forced_delete" });
+
+		const off = await refusedInJev(() => ({}), "npm publish", "off");
+		expect(off.request).toMatchObject({ reason: "unsure" });
+		expect(off.title).toContain("Jev is not sure this step is what you want.");
+	});
+
+	it("Jev approves in shadow too: its verdict counts, and a judge that did not answer is said not to have", async () => {
+		const judged = await refusedInJev(
+			(request): Record<string, Answer> => ("verdict" in request.questions ? { verdict: verdict("unrelated") } : {}),
+			"npm publish",
+			"shadow",
+		);
+		expect(judged.request).toMatchObject({ reason: "unrelated" });
+		const noKey = await refusedInJev(failing(new JudgeError("auth", "no key")), "npm publish", "shadow");
+		expect(noKey.request).toMatchObject({ reason: "nojudge" });
 	});
 
 	it("with judging switched off (MU_JUDGE=off) the chosen mode still holds: minimal permissions ask before an edit", async () => {

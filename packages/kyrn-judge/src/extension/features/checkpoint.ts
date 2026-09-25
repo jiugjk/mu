@@ -8,7 +8,7 @@ import type {
 	ToolExecutionEndEvent,
 	TurnEndEvent,
 } from "@earendil-works/pi-coding-agent";
-import { GitMissing, type GitRun, spawnGit } from "../../checkpoint/git.ts";
+import { GitMissing, type GitRun, GitUnusable, spawnGit } from "../../checkpoint/git.ts";
 import { isCheckCommand, isMutatingCall } from "../../checkpoint/mutating.ts";
 import {
 	applyRestore,
@@ -141,14 +141,25 @@ const describeResult = (result: RestoreResult): string =>
 /**
  * Why a session goes without checkpoints. The folder alone says `home_folder` (the user's home, or a folder
  * that holds it) and `mu_folder`; the first snapshot says the size ones, and stops before it writes anything.
+ * The machine's git says the rest: none at all, one held back until the Xcode license is accepted, or a Mac
+ * without the developer tools, whose git is a stub that only offers to install them (`../../checkpoint/git.ts`).
  */
 export type CheckpointsOff =
 	| "git_missing"
+	| "xcode_license"
+	| "developer_tools_missing"
 	| "home_folder"
 	| "mu_folder"
 	| "too_many_files"
 	| "too_many_bytes"
 	| "too_slow";
+
+/** The reasons that lie with the machine's git rather than the folder: no command can open the snapshots then. */
+const GIT_CANNOT_RUN: ReadonlySet<CheckpointsOff> = new Set([
+	"git_missing",
+	"xcode_license",
+	"developer_tools_missing",
+]);
 
 /** The one line that tells the user, in their language, and what it names for a client that translates. */
 export function offNotice(
@@ -163,6 +174,22 @@ export function offNotice(
 				line: say({
 					zh: "mu：检查点已关闭，因为这台机器上找不到 git。",
 					en: "mu: checkpoints are off, because git was not found on this machine.",
+				}),
+				params: {},
+			};
+		case "xcode_license":
+			return {
+				line: say({
+					zh: "mu：检查点已关闭，因为这台 Mac 还没有同意 Xcode 许可协议，git 无法运行。在终端里用 sudo xcodebuild -license 同意后，新开一个会话就有检查点。",
+					en: "mu: checkpoints are off, because git cannot run on this Mac until the Xcode license is accepted. Accept it with sudo xcodebuild -license in Terminal, then start a new session to get them.",
+				}),
+				params: {},
+			};
+		case "developer_tools_missing":
+			return {
+				line: say({
+					zh: "mu：检查点已关闭，因为这台 Mac 没有安装 git 所需的命令行开发者工具。用 xcode-select --install 安装后，新开一个会话就有检查点。",
+					en: "mu: checkpoints are off, because this Mac has no command line developer tools, which git needs. Install them with xcode-select --install, then start a new session to get them.",
 				}),
 				params: {},
 			};
@@ -306,7 +333,7 @@ export function registerCheckpoint(
 
 	/** What keeps a command from opening the snapshots at all, as the line to say. */
 	const refusal = (cwd: string): string | undefined => {
-		if (off?.code === "git_missing") return off.line;
+		if (off && GIT_CANNOT_RUN.has(off.code)) return off.line;
 		const place = placeOff(cwd);
 		return place ? offNotice(place, options).line : undefined;
 	};
@@ -314,6 +341,8 @@ export function registerCheckpoint(
 	const giveUp = (ctx: ExtensionContext, error: unknown): void => {
 		if (off) return;
 		if (error instanceof GitMissing) switchOff(ctx, "git_missing");
+		// Every later turn would fail the same way, and say so again in English.
+		else if (error instanceof GitUnusable) switchOff(ctx, error.reason);
 		else if (error instanceof SnapshotTooLarge) {
 			const codes = { files: "too_many_files", bytes: "too_many_bytes", slow: "too_slow" } as const;
 			switchOff(ctx, codes[error.reason]);
@@ -885,7 +914,7 @@ export function registerCheckpoint(
 			} catch (error) {
 				pending = undefined;
 				giveUp(ctx, error);
-				if (!(error instanceof GitMissing))
+				if (!(error instanceof GitMissing || error instanceof GitUnusable))
 					ctx.ui.notify(
 						`The rewind stopped: ${clip(error instanceof Error ? error.message : String(error), 300)}`,
 						"error",

@@ -35,8 +35,11 @@ export const PERMISSIONS_ENTRY = "mu.permissions";
 const MODE_STATUS = "mu.permissions";
 const PENDING_STATUS = "mu.permissions.pending";
 
-/** Why the user is being asked. */
-export type AskReason = "ask" | "unsure" | "beyond" | "unrelated" | "flagged" | "protected";
+/**
+ * Why the user is being asked. `nojudge` and `judgedown` are Jev mode without a verdict: no judge can answer yet
+ * (it has no usable key, so every step asks), or the judge did not answer this time (down, too slow, a broken answer).
+ */
+export type AskReason = "ask" | "unsure" | "beyond" | "unrelated" | "flagged" | "protected" | "nojudge" | "judgedown";
 
 const KIND_TEXT: Readonly<Record<PermissionKind, { zh: string; en: string }>> = {
 	edit: { zh: "改文件", en: "edit a file" },
@@ -56,6 +59,11 @@ const REASON_TEXT: Readonly<Record<Exclude<AskReason, "flagged">, { zh: string; 
 		zh: "这会动到 mu 自己的设置，只能由你决定。",
 		en: "This touches mu's own settings; only you can allow it.",
 	},
+	nojudge: {
+		zh: "还没有可用的判定器，所以每一步都先问你。",
+		en: "No judge is available yet, so mu asks about each step.",
+	},
+	judgedown: { zh: "判定器这次没有回答，所以先问你。", en: "The judge did not answer this time, so mu asks you." },
 };
 
 /** The answers, fixed so a client can draw them as buttons. */
@@ -216,7 +224,11 @@ export function registerPermissions(runtime: KyrnRuntime, roots: HarnessRoots | 
 			{ signal: ctx.signal },
 		);
 		const verdict = decision.judged ?? decision.outcome;
-		return verdict === "approve" ? { approved: true, reason: "ask" } : { approved: false, reason: verdict };
+		if (verdict === "approve") return { approved: true, reason: "ask" };
+		// Without a verdict the fallback says "unsure", but Jev never looked: the user is told the judge did not answer.
+		// A judge without a usable key will not answer the next step either; another failure may be over by then.
+		const failed = decision.reason?.startsWith("error:");
+		return { approved: false, reason: decision.reason === "error:auth" ? "nojudge" : failed ? "judgedown" : verdict };
 	};
 
 	const askUser = async (
@@ -246,6 +258,9 @@ export function registerPermissions(runtime: KyrnRuntime, roots: HarnessRoots | 
 		const deny = say(ANSWERS.deny);
 		runtime.present("permissions.request", {
 			id,
+			// The call this is about, here and in `permissions.resolved`: a client marks that call's own row by it, in
+			// its own words. The model is still told in English why a refused call did not run.
+			toolCallId: event.toolCallId,
 			mode,
 			tool: event.toolName,
 			kind: need.kind,
@@ -279,7 +294,7 @@ export function registerPermissions(runtime: KyrnRuntime, roots: HarnessRoots | 
 			ctx.ui.setStatus(PENDING_STATUS, undefined);
 		}
 		const answer = picked === once ? "once" : session && picked === session ? "session" : "deny";
-		runtime.present("permissions.resolved", { id, answer });
+		runtime.present("permissions.resolved", { id, toolCallId: event.toolCallId, answer });
 		if (answer === "session" && grant) grants.add(grant.key);
 		if (answer !== "deny") return undefined;
 		return {

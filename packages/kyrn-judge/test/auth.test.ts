@@ -1,7 +1,11 @@
-import type { AuthInteraction, Provider } from "@earendil-works/pi-ai";
+import { existsSync, mkdirSync, mkdtempSync, rmdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { AuthInteraction, ModelsStore, Provider } from "@earendil-works/pi-ai";
 import * as pi from "@earendil-works/pi-coding-agent";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { AUTH_COMMANDS as LAUNCHER_COMMANDS } from "../../../kyrn/bin/mu.mjs";
+import { exitWhenUnlocked } from "../src/auth/exit.ts";
 import {
 	AUTH_COMMANDS,
 	type AuthIo,
@@ -10,6 +14,7 @@ import {
 	modelsOf,
 	runAuth,
 } from "../src/auth/runner.ts";
+import { antigravityProvider, geminiCliProvider } from "../src/google-login/providers.ts";
 
 /**
  * `mu auth`, the desktop app's subscription sign-in, against a stand-in for pi's model runtime: the JSON lines it
@@ -287,5 +292,103 @@ describe("mu auth", () => {
 		// The npm package runs `mu auth` on pi's bundle, whose index must carry both.
 		expect(typeof pi.ModelRuntime.create).toBe("function");
 		expect(pi.defaultModelPerProvider["openai-codex"]).toEqual(expect.any(String));
+	});
+});
+
+describe("how mu auth ends", () => {
+	const dirs: string[] = [];
+	afterEach(() => {
+		while (dirs.length > 0) rmSync(dirs.pop() as string, { recursive: true, force: true });
+	});
+	const agentDir = () => {
+		const dir = mkdtempSync(join(tmpdir(), "mu-auth-exit-"));
+		dirs.push(dir);
+		return dir;
+	};
+
+	// QA on macOS, 2026-09-25: the desktop started two `mu auth` runs 0.7 s apart. The first exited with
+	// models-store.json.lock still there, the second waited on it until the app killed it, and a conversation
+	// started in the next 30 s found no model.
+	it("does not leave the model catalogue locked while pi's background refresh is still at work", async () => {
+		const dir = agentDir();
+		const lock = join(dir, "models-store.json.lock");
+		const extra = [geminiCliProvider(), antigravityProvider()];
+		// pi's own store locks the file around each read. This one keeps the lock until the test lets go, for the
+		// catalogues only pi's background refresh reads: the one `mu auth` waits for reads mu's own providers alone.
+		let letGo = () => {};
+		const released = new Promise<void>((resolve) => {
+			letGo = resolve;
+		});
+		let holders = 0;
+		const modelsStore: ModelsStore = {
+			read: async (providerId) => {
+				if (extra.some((provider) => provider.id === providerId)) return undefined;
+				if (holders++ === 0) mkdirSync(lock);
+				try {
+					await released;
+				} finally {
+					if (--holders === 0) rmdirSync(lock);
+				}
+				return undefined;
+			},
+			write: async () => {},
+			delete: async () => {},
+		};
+		const runtime = await pi.ModelRuntime.create({
+			authPath: join(dir, "auth.json"),
+			modelsPath: null,
+			modelsStore,
+			refreshOnCreate: false,
+		});
+		const app = pipe();
+		const code = await runAuth(["status"], { runtime, preferred, extra, io: app.io });
+		expect(app.said).toEqual([expect.objectContaining({ type: "status" })]);
+		// The answer is out, and registering mu's own sign-ins has pi refreshing every catalogue, which nobody waits
+		// for: an exit right here left the lock behind.
+		expect(existsSync(lock)).toBe(true);
+		setTimeout(letGo, 100);
+		const exits: { code: number; locked: boolean }[] = [];
+		await exitWhenUnlocked(code, [join(dir, "auth.json"), join(dir, "models-store.json")], (exitCode) =>
+			exits.push({ code: exitCode, locked: existsSync(lock) }),
+		);
+		expect(exits).toEqual([{ code: 0, locked: false }]);
+	});
+
+	it("never holds one lock while it waits for the other, and leaves another process's lock alone", async () => {
+		const dir = agentDir();
+		// Another mu is inside the model catalogue, and stays there.
+		const held = join(dir, "models-store.json.lock");
+		mkdirSync(held);
+		const seen: boolean[] = [];
+		const looking = setInterval(() => seen.push(existsSync(join(dir, "auth.json.lock"))), 5);
+		const exits: number[] = [];
+		try {
+			await exitWhenUnlocked(
+				1,
+				[join(dir, "auth.json"), join(dir, "models-store.json")],
+				(code) => exits.push(code),
+				{
+					limitMs: 100,
+					pollMs: 10,
+				},
+			);
+		} finally {
+			clearInterval(looking);
+		}
+		expect(exits).toEqual([1]);
+		expect(seen.length).toBeGreaterThan(0);
+		expect(seen.every((locked) => !locked)).toBe(true);
+		expect(existsSync(held)).toBe(true);
+		expect(existsSync(join(dir, "auth.json.lock"))).toBe(false);
+	});
+
+	it("exits at once when nothing is locked, or when there is no agent folder yet", async () => {
+		const exits: number[] = [];
+		const dir = agentDir();
+		await exitWhenUnlocked(0, [join(dir, "auth.json"), join(dir, "models-store.json")], (code) => exits.push(code));
+		await exitWhenUnlocked(2, [join(dir, "missing", "auth.json")], (code) => exits.push(code), { limitMs: 60_000 });
+		expect(exits).toEqual([0, 2]);
+		expect(existsSync(join(dir, "auth.json.lock"))).toBe(false);
+		expect(existsSync(join(dir, "missing"))).toBe(false);
 	});
 });

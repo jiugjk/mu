@@ -207,6 +207,14 @@ These fields are added:
 
 - `flagCode`, for a flagged command: `recursive_or_forced_delete`, `discards_git_work`, `force_push`, `drops_database_objects`, `overwrites_device`, `opens_permissions_recursively`, `runs_downloaded_script`, `runs_as_administrator` or `runs_as_root`.
 - `answerIds`, in the order of `answers`: `once`, `session` (when offered) and `deny`. These are the same ids `permissions.resolved` reports.
+- `toolCallId`, here and in `permissions.resolved`: the tool call the question is about. Show the answer on that call's row in your own words. The call's tool result keeps the English reason the model reads.
+
+`reason` is itself a code. Two values were added on 2026-09-25 for Jev mode without a verdict:
+
+| reason | English |
+| --- | --- |
+| `nojudge` | No judge is available yet, so mu asks about each step. |
+| `judgedown` | The judge did not answer this time, so mu asks you. |
 
 The mode labels and descriptions are already in Chinese or English. Key your own strings on `mode` and `modes[].id`.
 
@@ -253,6 +261,8 @@ A new event, sent once per session, when the session goes without checkpoints: `
 | code | params | English |
 | --- | --- | --- |
 | `git_missing` | | checkpoints are off, because git was not found on this machine |
+| `xcode_license` | | checkpoints are off, because git cannot run on this Mac until the Xcode license is accepted. Accept it with sudo xcodebuild -license in Terminal, then start a new session to get them |
+| `developer_tools_missing` | | checkpoints are off, because this Mac has no command line developer tools, which git needs. Install them with xcode-select --install, then start a new session to get them |
 | `home_folder` | | checkpoints are off in this session, because this folder is your home folder or holds it. Start mu in a project folder to get them |
 | `mu_folder` | | … because this folder is inside mu's own folder |
 | `too_many_files` | `limit` | … because this folder has more than N files to snapshot. Start mu in a project folder to get them, or raise features.checkpoint.maxFiles |
