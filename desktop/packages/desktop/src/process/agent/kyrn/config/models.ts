@@ -28,10 +28,13 @@ const printable = (value: string): boolean =>
 /** A value the screen never sends; the message says which, for the detail line. */
 const invalid = (message: string): KyrnError => new KyrnError('invalid', message);
 
-/** HTTPS, or plain HTTP to this machine only; nothing that smuggles a credential or a second destination. */
+/** HTTPS, or plain HTTP to this machine or a private-network address; nothing that smuggles a credential or a second destination. */
 export function assertEndpoint(value: string): void {
   if (!isSafeEndpoint(value))
-    throw new KyrnError('endpoint', 'Use HTTPS or a loopback HTTP endpoint without embedded credentials');
+    throw new KyrnError(
+      'endpoint',
+      'Use HTTPS, or HTTP to loopback or a private-network address, without embedded credentials'
+    );
 }
 
 export type ModelsDocument = { doc: JsonRecord; commented: boolean; problem: string };

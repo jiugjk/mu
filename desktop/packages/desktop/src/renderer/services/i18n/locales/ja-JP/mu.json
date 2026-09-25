@@ -119,6 +119,8 @@
       "gateway": "Vercel AI Gateway 経由"
     },
     "model": "判定モデル",
+    "baseUrl": "ベース URL",
+    "baseUrlHelp": "空欄なら TypeSafe の公式アドレスを使います。",
     "customTier": "自分で追加した判定器です。変更するには mu の設定ファイルを編集してください。",
     "endpointDefault": "サービスの既定のアドレス",
     "types": {
@@ -458,7 +460,7 @@
         "modelPlaceholder": "例: claude-sonnet-5"
       },
       "problems": {
-        "baseUrl": "https:// で始まるアドレスを入力してください（http:// はこのマシン上のサービスのみ）。",
+        "baseUrl": "https:// で始まるアドレスを入力してください（http:// はこのマシンまたはプライベートネットワークのアドレスのみ）。",
         "key": "API キーを入力してください。",
         "model": "モデル名を入力してください。"
       },

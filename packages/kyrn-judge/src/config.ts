@@ -22,7 +22,10 @@ export interface JudgeConfig {
 	readonly type: "jev" | "typesafe" | "gateway" | "local" | "http" | "llm" | "mock";
 	/** jev, typesafe, gateway: judge model id. llm: "provider/model-id". */
 	readonly model?: string;
-	/** gateway, local, http. */
+	/**
+	 * gateway, local, http, and the TypeSafe route (`typesafe`, or `jev` when a TypeSafe key is set).
+	 * For TypeSafe this is the System One URL; empty uses TypeSafe's own.
+	 */
 	readonly baseUrl?: string;
 	/** http: request path, default "/evaluate". */
 	readonly path?: string;

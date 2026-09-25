@@ -119,6 +119,8 @@
       "gateway": "Through Vercel AI Gateway"
     },
     "model": "Judge model",
+    "baseUrl": "Base URL",
+    "baseUrlHelp": "Leave empty to use TypeSafe's own address.",
     "customTier": "A judge you added yourself. Change it in mu's settings file.",
     "endpointDefault": "Default address of the service",
     "types": {
@@ -458,7 +460,7 @@
         "modelPlaceholder": "e.g. claude-sonnet-5"
       },
       "problems": {
-        "baseUrl": "Enter an address that starts with https:// (http:// only for this machine).",
+        "baseUrl": "Enter an address that starts with https:// (http:// is allowed for this machine or a private-network address).",
         "key": "Enter the API key.",
         "model": "Enter the model name."
       },

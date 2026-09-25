@@ -119,6 +119,8 @@
       "gateway": "Pelo Vercel AI Gateway"
     },
     "model": "Modelo do juiz",
+    "baseUrl": "URL base",
+    "baseUrlHelp": "Deixe vazio para usar o endereço oficial da TypeSafe.",
     "customTier": "Um juiz que você mesmo adicionou. Para mudá-lo, edite o arquivo de configurações do mu.",
     "endpointDefault": "Endereço padrão do serviço",
     "types": {
@@ -458,7 +460,7 @@
         "modelPlaceholder": "ex.: claude-sonnet-5"
       },
       "problems": {
-        "baseUrl": "Insira um endereço que comece com https:// (http:// só para esta máquina).",
+        "baseUrl": "Insira um endereço que comece com https:// (http:// só para esta máquina ou um endereço de rede privada).",
         "key": "Insira a chave de API.",
         "model": "Insira o nome do modelo."
       },

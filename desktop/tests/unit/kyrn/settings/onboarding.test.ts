@@ -152,6 +152,7 @@ describe('the first-run guide', () => {
     expect(providerIdFor('https://relay.example.com', new Set(['relay']))).toBe('relay-custom');
     expect(providerIdFor('https://relay.example.com', new Set(['relay', 'relay-custom']))).toBe('relay-custom-2');
     expect(providerIdFor('http://localhost:11434/v1', none)).toBe('local');
+    expect(providerIdFor('http://192.168.31.124:8000/v1', none)).toBe('local');
     expect(providerIdFor('https://api.openai.com/v1', none)).toBe('openai-custom');
     expect(providerIdFor('https://api.moonshot.cn/v1', none)).toBe('moonshot');
   });
@@ -161,6 +162,7 @@ describe('the first-run guide', () => {
     // Not "local" or "…-custom", which are English words.
     expect(providerNameFor('http://localhost:11434/v1', 'local')).toBe('localhost:11434');
     expect(providerNameFor('http://127.0.0.1:1234/v1', 'local-custom')).toBe('127.0.0.1:1234');
+    expect(providerNameFor('http://192.168.31.124:8000/v1', 'local')).toBe('192.168.31.124:8000');
     expect(providerNameFor('https://api.deepseek.com/v1', 'deepseek-custom')).toBe('api.deepseek.com');
     expect(providerNameFor('https://relay.example.com', 'relay-custom')).toBe('relay.example.com');
 
@@ -183,6 +185,9 @@ describe('the first-run guide', () => {
     };
     expect(apiModelProblem(input)).toBeUndefined();
     expect(apiModelProblem({ ...input, baseUrl: 'http://relay.example.com/v1' })).toBe('baseUrl');
+    expect(apiModelProblem({ ...input, baseUrl: 'http://8.8.8.8/v1' })).toBe('baseUrl');
+    expect(apiModelProblem({ ...input, baseUrl: 'http://192.168.31.124:8000/v1' })).toBeUndefined();
+    expect(apiModelProblem({ ...input, baseUrl: 'http://192.168.31.124:8000/v1', key: '' })).toBe('key');
     expect(apiModelProblem({ ...input, key: ' ' })).toBe('key');
     expect(apiModelProblem({ ...input, baseUrl: 'http://127.0.0.1:11434/v1', key: '' })).toBeUndefined();
     expect(apiModelProblem({ ...input, model: '' })).toBe('model');

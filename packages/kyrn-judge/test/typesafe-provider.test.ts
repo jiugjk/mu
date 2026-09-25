@@ -60,6 +60,27 @@ describe("TypeSafeJudgeProvider", () => {
 		expect(result.modelId).toBe("jev-1");
 	});
 
+	it("posts to a configured base URL, including a private-network HTTP address", async () => {
+		const seen: { url?: string } = {};
+		const provider = new TypeSafeJudgeProvider({
+			apiKey: "k",
+			baseUrl: "http://192.168.31.124:8000/v1/systemone/",
+			fetch: fakeFetch(
+				200,
+				{
+					answers: {
+						edit: { noul: 0.5 },
+						kind: { choice: "other" },
+						size: { score: 1 },
+					},
+				},
+				seen,
+			),
+		});
+		await provider.evaluate({ state: "s", questions });
+		expect(seen.url).toBe("http://192.168.31.124:8000/v1/systemone");
+	});
+
 	it("classifies failures without ever echoing the key", async () => {
 		const denied = new TypeSafeJudgeProvider({
 			apiKey: "secret-key",

@@ -119,6 +119,8 @@
       "gateway": "經 Vercel AI Gateway"
     },
     "model": "判定模型",
+    "baseUrl": "介面位址",
+    "baseUrlHelp": "留空則使用 TypeSafe 的官方位址",
     "customTier": "你自己加的判定器，要改它請編輯 mu 的設定檔。",
     "endpointDefault": "使用服務的預設位址",
     "types": {
@@ -458,7 +460,7 @@
         "modelPlaceholder": "例如 claude-sonnet-5"
       },
       "problems": {
-        "baseUrl": "請填寫 https:// 開頭的位址（本機服務可以用 http://）。",
+        "baseUrl": "請填寫 https:// 開頭的位址（本機或區域網路位址可以用 http://）。",
         "key": "請填寫 API 金鑰。",
         "model": "請填寫模型名稱。"
       },

@@ -119,6 +119,8 @@
       "gateway": "A través de Vercel AI Gateway"
     },
     "model": "Modelo del juez",
+    "baseUrl": "URL base",
+    "baseUrlHelp": "Déjalo vacío para usar la dirección de TypeSafe.",
     "customTier": "Un juez que añadiste tú. Se cambia en el archivo de ajustes de mu.",
     "endpointDefault": "Dirección predeterminada del servicio",
     "types": {
@@ -458,7 +460,7 @@
         "modelPlaceholder": "Ej. claude-sonnet-5"
       },
       "problems": {
-        "baseUrl": "Introduce una dirección que empiece por https:// (http:// solo para este ordenador).",
+        "baseUrl": "Introduce una dirección que empiece por https:// (http:// solo para este ordenador o una dirección de red privada).",
         "key": "Introduce la clave de API.",
         "model": "Introduce el nombre del modelo."
       },

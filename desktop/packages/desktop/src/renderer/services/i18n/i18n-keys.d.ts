@@ -2366,6 +2366,8 @@ export type I18nKey =
   | 'mu.judges.access.gateway'
   | 'mu.judges.access.jev'
   | 'mu.judges.access.typesafe'
+  | 'mu.judges.baseUrl'
+  | 'mu.judges.baseUrlHelp'
   | 'mu.judges.choices.jev.description'
   | 'mu.judges.choices.jev.tag'
   | 'mu.judges.choices.jev.title'

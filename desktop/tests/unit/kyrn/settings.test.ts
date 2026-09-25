@@ -93,6 +93,20 @@ describe('native mu settings', () => {
       f.cleanup();
     }
   });
+  it('accepts a private-network HTTP address for a TypeSafe judge and still refuses a public one', () => {
+    const f = fixture();
+    try {
+      const value = f.store.read();
+      value.judges['jev-direct'].baseUrl = 'http://192.168.31.124:8000/v1/systemone';
+      expect(f.store.save(value).judges['jev-direct'].baseUrl).toBe('http://192.168.31.124:8000/v1/systemone');
+      const again = f.store.read();
+      again.judges['jev-direct'].baseUrl = 'http://example.com/v1';
+      expect(() => f.store.save(again)).toThrow('private-network address');
+      expect(f.store.read().judges['jev-direct'].baseUrl).toBe('http://192.168.31.124:8000/v1/systemone');
+    } finally {
+      f.cleanup();
+    }
+  });
   it('rejects credentialed or non-HTTPS external endpoints before changing disk', () => {
     const f = fixture();
     try {

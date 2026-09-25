@@ -119,6 +119,8 @@
       "gateway": "经 Vercel AI Gateway"
     },
     "model": "判定模型",
+    "baseUrl": "接口地址",
+    "baseUrlHelp": "留空则使用 TypeSafe 官方地址",
     "customTier": "你自己加的判定器，要改它请编辑 mu 的设置文件。",
     "endpointDefault": "使用服务的默认地址",
     "types": {
@@ -458,7 +460,7 @@
         "modelPlaceholder": "例如 claude-sonnet-5"
       },
       "problems": {
-        "baseUrl": "请填写 https:// 开头的地址（本机服务可以用 http://）。",
+        "baseUrl": "请填写 https:// 开头的地址（本机或局域网地址可以用 http://）。",
         "key": "请填写 API 密钥。",
         "model": "请填写模型名。"
       },

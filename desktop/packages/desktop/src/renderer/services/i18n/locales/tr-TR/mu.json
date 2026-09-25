@@ -119,6 +119,8 @@
       "gateway": "Vercel AI Gateway üzerinden"
     },
     "model": "Hakem modeli",
+    "baseUrl": "Temel URL",
+    "baseUrlHelp": "Boş bırakılırsa TypeSafe'in kendi adresi kullanılır.",
     "customTier": "Kendi eklediğiniz bir hakem. Değiştirmek için mu'nun ayar dosyasını düzenleyin.",
     "endpointDefault": "Hizmetin varsayılan adresi",
     "types": {
@@ -458,7 +460,7 @@
         "modelPlaceholder": "örn. claude-sonnet-5"
       },
       "problems": {
-        "baseUrl": "https:// ile başlayan bir adres girin (http:// yalnızca bu bilgisayar için).",
+        "baseUrl": "https:// ile başlayan bir adres girin (http:// yalnızca bu bilgisayar veya özel ağ adresi için).",
         "key": "API anahtarını girin.",
         "model": "Model adını girin."
       },

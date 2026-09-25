@@ -1346,6 +1346,27 @@ describe('the kernel pages', () => {
     expect(sent.tiers).toEqual(['jev-gateway']);
   });
 
+  it('shows a base URL only for TypeSafe, and accepts a private-network HTTP address', async () => {
+    bridge.settings.mockResolvedValue({ ok: true, data: settings() });
+    render(<SettingsArea section='judges' />, { wrapper });
+    const jev = await screen.findByTestId('mu-judge-tier-0');
+    expect(within(jev).queryByLabelText(enMu.judges.baseUrl)).not.toBeInTheDocument();
+    fireEvent.click(within(jev).getByLabelText(enMu.judges.type));
+    fireEvent.click(await screen.findByText(enMu.judges.access.typesafe, { selector: '.arco-select-option' }));
+    const field = await within(screen.getByTestId('mu-judge-tier-0')).findByLabelText(enMu.judges.baseUrl);
+    fireEvent.change(field, { target: { value: 'http://example.com/v1' } });
+    expect(screen.getByTestId('mu-judge-tier-0')).toHaveTextContent(enMu.endpointRule);
+    fireEvent.change(field, { target: { value: 'http://192.168.31.124:8000/v1/systemone' } });
+    expect(screen.getByTestId('mu-judge-tier-0')).not.toHaveTextContent(enMu.endpointRule);
+    fireEvent.click(screen.getByText('Save'));
+    await waitFor(() => expect(bridge.save).toHaveBeenCalled());
+    const sent = bridge.save.mock.calls[0][0] as SaveSettings;
+    expect(sent.judges.jev).toMatchObject({
+      type: 'typesafe',
+      baseUrl: 'http://192.168.31.124:8000/v1/systemone',
+    });
+  });
+
   it('asks for the key of a Jev further down the order, which the choice above does not show', async () => {
     bridge.settings.mockResolvedValue({ ok: true, data: settings({ tiers: ['laya', 'jev'], keys: {} }) });
     render(<SettingsArea section='judges' />, { wrapper });

@@ -178,6 +178,9 @@ describe('provider form rules', () => {
       thinkingLevels: [],
     };
     const ok = { ...provider, id: 'mine', baseUrl: 'http://localhost:1234/v1' };
+    expect(providerProblems({ ...ok, baseUrl: 'http://192.168.31.124:8000/v1', models: [] }, false, new Set())).toEqual(
+      {}
+    );
     expect(providerProblems({ ...ok, models: [model, model] }, true, new Set()).models).toBe('duplicate');
     expect(providerProblems({ ...ok, models: [{ ...model, id: ' ' }] }, true, new Set()).models).toBe('emptyId');
     expect(providerProblems({ ...ok, models: [model] }, true, new Set())).toEqual({});

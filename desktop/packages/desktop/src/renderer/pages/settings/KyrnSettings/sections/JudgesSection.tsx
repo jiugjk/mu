@@ -1,9 +1,10 @@
 import React from 'react';
 import { Input, Tag } from '@arco-design/web-react';
 import { useTranslation } from 'react-i18next';
+import { isSafeEndpoint } from '@/common/kyrn/models';
+import type { KyrnSettings } from '@/common/kyrn/types';
 import AionSelect from '@/renderer/components/base/AionSelect';
 import { formatNumber } from '@/renderer/services/i18n/format';
-import type { KyrnSettings } from '@/common/kyrn/types';
 import type { Draft } from '../draft';
 import ChoiceTile from '../fields/ChoiceTile';
 import Row from '../fields/Row';
@@ -210,6 +211,9 @@ function JudgeTiers({ draft, base, onChange, onKey }: JudgesSectionProps) {
   );
 }
 
+/** TypeSafe's own System One address, shown when a direct TypeSafe judge has no address of its own yet. */
+const TYPESAFE_ENDPOINT = 'https://api.typesafe.ai/v1/systemone';
+
 /** Jev in the order: how it is reached and its model, and its key when it is not the judge chosen on the judges page. */
 function JevFields({ draft, base, index, onChange, onKey }: JudgesSectionProps & { index: number }) {
   const { t } = useTranslation();
@@ -221,6 +225,7 @@ function JevFields({ draft, base, index, onChange, onKey }: JudgesSectionProps &
   const variable = jevKeyVariable(judge);
   // The first judge's key is asked for in the choice above.
   const keyHere = index > 0;
+  const baseUrlUnsafe = Boolean(judge.baseUrl) && !isSafeEndpoint(judge.baseUrl);
   return (
     <>
       <Row
@@ -251,6 +256,26 @@ function JevFields({ draft, base, index, onChange, onKey }: JudgesSectionProps &
           }
         />
       </Row>
+      {access === 'typesafe' ? (
+        <Row
+          title={t('mu.judges.baseUrl')}
+          help={baseUrlUnsafe ? undefined : t('mu.judges.baseUrlHelp')}
+          problem={baseUrlUnsafe ? t('mu.endpointRule') : undefined}
+          modified={base.judges[name] !== undefined && base.judges[name].baseUrl !== judge.baseUrl}
+        >
+          <Input
+            size='small'
+            className={fieldStyles.wide}
+            aria-label={t('mu.judges.baseUrl')}
+            placeholder={TYPESAFE_ENDPOINT}
+            status={baseUrlUnsafe ? 'error' : undefined}
+            value={judge.baseUrl}
+            onChange={(baseUrl) =>
+              onChange((now) => ({ ...now, judges: { ...now.judges, [name]: { ...now.judges[name], baseUrl } } }))
+            }
+          />
+        </Row>
+      ) : null}
       {keyHere ? (
         <Row
           title={t('mu.apiKey')}
