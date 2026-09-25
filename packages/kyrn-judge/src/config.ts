@@ -9,6 +9,7 @@ import { CONFIG_FILE, LEGACY_CONFIG_FILE, muEnv } from "./naming.ts";
  * typed questions, and whichever model is configured here answers them.
  *
  * - `gateway`: a judge model behind the Vercel AI Gateway (Jev).
+ * - `clm`:     CLM-8B behind `clm-serve`, which answers the same questions Jev does.
  * - `local`:   the Laya sidecar started by `mu judge start`.
  * - `http`:    any endpoint that takes `{state, questions}` and returns `{answers}`.
  * - `llm`:     a generative model from the host's model registry, prompted to answer as JSON.
@@ -19,21 +20,25 @@ export interface JudgeConfig {
 	 * `jev` is Jev by whichever access this machine has: TypeSafe directly when TYPESAFE_API_KEY is set, else
 	 * OpenRouter when MU_JUDGE_OPENROUTER_API_KEY is set, else the Vercel AI Gateway. `typesafe` is Jev over
 	 * System One at `baseUrl` (TypeSafe's own, OpenRouter's, a relay's), `gateway` through the Vercel AI Gateway.
+	 * `clm` is CLM-8B (github.com/Contrastive-LM/CLM) at the address of a `clm-serve`, which speaks System One too.
 	 */
-	readonly type: "jev" | "typesafe" | "gateway" | "local" | "http" | "llm" | "mock";
-	/** jev, typesafe, gateway: judge model id. llm: "provider/model-id". */
+	readonly type: "jev" | "typesafe" | "clm" | "gateway" | "local" | "http" | "llm" | "mock";
+	/** jev, typesafe, gateway: judge model id. clm: a model the server serves, default "clm-latest". llm: "provider/model-id". */
 	readonly model?: string;
 	/**
-	 * gateway, local, http, and the System One route (`typesafe`, or `jev` when a TypeSafe key is set).
-	 * For System One this is the endpoint URL; empty uses TypeSafe's own.
+	 * gateway, local, http, clm, and the System One route (`typesafe`, or `jev` when a TypeSafe key is set).
+	 * For System One this is the endpoint URL; empty uses TypeSafe's own. For clm, the server's address
+	 * (`http://host:8700` is enough); empty is http://127.0.0.1:8700.
 	 */
 	readonly baseUrl?: string;
 	/** http: request path, default "/evaluate". */
 	readonly path?: string;
 	/**
-	 * http, typesafe: name of the environment variable holding a bearer token. The token itself never goes in the file.
-	 * A typesafe judge keyed by MU_JUDGE_OPENROUTER_API_KEY or MU_JUDGE_CUSTOM_API_KEY needs its own `baseUrl`: those
-	 * keys belong to another service and never go to TypeSafe.
+	 * http, typesafe, clm: name of the environment variable holding a bearer token. The token itself never goes in the
+	 * file. A typesafe judge keyed by MU_JUDGE_OPENROUTER_API_KEY, MU_JUDGE_CUSTOM_API_KEY or MU_JUDGE_CLM_API_KEY needs
+	 * its own `baseUrl`: those keys belong to another service and never go to TypeSafe. clm reads MU_JUDGE_CLM_API_KEY
+	 * unless told otherwise, and calls without a key when it is not set: a CLM server asks for one only when it was
+	 * started with CLM_API_KEY.
 	 */
 	readonly apiKeyEnv?: string;
 	/** llm: thinking level for the judge model, default "off". */
@@ -45,7 +50,7 @@ export interface JudgeConfig {
 export interface KyrnConfig {
 	/** Judges tried in order; each later one only sees what the earlier ones left uncertain. */
 	readonly tiers: readonly string[];
-	/** Named judges, merged over the built-in ones (`jev`, `laya`, `mock`). */
+	/** Named judges, merged over the built-in ones (`jev` and its routes, `clm`, `laya`, `mock`). */
 	readonly judges: Readonly<Record<string, JudgeConfig>>;
 	/** `default` plus per-decision overrides keyed by spec id. */
 	readonly modes: Readonly<Record<string, DecisionMode>>;
@@ -76,6 +81,8 @@ export const BUILT_IN_JUDGES: Readonly<Record<string, JudgeConfig>> = {
 		apiKeyEnv: "MU_JUDGE_OPENROUTER_API_KEY",
 	},
 	"jev-gateway": { type: "gateway", model: "typesafe-ai/jev" },
+	// CLM-8B on this machine, where `clm-serve` listens by default. Its profile is not measured on mu's questions yet.
+	clm: { type: "clm" },
 	// Measured in kyrn/docs/03-local-judge.md: the base checkpoint classifies one text well, says "yes" to
 	// nearly every relational question, and cannot use a rubric or judge the request itself.
 	laya: { type: "local", profile: { capabilities: { relate: false, rate: false, meta: false } } },
@@ -129,7 +136,7 @@ function readJudges(value: unknown): Record<string, JudgeConfig> {
 	if (!isRecord(value)) return judges;
 	for (const [name, config] of Object.entries(value)) {
 		if (!isRecord(config) || typeof config.type !== "string") continue;
-		if (!["jev", "typesafe", "gateway", "local", "http", "llm", "mock"].includes(config.type)) continue;
+		if (!["jev", "typesafe", "clm", "gateway", "local", "http", "llm", "mock"].includes(config.type)) continue;
 		judges[name] = config as unknown as JudgeConfig;
 	}
 	return judges;

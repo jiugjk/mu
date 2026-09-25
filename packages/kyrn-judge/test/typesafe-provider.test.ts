@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseConfig } from "../src/config.ts";
 import { isJudgeError } from "../src/errors.ts";
-import { TypeSafeJudgeProvider } from "../src/providers/typesafe.ts";
+import { CLM_BASE_URL, clmEndpoint, TypeSafeJudgeProvider } from "../src/providers/typesafe.ts";
 import { buildJudge } from "../src/registry.ts";
 import type { Questions } from "../src/types.ts";
 
@@ -211,6 +211,119 @@ describe("TypeSafeJudgeProvider", () => {
 		expect(buildJudge(config, { env: {} }).judge.id).toBe("gateway:typesafe-ai/jev");
 		expect(buildJudge(parseConfig({ tiers: ["jev-gateway"] }), { env: { TYPESAFE_API_KEY: "k" } }).judge.id).toBe(
 			"gateway:typesafe-ai/jev",
+		);
+	});
+});
+
+describe("CLM", () => {
+	// Answers as `clm-serve` writes them: each carries its type, and usage counts billing units.
+	const clmAnswers = {
+		model: "clm-latest",
+		answers: {
+			edit: { type: "noul", noul: 0.71 },
+			kind: { type: "choice", choice: "other", confidence: 0.6, probabilities: { chat: 0.2, other: 0.8 } },
+			size: {
+				type: "score",
+				score: 0.4,
+				confidence: 0.5,
+				legend: { "0": "small", "1": "medium", "2": "large" },
+				probabilities: { "0": 0.6, "1": 0.4, "2": 0 },
+			},
+		},
+		usage: { billing_units: 3, input_tokens: 196, output_tokens: 0 },
+	};
+
+	it("reaches a CLM server on this machine, sending no key when none is set", async () => {
+		const seen: { url?: string; init?: RequestInit } = {};
+		const built = buildJudge(parseConfig({ tiers: ["clm"] }), { env: {}, fetch: fakeFetch(200, clmAnswers, seen) });
+		expect(built.problems).toEqual([]);
+		expect(built.judge.id).toBe("127.0.0.1:8700:clm-latest");
+
+		const result = await built.judge.evaluate({ state: { user_message: "rename it" }, questions });
+		expect(seen.url).toBe(`${CLM_BASE_URL}/v1/systemone`);
+		expect(new Headers(seen.init?.headers).has("authorization")).toBe(false);
+		expect(JSON.parse(String(seen.init?.body)).model).toBe("clm-latest");
+		expect(result.answers.edit).toMatchObject({ type: "boolean", probability: 0.71 });
+		expect(result.answers.kind).toMatchObject({ type: "choice", choice: "other", probabilities: { other: 0.8 } });
+		expect(result.answers.size).toMatchObject({ type: "score", score: 0.4 });
+		expect(result.modelId).toBe("clm-latest");
+	});
+
+	it("takes a server's address as clm-serve prints it or as CLM's own client takes it", () => {
+		expect(clmEndpoint(undefined)).toBe("http://127.0.0.1:8700/v1/systemone");
+		expect(clmEndpoint("")).toBe("http://127.0.0.1:8700/v1/systemone");
+		for (const address of [
+			"http://gpu:8700",
+			"http://gpu:8700/",
+			"http://gpu:8700/v1",
+			"http://gpu:8700/v1/systemone/",
+		]) {
+			expect(clmEndpoint(address)).toBe("http://gpu:8700/v1/systemone");
+		}
+		// Behind a proxy that mounts it under a path of its own, the address is used as written.
+		expect(clmEndpoint("https://example.com/clm/v1/systemone")).toBe("https://example.com/clm/v1/systemone");
+	});
+
+	it("sends MU_JUDGE_CLM_API_KEY when it is set, and names it when a server asks for a key", async () => {
+		const seen: { init?: RequestInit } = {};
+		const config = parseConfig({ tiers: ["gpu"], judges: { gpu: { type: "clm", baseUrl: "http://10.0.0.7:8700" } } });
+		const keyed = buildJudge(config, {
+			env: { MU_JUDGE_CLM_API_KEY: "clm-key" },
+			fetch: fakeFetch(200, clmAnswers, seen),
+		});
+		await keyed.judge.evaluate({ state: "s", questions });
+		expect(new Headers(seen.init?.headers).get("authorization")).toBe("Bearer clm-key");
+
+		const clm = (fetchImpl: typeof fetch, apiKey?: string) =>
+			new TypeSafeJudgeProvider({
+				apiKey: () => apiKey,
+				keyName: "MU_JUDGE_CLM_API_KEY",
+				keyOptional: true,
+				judgeName: "CLM",
+				model: "clm-latest",
+				baseUrl: clmEndpoint("http://10.0.0.7:8700"),
+				fetch: fetchImpl,
+			});
+		const cases = [
+			[
+				clm(fakeFetch(401, { detail: "invalid API key" })),
+				"auth",
+				"CLM at 10.0.0.7:8700 asks for a key (MU_JUDGE_CLM_API_KEY)",
+			],
+			[clm(fakeFetch(401, { detail: "invalid API key" }), "wrong"), "auth", "invalid API key"],
+			[
+				clm(fakeFetch(502, { detail: "embedder unreachable at http://127.0.0.1:8090/v1/embeddings" })),
+				"server",
+				"embedder unreachable at http://127.0.0.1:8090/v1/embeddings",
+			],
+			// FastAPI's own validation errors list the request back: none of it reaches the message.
+			[
+				clm(fakeFetch(422, { detail: [{ msg: "field required", input: { state: "secret state" } }] })),
+				"bad_request",
+				"CLM at 10.0.0.7:8700 responded with HTTP 422",
+			],
+			[
+				clm((async () => {
+					throw new TypeError("fetch failed");
+				}) as typeof fetch),
+				"unreachable",
+				"Could not reach CLM at 10.0.0.7:8700",
+			],
+		] as const;
+		for (const [provider, kind, message] of cases) {
+			const error = await provider.evaluate({ state: "secret state", questions }).catch((caught: unknown) => caught);
+			expect(isJudgeError(error) && error.kind).toBe(kind);
+			expect(error instanceof Error && error.message).toBe(message);
+		}
+	});
+
+	it("never sends the CLM key to TypeSafe", () => {
+		const judge = { type: "typesafe", apiKeyEnv: "MU_JUDGE_CLM_API_KEY" };
+		const built = buildJudge(parseConfig({ tiers: ["odd"], judges: { odd: judge } }), {
+			env: { MU_JUDGE_CLM_API_KEY: "c" },
+		});
+		expect(built.problems[0]).toBe(
+			'Judge "odd" needs a baseUrl: its key MU_JUDGE_CLM_API_KEY is not sent to TypeSafe',
 		);
 	});
 });

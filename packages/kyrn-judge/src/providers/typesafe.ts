@@ -7,12 +7,30 @@ export const TYPESAFE_BASE_URL = "https://api.typesafe.ai/v1/systemone";
 export const TYPESAFE_DEFAULT_MODEL = "jev-latest";
 /** OpenRouter names Jev its own way: without a model, a judge that posts there asks for this one. */
 export const OPENROUTER_DEFAULT_MODEL = "~typesafe/jev-latest";
+/** Where `clm-serve` listens unless told otherwise, and the model it serves by default. */
+export const CLM_BASE_URL = "http://127.0.0.1:8700";
+export const CLM_DEFAULT_MODEL = "clm-latest";
+
+/**
+ * A CLM server's System One endpoint. The address may be written as `clm-serve` prints it
+ * (`http://host:8700/v1/systemone`) or as CLM's own client takes it (`http://host:8700`, also `…/v1`).
+ */
+export function clmEndpoint(baseUrl: string | undefined): string {
+	const url = (baseUrl || CLM_BASE_URL).replace(/\/+$/, "");
+	if (!URL.canParse(url)) return url;
+	const path = new URL(url).pathname;
+	return path === "/" ? `${url}/v1/systemone` : path === "/v1" ? `${url}/systemone` : url;
+}
 
 export interface TypeSafeJudgeProviderOptions {
 	/** A key, or a resolver called per request so the host owns credential storage. */
 	apiKey: string | ApiKeyResolver;
 	/** The variable the key is read from, named when it is missing. */
 	keyName?: string;
+	/** Call without a key when none is set, for a server that may not ask for one (CLM unless it sets CLM_API_KEY). */
+	keyOptional?: boolean;
+	/** The judge the service runs when it is not Jev, named in errors: "CLM" makes them say "CLM at <host>". */
+	judgeName?: string;
 	model?: string;
 	/** Any service that speaks System One (TypeSafe, OpenRouter, a relay); empty is TypeSafe's own. */
 	baseUrl?: string;
@@ -70,34 +88,41 @@ function fromWire(question: Question, raw: Record<string, unknown> | undefined):
 /**
  * Jev over System One: TypeSafe's own endpoint, or another service that
  * serves it with the same protocol, such as OpenRouter. (`GatewayJudgeProvider`
- * reaches the same model through the Vercel AI Gateway.) Uses `fetch` directly;
- * error messages name the service and the key's variable, never the key or the
+ * reaches the same model through the Vercel AI Gateway.) CLM's server speaks
+ * the protocol too, and is called the same way. Uses `fetch` directly; error
+ * messages name the service and the key's variable, never the key or the
  * submitted state.
  */
 export class TypeSafeJudgeProvider implements JudgeProvider {
 	readonly id: string;
 	private readonly apiKey: string | ApiKeyResolver;
 	private readonly keyName: string;
+	private readonly keyOptional: boolean;
 	private readonly model: string;
 	private readonly baseUrl: string;
-	/** "TypeSafe" at TypeSafe's own address, otherwise the host the requests go to, e.g. "openrouter.ai". */
+	/**
+	 * "TypeSafe" at TypeSafe's own address, otherwise the host the requests go to, e.g. "openrouter.ai";
+	 * for a judge other than Jev, with its name: "CLM at 127.0.0.1:8700".
+	 */
 	private readonly service: string;
 	private readonly fetchImpl: typeof fetch;
 
 	constructor(options: TypeSafeJudgeProviderOptions) {
 		this.apiKey = options.apiKey;
 		this.keyName = options.keyName ?? "TYPESAFE_API_KEY";
+		this.keyOptional = options.keyOptional ?? false;
 		this.baseUrl = (options.baseUrl || TYPESAFE_BASE_URL).replace(/\/+$/, "");
 		this.fetchImpl = options.fetch ?? fetch;
 		const host = URL.canParse(this.baseUrl) ? new URL(this.baseUrl).host : this.baseUrl;
-		this.service = host === new URL(TYPESAFE_BASE_URL).host ? "TypeSafe" : host;
+		const service = host === new URL(TYPESAFE_BASE_URL).host ? "TypeSafe" : host;
+		this.service = options.judgeName ? `${options.judgeName} at ${service}` : service;
 		this.model = options.model || (host === "openrouter.ai" ? OPENROUTER_DEFAULT_MODEL : TYPESAFE_DEFAULT_MODEL);
-		this.id = `${this.service === "TypeSafe" ? "typesafe" : host}:${this.model}`;
+		this.id = `${service === "TypeSafe" ? "typesafe" : host}:${this.model}`;
 	}
 
 	async evaluate(request: JudgeRequest): Promise<ProviderResponse> {
 		const apiKey = typeof this.apiKey === "string" ? this.apiKey : await this.apiKey();
-		if (!apiKey)
+		if (!apiKey && !this.keyOptional)
 			throw new JudgeError("auth", `No API key is configured for Jev at ${this.service} (${this.keyName})`);
 
 		const questions = Object.fromEntries(
@@ -107,7 +132,7 @@ export class TypeSafeJudgeProvider implements JudgeProvider {
 		try {
 			response = await this.fetchImpl(this.baseUrl, {
 				method: "POST",
-				headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+				headers: { ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}), "Content-Type": "application/json" },
 				body: JSON.stringify({ model: this.model, state: request.state, questions }),
 				signal: request.signal,
 			});
@@ -120,9 +145,11 @@ export class TypeSafeJudgeProvider implements JudgeProvider {
 		if (!response.ok) {
 			const body: unknown = await response.json().catch(() => undefined);
 			const message = messageFromErrorBody(body).slice(0, MAX_ERROR_MESSAGE_LENGTH);
+			// Called without a key, a server that has one turned the call away: say which variable would hold it.
+			const unkeyed = response.status === 401 && !apiKey && `${this.service} asks for a key (${this.keyName})`;
 			throw new JudgeError(
 				errorKindForStatus(response.status, message),
-				message || `${this.service} responded with HTTP ${response.status}`,
+				unkeyed || message || `${this.service} responded with HTTP ${response.status}`,
 				{ status: response.status },
 			);
 		}

@@ -144,7 +144,7 @@ src/
                                      notify-routing · swarm-routing · cache-warming · file-locate · browser-step
   hive/board.ts                      蜂群共享白板（只追加 JSONL：消息 / 投递 / 闸门日志）
   compaction/                        无总结压缩（beta）：history（逐字历史模型与序列化）· prune（规则 / 相关度 / 打分 / 预算）
-  providers/typesafe.ts              Jev 直连 TypeSafe System One（`jev` 档在有 TYPESAFE_API_KEY 时走它）
+  providers/typesafe.ts              System One 协议：Jev 直连 TypeSafe（`jev` 档在有 TYPESAFE_API_KEY 时走它）、OpenRouter、自建中转，以及 CLM（`clm` 档）
   browser/                           内置浏览器（移植自 browser-use/jev-ultrafast，MIT）：cdp（裸 CDP）· chrome（独立 profile 启动/复用）·
                                      snapshot（页内快照，穿透 open shadow root）· session（观察 / 新鲜度校验 / 执行）· agent（观察→判断→执行循环）
   extension/kyrn-judge.ts            pi 扩展入口 + /kyrn 命令（状态、切换判断模型、切换模式）；`only` 选项可只注册部分功能

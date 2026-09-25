@@ -247,6 +247,10 @@ ctrl+o 展开：每只蜂最近 5 步（`14s ago  read packages/…`）、最新
 
 **Jev 的接入服务**：档名 `jev` 按设置了哪个密钥自动选：有 `TYPESAFE_API_KEY` 时直连 TypeSafe（`POST https://api.typesafe.ai/v1/systemone`，是非题类型叫 `noul`）；否则有 `MU_JUDGE_OPENROUTER_API_KEY` 时经 OpenRouter（`https://openrouter.ai/api/v1/systemone`，同一协议，模型名 `~typesafe/jev-latest`）；都没有则走 Vercel AI Gateway。`jev-direct` / `jev-openrouter` / `jev-gateway` 可显式指定。自己的中转或其他提供 Jev 的服务写成 `{"type": "typesafe", "baseUrl": "…", "apiKeyEnv": "MU_JUDGE_CUSTOM_API_KEY"}`；OpenRouter 和自定义服务的密钥没有自己的 `baseUrl` 时，这个判定器直接报错，密钥不会发到 TypeSafe。实测（从国内直连）：连接预热后 10 道题一次请求 0.5–1.5 s，冷连接 2.5 s，偶发 5 s 以上；超时设为 10 s。用 Jev 驱动浏览器：同一个 MDN 任务 3 个动作、4 次判断、总共 6 s（LLM 判断是 23 s）。
 
+**CLM**：CLM-8B（[Contrastive-LM/CLM](https://github.com/Contrastive-LM/CLM)）的服务端 `clm-serve` 也讲 System One（`POST /v1/systemone`，题型同样是 `noul` / `choice` / `score`），所以走同一个客户端。档名 `clm` 连本机默认地址 `http://127.0.0.1:8700`；别的机器写成 `{"type": "clm", "baseUrl": "http://gpu-box:8700"}`，`clm-serve` 打印的完整地址（`…/v1/systemone`）和 CLM 客户端用的 `…/v1` 也都认。模型默认 `clm-latest`。服务端只有启动时设了 `CLM_API_KEY` 才要密钥：把同一个值放进 `MU_JUDGE_CLM_API_KEY`；这个变量没设就不带密钥，服务端要密钥时报错会点名这个变量。这把密钥和 OpenRouter、自定义服务的一样，不会发往 TypeSafe。超时 8 s：一次请求里每道题都连同状态各编码一遍，小显卡上一批长状态要几秒。`mu doctor` 会问服务的 `/health` 和 `/v1/models`：连不上、编码器（vLLM 上的 Qwen3-8B，要 GPU）没起来、没有配的模型、要密钥但没设，都标成 fix；服务跑的是 CLM 自带的假编码器（`tools/playground_mock.py`）时会提示答案是噪声。
+
+接入是在 CLM 自己的服务端代码上验证的（假编码器，没有 GPU）：不带密钥、带密钥、错密钥、编码器挂掉、不存在的模型、没有服务，六种情况的报错都对；20 个固定题目的判定点（39 道题）全部被它的 schema 接受。判断质量还没测过，已知两处和 Jev 不同：CLM 默认只编码每道题的最后 2048 个 token（vLLM 从左边截），而 mu 的状态是按 Jev 的 32K 窗口写的，长状态的开头会丢；它的是非题概率在它自己 README 的例子里就靠近 0.5（重复扣费还没人接电话，"紧急吗" 0.41），mu 的阈值是按 Jev 定的。所以 `clm` 没有能力档案，也不进 `jev` 的自动选择；要用，得先在一台有 GPU 的服务器上拿真实会话量一遍。
+
 **闲聊识别**：`turn_type` 原来没有"与代码无关的闲聊"这一类，`other` 把它们全吸走了；现在加了 `chat` 类，并有一条规则兜底——问候/致谢永远算闲聊；会话还没开始干活（没有任何工具调用）时，不含任何代码/工程痕迹的消息算闲聊。判断模型有明确选择时以它为准。
 
 ## 10.5 看得见的归类：消息先过判断模型，再变成任务

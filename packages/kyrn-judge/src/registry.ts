@@ -7,7 +7,7 @@ import { type ApiKeyResolver, GatewayJudgeProvider } from "./providers/gateway.t
 import { type LlmCompletion, LlmJudgeProvider } from "./providers/llm.ts";
 import { LocalJudgeProvider } from "./providers/local.ts";
 import { MockJudgeProvider } from "./providers/mock.ts";
-import { TypeSafeJudgeProvider } from "./providers/typesafe.ts";
+import { CLM_DEFAULT_MODEL, clmEndpoint, TypeSafeJudgeProvider } from "./providers/typesafe.ts";
 import type { JudgeProvider } from "./types.ts";
 
 /** What only the host application can supply: credentials and generative models. */
@@ -24,6 +24,8 @@ const DEFAULT_TIMEOUT_MS: Readonly<Record<JudgeConfig["type"], number>> = {
 	// Jev answers in well under a second, but a cold connection over a long route can take several.
 	jev: 10_000,
 	typesafe: 10_000,
+	// A CLM server embeds every question together with the state: a batch of long ones takes seconds on a small GPU.
+	clm: 8000,
 	gateway: 4000,
 	local: 4000,
 	http: 8000,
@@ -32,10 +34,14 @@ const DEFAULT_TIMEOUT_MS: Readonly<Record<JudgeConfig["type"], number>> = {
 };
 
 /**
- * Keys for Jev at a service other than TypeSafe (OpenRouter, an address of the user's own). Any other variable may
- * hold a TypeSafe key under a name of its own, and goes to TypeSafe when no address is set.
+ * Keys for a service other than TypeSafe (Jev on OpenRouter, an address of the user's own, a CLM server). Any other
+ * variable may hold a TypeSafe key under a name of its own, and goes to TypeSafe when no address is set.
  */
-const KEYS_FOR_ELSEWHERE: ReadonlySet<string> = new Set(["MU_JUDGE_OPENROUTER_API_KEY", "MU_JUDGE_CUSTOM_API_KEY"]);
+const KEYS_FOR_ELSEWHERE: ReadonlySet<string> = new Set([
+	"MU_JUDGE_OPENROUTER_API_KEY",
+	"MU_JUDGE_CUSTOM_API_KEY",
+	"MU_JUDGE_CLM_API_KEY",
+]);
 
 /** `llm:provider/model` names an LLM judge inline, without a `judges` entry. */
 export function resolveJudgeConfig(name: string, config: KyrnConfig): JudgeConfig | undefined {
@@ -82,6 +88,19 @@ function createProvider(name: string, judge: JudgeConfig, host: JudgeHost): Judg
 				keyName,
 				model: judge.model,
 				baseUrl: judge.baseUrl,
+				fetch: host.fetch,
+			});
+		}
+		case "clm": {
+			// `clm-serve` asks for a key only when it was started with CLM_API_KEY; without one set here, none is sent.
+			const keyName = judge.apiKeyEnv ?? "MU_JUDGE_CLM_API_KEY";
+			return new TypeSafeJudgeProvider({
+				apiKey: () => host.env?.[keyName],
+				keyName,
+				keyOptional: true,
+				judgeName: "CLM",
+				model: judge.model || CLM_DEFAULT_MODEL,
+				baseUrl: clmEndpoint(judge.baseUrl),
 				fetch: host.fetch,
 			});
 		}
