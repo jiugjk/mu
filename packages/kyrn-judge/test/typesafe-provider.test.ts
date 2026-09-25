@@ -179,6 +179,26 @@ describe("TypeSafeJudgeProvider", () => {
 		expect(withAddress.judge.id).toBe("10.0.0.5:8000:jev-latest");
 	});
 
+	it("asks each service for Jev by the name that service gives it, when none is set", () => {
+		// The desktop writes the OpenRouter profile without a model when its field is left empty.
+		const openRouter = {
+			type: "typesafe",
+			baseUrl: "https://openrouter.ai/api/v1/systemone",
+			apiKeyEnv: "MU_JUDGE_OPENROUTER_API_KEY",
+		};
+		const written = parseConfig({ tiers: ["jev-openrouter"], judges: { "jev-openrouter": openRouter } });
+		expect(buildJudge(written, { env: { MU_JUDGE_OPENROUTER_API_KEY: "o" } }).judge.id).toBe(
+			"openrouter.ai:~typesafe/jev-latest",
+		);
+
+		// A model set on the automatic tier is TypeSafe's; the gateway takes one only in its own form.
+		const typeSafeName = parseConfig({ tiers: ["jev"], judges: { jev: { type: "jev", model: "jev-latest" } } });
+		expect(buildJudge(typeSafeName, { env: { TYPESAFE_API_KEY: "k" } }).judge.id).toBe("typesafe:jev-latest");
+		expect(buildJudge(typeSafeName, { env: {} }).judge.id).toBe("gateway:typesafe-ai/jev");
+		const gatewayName = parseConfig({ tiers: ["jev"], judges: { jev: { type: "jev", model: "typesafe-ai/jev-1" } } });
+		expect(buildJudge(gatewayName, { env: {} }).judge.id).toBe("gateway:typesafe-ai/jev-1");
+	});
+
 	it("makes the jev tier TypeSafe with a TypeSafe key, OpenRouter with a key for Jev there, and the gateway otherwise", () => {
 		const config = parseConfig({ tiers: ["jev"] });
 

@@ -5,6 +5,8 @@ import { MAX_ERROR_MESSAGE_LENGTH, messageFromErrorBody, readWarnings } from "./
 
 export const TYPESAFE_BASE_URL = "https://api.typesafe.ai/v1/systemone";
 export const TYPESAFE_DEFAULT_MODEL = "jev-latest";
+/** OpenRouter names Jev its own way: without a model, a judge that posts there asks for this one. */
+export const OPENROUTER_DEFAULT_MODEL = "~typesafe/jev-latest";
 
 export interface TypeSafeJudgeProviderOptions {
 	/** A key, or a resolver called per request so the host owns credential storage. */
@@ -85,11 +87,11 @@ export class TypeSafeJudgeProvider implements JudgeProvider {
 	constructor(options: TypeSafeJudgeProviderOptions) {
 		this.apiKey = options.apiKey;
 		this.keyName = options.keyName ?? "TYPESAFE_API_KEY";
-		this.model = options.model ?? TYPESAFE_DEFAULT_MODEL;
 		this.baseUrl = (options.baseUrl || TYPESAFE_BASE_URL).replace(/\/+$/, "");
 		this.fetchImpl = options.fetch ?? fetch;
 		const host = URL.canParse(this.baseUrl) ? new URL(this.baseUrl).host : this.baseUrl;
 		this.service = host === new URL(TYPESAFE_BASE_URL).host ? "TypeSafe" : host;
+		this.model = options.model || (host === "openrouter.ai" ? OPENROUTER_DEFAULT_MODEL : TYPESAFE_DEFAULT_MODEL);
 		this.id = `${this.service === "TypeSafe" ? "typesafe" : host}:${this.model}`;
 	}
 

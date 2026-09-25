@@ -87,12 +87,14 @@ function createProvider(name: string, judge: JudgeConfig, host: JudgeHost): Judg
 		}
 		case "jev": {
 			// A TypeSafe key is the direct route, a key for Jev on OpenRouter the next; without either, Jev is reached
-			// through the Vercel AI Gateway. OpenRouter names the model its own way, so that route takes its own.
+			// through the Vercel AI Gateway. Each service names the model its own way: a model set here is TypeSafe's
+			// ("jev-latest"), and reaches the gateway only when it is written the gateway's way ("typesafe-ai/jev").
 			if (host.env?.[judge.apiKeyEnv ?? "TYPESAFE_API_KEY"])
 				return createProvider(name, { ...judge, type: "typesafe" }, host);
 			const openRouter = BUILT_IN_JUDGES["jev-openrouter"];
 			if (openRouter.apiKeyEnv && host.env?.[openRouter.apiKeyEnv]) return createProvider(name, openRouter, host);
-			return createProvider(name, { ...judge, type: "gateway", model: judge.model ?? "typesafe-ai/jev" }, host);
+			const model = judge.model?.includes("/") ? judge.model : "typesafe-ai/jev";
+			return createProvider(name, { ...judge, type: "gateway", model }, host);
 		}
 		default:
 			return new GatewayJudgeProvider({
