@@ -378,7 +378,9 @@
     "tagImage": "Görsel",
     "noId": "Yeni model",
     "show": "Göster: {{name}}",
-    "addListed": "Ekle: {{name}}"
+    "addListed": "Ekle: {{name}}",
+    "levels": "Düşünme düzeyleri",
+    "levelsHelp": "Bu model yalnızca işaretli düzeyleri sunar. Çok yüksek ve En yüksek, siz açana kadar kapalı kalır."
   },
   "test": {
     "run": "Bağlantıyı sına",

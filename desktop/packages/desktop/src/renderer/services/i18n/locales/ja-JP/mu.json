@@ -378,7 +378,9 @@
     "tagImage": "画像認識",
     "noId": "新しいモデル",
     "show": "{{name}} を表示",
-    "addListed": "{{name}} を追加"
+    "addListed": "{{name}} を追加",
+    "levels": "思考レベル",
+    "levelsHelp": "チェックしたレベルだけをこのモデルで使えます。非常に高いと最大はオンにするまで使えません。"
   },
   "test": {
     "run": "接続をテスト",

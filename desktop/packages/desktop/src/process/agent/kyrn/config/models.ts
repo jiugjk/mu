@@ -3,8 +3,10 @@ import {
   PROVIDER_ID,
   RESERVED_PROVIDER_IDS,
   THINKING_LEVELS,
+  canonicalThinkingLevelMap,
   isSafeEndpoint,
   providerKeyVariable,
+  readThinkingLevelMap,
   supportedThinkingLevels,
   type EndpointType,
   type ForeignProvider,
@@ -13,6 +15,7 @@ import {
   type ProviderModel,
   type ProviderSettings,
   type ThinkingLevel,
+  type ThinkingLevelMap,
 } from '../../../../common/kyrn/models';
 import { KyrnError } from '../../../../common/kyrn/errors';
 import type { Credential } from '../../../../common/kyrn/types';
@@ -73,6 +76,7 @@ function editable(entry: JsonRecord): boolean {
 
 function readModel(entry: JsonRecord): ProviderModel {
   const reasoning = entry.reasoning === true;
+  const thinkingLevelMap = readThinkingLevelMap(entry.thinkingLevelMap);
   return {
     id: text(entry.id),
     name: text(entry.name),
@@ -80,7 +84,8 @@ function readModel(entry: JsonRecord): ProviderModel {
     imageInput: array(entry.input).includes('image'),
     contextWindow: typeof entry.contextWindow === 'number' ? entry.contextWindow : CONTEXT_WINDOW,
     maxTokens: typeof entry.maxTokens === 'number' ? entry.maxTokens : MAX_TOKENS,
-    thinkingLevels: supportedThinkingLevels(reasoning, asRecord(entry.thinkingLevelMap)),
+    thinkingLevelMap,
+    thinkingLevels: supportedThinkingLevels(reasoning, thinkingLevelMap),
   };
 }
 
@@ -128,13 +133,17 @@ export function readModels(document: ModelsDocument, pi: JsonRecord, envText: st
   return { providers, foreign, defaults: readDefaults(pi), commented: document.commented, problem: document.problem };
 }
 
+const sameMap = (a: ThinkingLevelMap | undefined, b: ThinkingLevelMap | undefined): boolean =>
+  JSON.stringify(canonicalThinkingLevelMap(a) ?? {}) === JSON.stringify(canonicalThinkingLevelMap(b) ?? {});
+
 const sameModel = (a: ProviderModel, b: ProviderModel): boolean =>
   a.id === b.id &&
   a.name === b.name &&
   a.reasoning === b.reasoning &&
   a.imageInput === b.imageInput &&
   a.contextWindow === b.contextWindow &&
-  a.maxTokens === b.maxTokens;
+  a.maxTokens === b.maxTokens &&
+  sameMap(a.thinkingLevelMap, b.thinkingLevelMap);
 
 const sameProvider = (a: ProviderSettings, b: ProviderSettings): boolean =>
   a.id === b.id &&
@@ -173,10 +182,26 @@ function validateProvider(provider: ProviderSettings, isNew: boolean, taken: Set
     if (typeof model.reasoning !== 'boolean' || typeof model.imageInput !== 'boolean') throw invalid('Invalid model');
     tokens(model.contextWindow, 'context window');
     tokens(model.maxTokens, 'max output tokens');
+    assertThinkingMap(model.thinkingLevelMap);
   }
 }
 
-/** Fields the screen edits go over the previous entry, so cost, compat, thinkingLevelMap and the like stay. */
+/** A wire value is a short printable string. Unknown level names are refused rather than dropped. */
+function assertThinkingMap(map: ThinkingLevelMap | undefined): void {
+  if (map == null) return;
+  if (typeof map !== 'object' || Array.isArray(map)) throw invalid('Invalid thinking levels');
+  for (const [key, value] of Object.entries(map)) {
+    if (!(THINKING_LEVELS as readonly string[]).includes(key)) throw invalid(`Invalid thinking level: ${key}`);
+    if (value === null) continue;
+    if (typeof value !== 'string' || !value.trim() || value.length > 80 || !printable(value))
+      throw invalid('Invalid thinking level');
+  }
+}
+
+/**
+ * Fields the screen edits go over the previous entry, so cost, compat and the like stay.
+ * The thinking map is written from the levels the screen set.
+ */
 function modelEntry(previous: JsonRecord | undefined, model: ProviderModel): JsonRecord {
   if (previous && sameModel(readModel(previous), model)) return previous;
   const next: JsonRecord = { ...previous, id: model.id };
@@ -189,6 +214,9 @@ function modelEntry(previous: JsonRecord | undefined, model: ProviderModel): Jso
   put('input', model.imageInput ? ['text', 'image'] : ['text'], !model.imageInput);
   put('contextWindow', model.contextWindow, model.contextWindow === CONTEXT_WINDOW);
   put('maxTokens', model.maxTokens, model.maxTokens === MAX_TOKENS);
+  const map = canonicalThinkingLevelMap(model.thinkingLevelMap);
+  if (map) next.thinkingLevelMap = map;
+  else delete next.thinkingLevelMap;
   return next;
 }
 

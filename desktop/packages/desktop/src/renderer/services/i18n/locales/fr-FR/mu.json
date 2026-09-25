@@ -378,7 +378,9 @@
     "tagImage": "Vision",
     "noId": "Nouveau modèle",
     "show": "Afficher {{name}}",
-    "addListed": "Ajouter {{name}}"
+    "addListed": "Ajouter {{name}}",
+    "levels": "Niveaux de réflexion",
+    "levelsHelp": "Seuls les niveaux cochés sont proposés pour ce modèle. Très élevé et Maximal restent désactivés tant que vous ne les activez pas."
   },
   "test": {
     "run": "Tester la connexion",

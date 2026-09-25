@@ -378,7 +378,9 @@
     "tagImage": "Visión",
     "noId": "Modelo nuevo",
     "show": "Ver {{name}}",
-    "addListed": "Añadir {{name}}"
+    "addListed": "Añadir {{name}}",
+    "levels": "Niveles de razonamiento",
+    "levelsHelp": "Solo los niveles marcados se ofrecen para este modelo. Muy alto y Máximo siguen apagados hasta que los actives."
   },
   "test": {
     "run": "Probar conexión",

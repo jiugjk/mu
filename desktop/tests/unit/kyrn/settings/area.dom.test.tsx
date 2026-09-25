@@ -120,6 +120,7 @@ function settings(patch: Partial<KyrnSettings> = {}): KyrnSettings {
               imageInput: false,
               contextWindow: 128000,
               maxTokens: 16384,
+              thinkingLevelMap: {},
               thinkingLevels: ['off'],
             },
           ],
@@ -836,6 +837,33 @@ describe('providers and the default model', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove New model' }));
     expect(screen.queryByTestId('mu-model-1')).not.toBeInTheDocument();
     expect(screen.getByTestId('mu-model-0')).toHaveTextContent('renamed');
+  });
+  it('writes the thinking levels toggled on a model, and the default-model page follows', async () => {
+    await open('providers');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit plain' }));
+    expect(screen.queryByTestId('mu-model-levels-0')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Thinking 1' }));
+    const levels = screen.getByTestId('mu-model-levels-0');
+    expect(levels).toHaveTextContent('Very high and Max stay off until you turn them on.');
+    expect(within(levels).getByRole('checkbox', { name: 'Low 1' })).toBeChecked();
+    expect(within(levels).getByRole('checkbox', { name: 'Very high 1' })).not.toBeChecked();
+    expect(within(levels).getByRole('checkbox', { name: 'Max 1' })).not.toBeChecked();
+    fireEvent.click(within(levels).getByRole('checkbox', { name: 'Very high 1' }));
+    fireEvent.click(within(levels).getByRole('checkbox', { name: 'Low 1' }));
+    fireEvent.click(screen.getByTestId('mu-nav-defaultModel'));
+    const thinking = screen.getByTestId('mu-thinking-level');
+    expect(thinking).toHaveTextContent('Levels this model does not take are disabled.');
+    expect(within(thinking).getByRole('radio', { name: 'Very high' })).toBeEnabled();
+    expect(within(thinking).getByRole('radio', { name: 'Low' })).toBeDisabled();
+    expect(within(thinking).getByRole('radio', { name: 'Max' })).toBeDisabled();
+    fireEvent.click(screen.getByText('Save'));
+    await waitFor(() => expect(bridge.save).toHaveBeenCalled());
+    const sent = bridge.save.mock.calls[0][0] as SaveSettings;
+    expect(sent.models?.providers?.[0].models[0]).toMatchObject({
+      id: 'plain',
+      reasoning: true,
+      thinkingLevelMap: { low: null, xhigh: 'xhigh' },
+    });
   });
   it('words a refused test and the endpoint’s own answer apart, and gives the model id one placeholder', async () => {
     await open('providers');

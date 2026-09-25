@@ -175,6 +175,7 @@ describe('provider form rules', () => {
       imageInput: false,
       contextWindow: 1,
       maxTokens: 1,
+      thinkingLevelMap: {},
       thinkingLevels: [],
     };
     const ok = { ...provider, id: 'mine', baseUrl: 'http://localhost:1234/v1' };

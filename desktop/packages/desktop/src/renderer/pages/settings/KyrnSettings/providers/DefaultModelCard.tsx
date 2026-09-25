@@ -32,13 +32,9 @@ type DefaultModelCardProps = {
 
 const UNSET = 'unset';
 
-/**
- * Levels a custom model takes. A hand-written thinkingLevelMap shows in what was read from the file; a model whose
- * reasoning switch was just flipped here has no map to speak of yet, so pi's plain rule applies.
- */
+/** Levels a custom model takes, from the thinking map the model editor writes. */
 function modelThinkingLevels(model: ProviderModel): ThinkingLevel[] {
-  if (!model.reasoning) return ['off'];
-  return model.thinkingLevels.some((level) => level !== 'off') ? model.thinkingLevels : supportedThinkingLevels(true);
+  return supportedThinkingLevels(model.reasoning, model.thinkingLevelMap);
 }
 
 /**

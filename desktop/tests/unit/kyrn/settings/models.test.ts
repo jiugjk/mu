@@ -53,6 +53,7 @@ const provider = (patch: Partial<ProviderSettings> = {}): ProviderSettings => ({
       imageInput: true,
       contextWindow: 200000,
       maxTokens: 16384,
+      thinkingLevelMap: {},
       thinkingLevels: [],
     },
   ],
@@ -113,6 +114,7 @@ describe('custom model providers in models.json', () => {
       });
       expect(ollama.models[0].thinkingLevels).toEqual(['off']);
       expect(ollama.models[1].thinkingLevels).toEqual(['minimal', 'low', 'medium', 'high', 'max']);
+      expect(ollama.models[1].thinkingLevelMap).toEqual({ off: null, max: 'max' });
     });
   });
   it('adds a provider with its key in the harness .env and only a reference in models.json', () => {
@@ -167,6 +169,84 @@ describe('custom model providers in models.json', () => {
       });
       expect(written.vault).toEqual(handWritten.providers.vault);
       expect(f.env()).toBe('');
+    });
+  });
+  it('writes the thinking levels the screen turned on and off, and keeps the rest of the model', () => {
+    using(fixture(handWritten), (f) => {
+      const read = f.store.read();
+      const ollama = read.models.providers[0];
+      const gpt = { ...ollama.models[1], thinkingLevelMap: { off: null, xhigh: 'xhigh' } };
+      f.store.save({
+        ...read,
+        models: {
+          ...read.models,
+          providers: [{ ...ollama, models: [ollama.models[0], gpt] }, read.models.providers[1]],
+        },
+      });
+      const models = f.models().ollama.models as Json[];
+      expect(models[1]).toEqual({
+        id: 'gpt-oss:20b',
+        reasoning: true,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        thinkingLevelMap: { off: null, xhigh: 'xhigh' },
+      });
+      expect(models[0]).toEqual(handWritten.providers.ollama.models[0]);
+    });
+  });
+  it('stores only levels that differ from the default, and keeps a custom wire value', () => {
+    const doc = {
+      providers: {
+        grok: {
+          baseUrl: 'http://127.0.0.1:8000/v1',
+          api: 'openai-responses',
+          models: [{ id: 'grok-4.7', reasoning: true, thinkingLevelMap: { xhigh: 'extra-high' } }],
+        },
+      },
+    };
+    using(fixture(doc), (f) => {
+      const read = f.store.read();
+      const grok = read.models.providers[0];
+      const model = grok.models[0];
+      expect(model.thinkingLevelMap).toEqual({ xhigh: 'extra-high' });
+      expect(model.thinkingLevels).toEqual(['off', 'minimal', 'low', 'medium', 'high', 'xhigh']);
+      f.store.save({
+        ...read,
+        models: {
+          ...read.models,
+          providers: [
+            {
+              ...grok,
+              models: [{ ...model, thinkingLevelMap: { low: 'low', minimal: null, xhigh: 'extra-high', max: null } }],
+            },
+          ],
+        },
+      });
+      expect((f.models().grok.models as Json[])[0]).toEqual({
+        id: 'grok-4.7',
+        reasoning: true,
+        thinkingLevelMap: { minimal: null, xhigh: 'extra-high' },
+      });
+    });
+  });
+  it('refuses a thinking map with an unknown level or a wire value that is not plain text', () => {
+    using(fixture(handWritten), (f) => {
+      const read = f.store.read();
+      const ollama = read.models.providers[0];
+      const save = (thinkingLevelMap: unknown) =>
+        f.store.save({
+          ...read,
+          models: {
+            ...read.models,
+            providers: [
+              {
+                ...ollama,
+                models: [{ ...ollama.models[1], thinkingLevelMap: thinkingLevelMap as never }],
+              },
+            ],
+          },
+        });
+      expect(() => save({ turbo: 'x' })).toThrow('Invalid thinking level');
+      expect(() => save({ xhigh: 'bad\nvalue' })).toThrow('Invalid thinking level');
     });
   });
   it('replaces a hand-written key only when a new one is typed', () => {

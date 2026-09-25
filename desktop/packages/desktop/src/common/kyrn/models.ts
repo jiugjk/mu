@@ -17,6 +17,65 @@ export type EndpointType = (typeof ENDPOINT_TYPES)[number];
 export const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 
+/**
+ * `null` turns a level off. A string is the value sent on the wire
+ * (`reasoning.effort`, for OpenAI-compatible APIs).
+ */
+export type ThinkingLevelMap = Partial<Record<ThinkingLevel, string | null>>;
+
+/** `xhigh` and `max` count as supported only when the map names them. The others are on unless mapped to null. */
+const EXPLICIT_LEVELS: ReadonlySet<ThinkingLevel> = new Set(['xhigh', 'max']);
+
+/** Known levels only, and only a string or null. Anything else in the file is ignored until the model is rewritten. */
+export function readThinkingLevelMap(value: unknown): ThinkingLevelMap {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const record = value as Record<string, unknown>;
+  const map: ThinkingLevelMap = {};
+  for (const level of THINKING_LEVELS) {
+    const mapped = record[level];
+    if (mapped === null || typeof mapped === 'string') map[level] = mapped;
+  }
+  return map;
+}
+
+/**
+ * The map as models.json should store it. A standard level mapped to its own name is the default, so it is left out.
+ * An unsupported `xhigh` or `max` (missing or null) is left out too.
+ */
+export function canonicalThinkingLevelMap(map: ThinkingLevelMap | undefined): ThinkingLevelMap | undefined {
+  if (!map) return undefined;
+  const next: ThinkingLevelMap = {};
+  for (const level of THINKING_LEVELS) {
+    const mapped = map[level];
+    if (mapped === undefined) continue;
+    if (EXPLICIT_LEVELS.has(level)) {
+      if (typeof mapped === 'string' && mapped.length > 0) next[level] = mapped;
+      continue;
+    }
+    if (mapped === null) next[level] = null;
+    else if (mapped !== level && mapped.length > 0) next[level] = mapped;
+  }
+  return Object.keys(next).length ? next : undefined;
+}
+
+/**
+ * Turn one level on or off. Turning it on keeps a wire value that is already a string; otherwise the wire value is
+ * the level's own name. The result is the map models.json would store.
+ */
+export function withThinkingLevel(
+  map: ThinkingLevelMap | undefined,
+  level: ThinkingLevel,
+  on: boolean
+): ThinkingLevelMap {
+  const next: ThinkingLevelMap = { ...map };
+  if (on) {
+    if (typeof next[level] !== 'string' || next[level] === '') next[level] = level;
+  } else {
+    next[level] = null;
+  }
+  return canonicalThinkingLevelMap(next) ?? {};
+}
+
 export type ProviderModel = {
   id: string;
   name: string;
@@ -25,9 +84,11 @@ export type ProviderModel = {
   contextWindow: number;
   maxTokens: number;
   /**
-   * Thinking levels the model takes, from `reasoning` and a hand-written `thinkingLevelMap`.
-   * Read-only: the map itself is preserved, not edited here.
+   * Wire values for the thinking levels. `null` turns a level off. A missing standard level stays on;
+   * `xhigh` and `max` stay off until the map names them. The screen edits this; `thinkingLevels` is derived from it.
    */
+  thinkingLevelMap: ThinkingLevelMap;
+  /** Thinking levels the model takes, from `reasoning` and `thinkingLevelMap`. */
   thinkingLevels: ThinkingLevel[];
 };
 

@@ -2,7 +2,13 @@ import React, { useState } from 'react';
 import { Button, Checkbox, Input, InputNumber, Tag } from '@arco-design/web-react';
 import { Check, Delete, Edit, Plus } from '@icon-park/react';
 import { useTranslation } from 'react-i18next';
-import type { ProviderModel } from '@/common/kyrn/models';
+import {
+  THINKING_LEVELS,
+  supportedThinkingLevels,
+  withThinkingLevel,
+  type ProviderModel,
+  type ThinkingLevel,
+} from '@/common/kyrn/models';
 import { formatNumber } from '@/renderer/services/i18n/format';
 import { blankModel } from './endpoints';
 import { tokenSize } from './parts';
@@ -26,6 +32,15 @@ export default function ModelRows({ models, onChange, suggestions, disabled }: M
   const [open, setOpen] = useState<number>();
   const update = (index: number, patch: Partial<ProviderModel>) =>
     onChange(models.map((model, i) => (i === index ? { ...model, ...patch } : model)));
+  const setReasoning = (index: number, reasoning: boolean) => {
+    const model = models[index];
+    update(index, { reasoning, thinkingLevels: supportedThinkingLevels(reasoning, model.thinkingLevelMap) });
+  };
+  const setLevel = (index: number, level: ThinkingLevel, on: boolean) => {
+    const model = models[index];
+    const thinkingLevelMap = withThinkingLevel(model.thinkingLevelMap, level, on);
+    update(index, { thinkingLevelMap, thinkingLevels: supportedThinkingLevels(model.reasoning, thinkingLevelMap) });
+  };
   const remove = (index: number) => {
     onChange(models.filter((_, i) => i !== index));
     setOpen((now) => (now === undefined || now === index ? undefined : now > index ? now - 1 : now));
@@ -150,7 +165,7 @@ export default function ModelRows({ models, onChange, suggestions, disabled }: M
                       disabled={disabled}
                       aria-label={label('mu.models.reasoning', index)}
                       checked={model.reasoning}
-                      onChange={(reasoning) => update(index, { reasoning })}
+                      onChange={(reasoning) => setReasoning(index, reasoning)}
                     >
                       {t('mu.models.reasoning')}
                     </Checkbox>
@@ -163,6 +178,25 @@ export default function ModelRows({ models, onChange, suggestions, disabled }: M
                       {t('mu.models.image')}
                     </Checkbox>
                   </div>
+                  {model.reasoning ? (
+                    <div className={styles.modelLevels} data-testid={`mu-model-levels-${index}`}>
+                      <span className={styles.label}>{t('mu.models.levels')}</span>
+                      <div className={styles.modelLevelRow}>
+                        {THINKING_LEVELS.map((level) => (
+                          <Checkbox
+                            key={level}
+                            disabled={disabled}
+                            aria-label={label(`mu.levels.${level}`, index)}
+                            checked={supportedThinkingLevels(true, model.thinkingLevelMap).includes(level)}
+                            onChange={(on) => setLevel(index, level, on)}
+                          >
+                            {t(`mu.levels.${level}`)}
+                          </Checkbox>
+                        ))}
+                      </div>
+                      <p className={styles.hint}>{t('mu.models.levelsHelp')}</p>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </div>

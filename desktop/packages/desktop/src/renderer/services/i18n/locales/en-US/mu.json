@@ -378,7 +378,9 @@
     "tagImage": "Vision",
     "noId": "New model",
     "show": "Show {{name}}",
-    "addListed": "Add {{name}}"
+    "addListed": "Add {{name}}",
+    "levels": "Thinking levels",
+    "levelsHelp": "Checked levels are offered for this model. Very high and Max stay off until you turn them on."
   },
   "test": {
     "run": "Test connection",

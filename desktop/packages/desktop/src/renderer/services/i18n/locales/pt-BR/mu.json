@@ -378,7 +378,9 @@
     "tagImage": "Visão",
     "noId": "Novo modelo",
     "show": "Mostrar {{name}}",
-    "addListed": "Adicionar {{name}}"
+    "addListed": "Adicionar {{name}}",
+    "levels": "Níveis de raciocínio",
+    "levelsHelp": "Só os níveis marcados ficam disponíveis neste modelo. Muito alto e Máximo ficam desligados até você ativá-los."
   },
   "test": {
     "run": "Testar conexão",

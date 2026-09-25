@@ -378,7 +378,9 @@
     "tagImage": "视觉",
     "noId": "新模型",
     "show": "查看 {{name}}",
-    "addListed": "添加 {{name}}"
+    "addListed": "添加 {{name}}",
+    "levels": "思考等级",
+    "levelsHelp": "勾选的等级才会提供给这个模型。极高和最高默认关闭，勾选后才会打开。"
   },
   "test": {
     "run": "测试连接",

@@ -2450,6 +2450,8 @@ export type I18nKey =
   | 'mu.models.id'
   | 'mu.models.idField'
   | 'mu.models.image'
+  | 'mu.models.levels'
+  | 'mu.models.levelsHelp'
   | 'mu.models.maxOutput'
   | 'mu.models.name'
   | 'mu.models.noId'

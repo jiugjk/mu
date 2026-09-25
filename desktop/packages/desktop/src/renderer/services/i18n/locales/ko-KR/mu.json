@@ -378,7 +378,9 @@
     "tagImage": "비전",
     "noId": "새 모델",
     "show": "{{name}} 보기",
-    "addListed": "{{name}} 추가"
+    "addListed": "{{name}} 추가",
+    "levels": "사고 수준",
+    "levelsHelp": "선택한 수준만 이 모델에서 쓸 수 있습니다. 매우 높음과 최대는 켜기 전까지 꺼져 있습니다."
   },
   "test": {
     "run": "연결 테스트",

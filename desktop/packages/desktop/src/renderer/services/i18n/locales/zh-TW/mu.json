@@ -378,7 +378,9 @@
     "tagImage": "視覺",
     "noId": "新模型",
     "show": "檢視 {{name}}",
-    "addListed": "新增 {{name}}"
+    "addListed": "新增 {{name}}",
+    "levels": "思考等級",
+    "levelsHelp": "勾選的等級才會提供給這個模型。極高和最高預設關閉，勾選後才會打開。"
   },
   "test": {
     "run": "測試連線",

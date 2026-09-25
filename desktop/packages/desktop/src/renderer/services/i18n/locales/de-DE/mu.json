@@ -378,7 +378,9 @@
     "tagImage": "Bilder",
     "noId": "Neues Modell",
     "show": "{{name}} anzeigen",
-    "addListed": "{{name}} hinzufügen"
+    "addListed": "{{name}} hinzufügen",
+    "levels": "Denkstufen",
+    "levelsHelp": "Nur angehakte Stufen bietet dieses Modell an. Sehr hoch und Maximal bleiben aus, bis du sie einschaltest."
   },
   "test": {
     "run": "Verbindung testen",
