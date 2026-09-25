@@ -148,21 +148,52 @@ if (tiers.some((tier) => tier.startsWith("laya")) && !judgeSupport.runs && !judg
 		);
 	}
 }
-if (tiers.some((tier) => tier.startsWith("jev") || tier === "gateway")) {
+// The built-in ways to Jev, as packages/kyrn-judge/src/config.ts has them; mu.json may name others.
+const JEV_ROUTES = {
+	jev: { type: "jev" },
+	"jev-direct": { type: "typesafe" },
+	"jev-openrouter": { type: "typesafe", baseUrl: "https://openrouter.ai/api/v1/systemone", apiKeyEnv: "MU_JUDGE_OPENROUTER_API_KEY" },
+	"jev-gateway": { type: "gateway" },
+	gateway: { type: "gateway" },
+};
+const jevTier = tiers.find((tier) => ["jev", "typesafe", "gateway"].includes((config?.judges?.[tier] ?? JEV_ROUTES[tier])?.type));
+if (jevTier) {
 	// Parsed the way the launcher parses it (quotes, `export `), and only asked whether a name has a value.
 	const fromFile = existsSync(envFile) ? parseEnvFile(readFileSync(envFile, "utf8")).entries : [];
 	const has = (name) => Boolean(process.env[name]) || fromFile.some(([key, value]) => key === name && value !== "");
-	const direct = has("TYPESAFE_API_KEY");
-	const gateway = has("AI_GATEWAY_API_KEY");
-	row(
-		direct || gateway ? "ok" : "fix",
-		"jev key",
-		direct
-			? "TYPESAFE_API_KEY is set: Jev is called directly at api.typesafe.ai (value not shown)"
-			: gateway
-				? "AI_GATEWAY_API_KEY is set: Jev is called through the Vercel AI Gateway (value not shown)"
-				: `missing: add TYPESAFE_API_KEY (or AI_GATEWAY_API_KEY) to ${tilde(envFile)} or to your environment`,
-	);
+	const where = `to ${tilde(envFile)} or to your environment`;
+	const judge = config?.judges?.[jevTier] ?? JEV_ROUTES[jevTier];
+	if (judge.type === "jev") {
+		// The order the registry tries: TypeSafe directly, Jev on OpenRouter, the Vercel AI Gateway.
+		const route = [
+			["TYPESAFE_API_KEY", "Jev is called directly at api.typesafe.ai"],
+			["MU_JUDGE_OPENROUTER_API_KEY", "Jev is called through OpenRouter"],
+			["AI_GATEWAY_API_KEY", "Jev is called through the Vercel AI Gateway"],
+		].find(([name]) => has(name));
+		row(
+			route ? "ok" : "fix",
+			"jev key",
+			route
+				? `${route[0]} is set: ${route[1]} (value not shown)`
+				: `missing: add TYPESAFE_API_KEY (or MU_JUDGE_OPENROUTER_API_KEY, or AI_GATEWAY_API_KEY) ${where}`,
+		);
+	} else {
+		const name = judge.apiKeyEnv ?? (judge.type === "gateway" ? "AI_GATEWAY_API_KEY" : "TYPESAFE_API_KEY");
+		const host = judge.baseUrl && URL.canParse(judge.baseUrl) ? new URL(judge.baseUrl).host : "api.typesafe.ai";
+		const via = judge.type === "gateway" ? "through the Vercel AI Gateway" : `at ${host}`;
+		// Keys for another service than TypeSafe are refused without an address of their own (kyrn-judge/src/registry.ts).
+		const unsent =
+			judge.type === "typesafe" && ["MU_JUDGE_OPENROUTER_API_KEY", "MU_JUDGE_CUSTOM_API_KEY"].includes(name) && !judge.baseUrl;
+		row(
+			has(name) && !unsent ? "ok" : "fix",
+			"jev key",
+			unsent
+				? `${jevTier} has no baseUrl: its key ${name} is only sent to the address it was set up for`
+				: has(name)
+					? `${name} is set: Jev is called ${via} (value not shown)`
+					: `missing: add ${name} ${where} (Jev is called ${via})`,
+		);
+	}
 }
 
 // A file URL: Windows cannot import "C:\\..." as it stands. The package carries this module built to JavaScript.

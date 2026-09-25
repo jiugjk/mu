@@ -103,10 +103,91 @@ describe("TypeSafeJudgeProvider", () => {
 		}
 	});
 
-	it("makes the jev tier direct when a TypeSafe key is present and the gateway otherwise", () => {
+	it("reads an empty base URL as TypeSafe's own", async () => {
+		const seen: { url?: string } = {};
+		const provider = new TypeSafeJudgeProvider({
+			apiKey: "k",
+			baseUrl: "",
+			fetch: fakeFetch(
+				200,
+				{ answers: { edit: { noul: 0.5 }, kind: { choice: "other" }, size: { score: 1 } } },
+				seen,
+			),
+		});
+		await provider.evaluate({ state: "s", questions });
+		expect(seen.url).toBe("https://api.typesafe.ai/v1/systemone");
+		expect(provider.id).toBe("typesafe:jev-latest");
+	});
+
+	it("reaches Jev on OpenRouter with a key of its own, and names that service when something is wrong", async () => {
+		const seen: { url?: string; init?: RequestInit } = {};
+		const built = buildJudge(parseConfig({ tiers: ["jev-openrouter"] }), {
+			env: { MU_JUDGE_OPENROUTER_API_KEY: "or-key", TYPESAFE_API_KEY: "ts-key" },
+			fetch: fakeFetch(
+				200,
+				{ answers: { edit: { noul: 0.5 }, kind: { choice: "other" }, size: { score: 1 } } },
+				seen,
+			),
+		});
+		expect(built.problems).toEqual([]);
+		expect(built.judge.id).toBe("openrouter.ai:~typesafe/jev-latest");
+		await built.judge.evaluate({ state: "s", questions });
+		expect(seen.url).toBe("https://openrouter.ai/api/v1/systemone");
+		expect(JSON.parse(String(seen.init?.body)).model).toBe("~typesafe/jev-latest");
+		expect(new Headers(seen.init?.headers).get("authorization")).toBe("Bearer or-key");
+
+		const keyless = new TypeSafeJudgeProvider({
+			apiKey: () => undefined,
+			keyName: "MU_JUDGE_OPENROUTER_API_KEY",
+			baseUrl: "https://openrouter.ai/api/v1/systemone",
+			fetch: fakeFetch(200, {}),
+		});
+		const unreachable = new TypeSafeJudgeProvider({
+			apiKey: "or-key",
+			baseUrl: "https://openrouter.ai/api/v1/systemone",
+			fetch: (async () => {
+				throw new TypeError("fetch failed");
+			}) as typeof fetch,
+		});
+		for (const [provider, message] of [
+			[keyless, "No API key is configured for Jev at openrouter.ai (MU_JUDGE_OPENROUTER_API_KEY)"],
+			[unreachable, "Could not reach openrouter.ai"],
+		] as const) {
+			const error = await provider.evaluate({ state: "s", questions }).catch((caught: unknown) => caught);
+			expect(error instanceof Error && error.message).toBe(message);
+		}
+	});
+
+	it("never sends a key set up for another service to TypeSafe: such a judge needs its own address", () => {
+		const relay = { type: "typesafe", apiKeyEnv: "MU_JUDGE_CUSTOM_API_KEY" };
+		const without = buildJudge(parseConfig({ tiers: ["relay"], judges: { relay } }), {
+			env: { MU_JUDGE_CUSTOM_API_KEY: "c" },
+		});
+		expect(without.problems[0]).toBe(
+			'Judge "relay" needs a baseUrl: its key MU_JUDGE_CUSTOM_API_KEY is not sent to TypeSafe',
+		);
+		expect(without.judge.id).not.toContain("typesafe");
+
+		const withAddress = buildJudge(
+			parseConfig({
+				tiers: ["relay"],
+				judges: { relay: { ...relay, baseUrl: "http://10.0.0.5:8000/v1/systemone" } },
+			}),
+			{ env: { MU_JUDGE_CUSTOM_API_KEY: "c" } },
+		);
+		expect(withAddress.problems).toEqual([]);
+		expect(withAddress.judge.id).toBe("10.0.0.5:8000:jev-latest");
+	});
+
+	it("makes the jev tier TypeSafe with a TypeSafe key, OpenRouter with a key for Jev there, and the gateway otherwise", () => {
 		const config = parseConfig({ tiers: ["jev"] });
 
-		expect(buildJudge(config, { env: { TYPESAFE_API_KEY: "k" } }).judge.id).toBe("typesafe:jev-latest");
+		expect(buildJudge(config, { env: { TYPESAFE_API_KEY: "k", MU_JUDGE_OPENROUTER_API_KEY: "o" } }).judge.id).toBe(
+			"typesafe:jev-latest",
+		);
+		expect(buildJudge(config, { env: { MU_JUDGE_OPENROUTER_API_KEY: "o" } }).judge.id).toBe(
+			"openrouter.ai:~typesafe/jev-latest",
+		);
 		expect(buildJudge(config, { env: {} }).judge.id).toBe("gateway:typesafe-ai/jev");
 		expect(buildJudge(parseConfig({ tiers: ["jev-gateway"] }), { env: { TYPESAFE_API_KEY: "k" } }).judge.id).toBe(
 			"gateway:typesafe-ai/jev",
