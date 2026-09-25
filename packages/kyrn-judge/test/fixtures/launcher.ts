@@ -28,18 +28,21 @@ export const MU = join(BIN, windows ? "mu.cmd" : "mu");
  * in: no real home, no MU_* or KYRN_* variables. `HOME` is the home on every platform (USERPROFILE on Windows), and
  * Windows also gets the few variables its programs expect to find.
  */
-export function runScript(script: string, args: readonly string[], env: Record<string, string>) {
+export function runScript(script: string, args: readonly string[], env: Record<string, string>, timeout = 60_000) {
 	const base: Record<string, string | undefined> = windows
 		? {
 				PATH: searchPath(),
 				PATHEXT: process.env.PATHEXT,
+				ComSpec: process.env.ComSpec,
+				SystemDrive: process.env.SystemDrive,
 				SystemRoot: systemRoot,
+				windir: process.env.windir,
 				TEMP: process.env.TEMP,
 				TMP: process.env.TMP,
 			}
 		: { PATH: searchPath() };
 	const full = { ...base, ...env, ...(windows && env.HOME ? { USERPROFILE: env.HOME } : {}) };
-	const options = { encoding: "utf8" as const, input: "", env: full, timeout: 60_000, windowsHide: true };
+	const options = { encoding: "utf8" as const, input: "", env: full, timeout, windowsHide: true };
 	const result = windows
 		? spawnSync(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", `""${script}" ${args.join(" ")}"`], {
 				...options,

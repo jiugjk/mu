@@ -1125,16 +1125,21 @@ describe("the launcher, run for real on this machine", () => {
 		expect(reached.out).toContain("reached help");
 	});
 
-	it.skipIf(!installed)("starts pi as a child too, the way Windows has to, and passes its exit code on", () => {
-		const dir = temp();
-		const child = run(["--version"], { HOME: dir, MU_LAUNCH: "spawn" });
-		const replaced = run(["--version"], { HOME: dir });
+	// Three starts of pi, through tsx: on GitHub's Windows runners each takes over ten seconds.
+	it.skipIf(!installed)(
+		"starts pi as a child too, the way Windows has to, and passes its exit code on",
+		() => {
+			const dir = temp();
+			const child = run(["--version"], { HOME: dir, MU_LAUNCH: "spawn" });
+			const replaced = run(["--version"], { HOME: dir });
 
-		expect(child).toMatchObject({ code: 0, out: replaced.out });
-		expect(child.out).toMatch(/^\d+\.\d+\.\d+/);
-		// An exit code that is not zero comes through as well: a home without a login makes the doctor exit with 1.
-		const doctor = run(["doctor"], { HOME: dir, MU_LAUNCH: "spawn" });
-		expect(doctor.out).toContain("login");
-		expect(doctor.code).toBe(1);
-	});
+			expect(child).toMatchObject({ code: 0, out: replaced.out });
+			expect(child.out).toMatch(/^\d+\.\d+\.\d+/);
+			// An exit code that is not zero comes through as well: a home without a login makes the doctor exit with 1.
+			const doctor = run(["doctor"], { HOME: dir, MU_LAUNCH: "spawn" });
+			expect(doctor.out).toContain("login");
+			expect(doctor.code).toBe(1);
+		},
+		120_000,
+	);
 });

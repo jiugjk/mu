@@ -1,6 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type FauxResponseStep, fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { ProjectTrustStore } from "@earendil-works/pi-coding-agent";
@@ -320,7 +320,9 @@ describe("lsp diagnostics feature", () => {
 
 	it("is silent when no server is installed, and finds one on PATH when it is", async () => {
 		const bin = scratch();
-		vi.stubEnv("PATH", bin);
+		// Only this folder, and on Windows the system's own as well, as every PATH there has it: taskkill is in it.
+		const system = process.platform === "win32" ? [join(process.env.SystemRoot ?? "C:\\Windows", "System32")] : [];
+		vi.stubEnv("PATH", [bin, ...system].join(delimiter));
 		const silent = await start(verdict(no), { lsp: { builtin: true, servers: {} } });
 		await silent.run("Write it.", [write("a.ts", "const x: number = 'no';\n"), fauxAssistantMessage("Done.")]);
 		expect(silent.toolResults().join("\n")).not.toContain("mu diagnostics");

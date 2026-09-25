@@ -34,8 +34,8 @@ afterEach(() => {
 });
 
 /** `mu` as this platform runs it (mu.cmd on Windows), or another script of kyrn/bin; what it wrote, in one. */
-function run(command: string, args: string[], env: Record<string, string>) {
-	const result = runScript(command === "mu" ? MU : join(BIN, command), args, env);
+function run(command: string, args: string[], env: Record<string, string>, timeout?: number) {
+	const result = runScript(command === "mu" ? MU : join(BIN, command), args, env, timeout);
 	return { code: result.code, out: `${result.out}${result.err}` };
 }
 
@@ -78,33 +78,42 @@ describe("the mu launcher", () => {
 		expect(readFileSync(linked, "utf8")).toBe("someone else's file");
 	});
 
-	it.skipIf(!installed)("rebuilds an app view that still carries the old name, keeping pi's package name", () => {
-		const dir = home();
-		const app = join(dir, ".mu/app");
-		mkdirSync(app, { recursive: true });
-		const stale = { name: "@earendil-works/pi-coding-agent", piConfig: { name: "kyrn", configDir: ".kyrn" } };
-		writeFileSync(join(app, "package.json"), JSON.stringify(stale));
-		// Newer than upstream's package.json, so the age check alone would keep it.
-		utimesSync(join(app, "package.json"), new Date("2030-01-01"), new Date("2030-01-01"));
+	// These start pi, through tsx: on GitHub's Windows runners that takes over ten seconds.
+	it.skipIf(!installed)(
+		"rebuilds an app view that still carries the old name, keeping pi's package name",
+		() => {
+			const dir = home();
+			const app = join(dir, ".mu/app");
+			mkdirSync(app, { recursive: true });
+			const stale = { name: "@earendil-works/pi-coding-agent", piConfig: { name: "kyrn", configDir: ".kyrn" } };
+			writeFileSync(join(app, "package.json"), JSON.stringify(stale));
+			// Newer than upstream's package.json, so the age check alone would keep it.
+			utimesSync(join(app, "package.json"), new Date("2030-01-01"), new Date("2030-01-01"));
 
-		const version = run("mu", ["--version"], { HOME: dir });
+			const version = run("mu", ["--version"], { HOME: dir });
 
-		expect(version.code).toBe(0);
-		const rebuilt = JSON.parse(readFileSync(join(app, "package.json"), "utf8"));
-		expect(rebuilt.piConfig).toEqual({ name: "mu", configDir: ".mu" });
-		expect(rebuilt.name).toBe("@earendil-works/pi-coding-agent");
-		expect(existsSync(join(dir, ".mu/agent"))).toBe(true);
-	});
+			expect(version.code).toBe(0);
+			const rebuilt = JSON.parse(readFileSync(join(app, "package.json"), "utf8"));
+			expect(rebuilt.piConfig).toEqual({ name: "mu", configDir: ".mu" });
+			expect(rebuilt.name).toBe("@earendil-works/pi-coding-agent");
+			expect(existsSync(join(dir, ".mu/agent"))).toBe(true);
+		},
+		60_000,
+	);
 
-	it.skipIf(!installed)("stays in ~/.kyrn on a machine whose home has not been moved, without creating ~/.mu", () => {
-		const dir = home();
-		mkdirSync(join(dir, ".kyrn/agent"), { recursive: true });
+	it.skipIf(!installed)(
+		"stays in ~/.kyrn on a machine whose home has not been moved, without creating ~/.mu",
+		() => {
+			const dir = home();
+			mkdirSync(join(dir, ".kyrn/agent"), { recursive: true });
 
-		expect(run("mu", ["--version"], { HOME: dir }).code).toBe(0);
+			expect(run("mu", ["--version"], { HOME: dir }).code).toBe(0);
 
-		expect(existsSync(join(dir, ".mu"))).toBe(false);
-		expect(JSON.parse(readFileSync(join(dir, ".kyrn/app/package.json"), "utf8")).piConfig.name).toBe("mu");
-	});
+			expect(existsSync(join(dir, ".mu"))).toBe(false);
+			expect(JSON.parse(readFileSync(join(dir, ".kyrn/app/package.json"), "utf8")).piConfig.name).toBe("mu");
+		},
+		60_000,
+	);
 });
 
 describe("mu migrate", () => {
@@ -242,7 +251,8 @@ describe("mu migrate", () => {
 		try {
 			await new Promise((started) => session.once("spawn", started));
 
-			const refused = run("mu", ["migrate", "--dry-run"], { HOME: dir });
+			// On a fresh Windows runner the PowerShell call behind it has taken half a minute.
+			const refused = run("mu", ["migrate", "--dry-run"], { HOME: dir }, 110_000);
 
 			expect(refused.code).toBe(1);
 			expect(refused.out).toContain("mu sessions");
@@ -250,5 +260,5 @@ describe("mu migrate", () => {
 		} finally {
 			session.kill();
 		}
-	});
+	}, 120_000);
 });
