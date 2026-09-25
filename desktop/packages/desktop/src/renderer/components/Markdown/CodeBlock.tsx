@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next';
 import SyntaxHighlighter from 'react-syntax-highlighter';
 import { muCodeTheme } from './muCodeTheme';
 import { copyText } from '@/renderer/utils/ui/clipboard';
+import { codeLanguage } from './codeLanguage';
 import MermaidBlock from './MermaidBlock';
 import WavedromBlock from './WavedromBlock';
 import { formatCode, getDiffLineStyle } from './markdownUtils';
@@ -35,6 +36,53 @@ type CodeBlockProps = {
   diagramPanZoom?: boolean;
   [key: string]: unknown;
 };
+
+type HighlightedCodeProps = { code: string; language: string; appearance: 'light' | 'dark' };
+
+/**
+ * The code, highlighted. Its props are strings, so it is memoised on them: a streamed reply re-renders its markdown on
+ * every chunk, and a block that has stopped growing is not highlighted again.
+ */
+const HighlightedCode = React.memo(function HighlightedCode({ code, language, appearance }: HighlightedCodeProps) {
+  const isDiff = language === 'diff';
+  const isDark = appearance === 'dark';
+  const diffLines = isDiff ? code.split('\n') : [];
+  return (
+    <SyntaxHighlighter
+      children={code}
+      language={language}
+      style={muCodeTheme(appearance)}
+      PreTag='div'
+      wrapLines={isDiff}
+      lineProps={
+        isDiff
+          ? (lineNumber: number) => ({
+              style: {
+                display: 'block',
+                ...getDiffLineStyle(diffLines[lineNumber - 1] || '', isDark),
+              },
+            })
+          : undefined
+      }
+      customStyle={{
+        margin: 0,
+        padding: '0 12px 8px',
+        borderRadius: 0,
+        border: 'none',
+        background: 'transparent',
+        color: 'var(--text-primary)',
+        overflowX: 'auto',
+        maxWidth: '100%',
+      }}
+      codeTagProps={{
+        style: {
+          color: 'var(--text-primary)',
+          background: 'transparent',
+        },
+      }}
+    />
+  );
+});
 
 function CodeBlock(props: CodeBlockProps) {
   const { t } = useTranslation();
@@ -72,7 +120,8 @@ function CodeBlock(props: CodeBlockProps) {
     diagramPanZoom: _dpz,
     ...rest
   } = props;
-  const match = /language-(\w+)/.exec(className || '');
+  // The label as written, whole (`c++`, `c#`), without a `:path` a model may add after it (```ts:src/a.ts).
+  const match = /language-([^\s:]+)/.exec(className || '');
   const language = match?.[1] || 'text';
 
   // KaTeX math blocks
@@ -106,12 +155,9 @@ function CodeBlock(props: CodeBlockProps) {
     );
   }
 
-  const isDiff = language === 'diff';
   const formattedContent = formatCode(children);
   const totalLines = formattedContent.split('\n').length;
   const canCollapse = totalLines > PREVIEW_LINES;
-  const codeTheme = muCodeTheme(currentTheme);
-  const diffLines = isDiff ? formattedContent.split('\n') : [];
   const isDark = currentTheme === 'dark';
 
   const handleCopy = () => {
@@ -204,39 +250,7 @@ function CodeBlock(props: CodeBlockProps) {
             overflowX: 'visible',
           }}
         >
-          <SyntaxHighlighter
-            children={formattedContent}
-            language={language}
-            style={codeTheme}
-            PreTag='div'
-            wrapLines={isDiff}
-            lineProps={
-              isDiff
-                ? (lineNumber: number) => ({
-                    style: {
-                      display: 'block',
-                      ...getDiffLineStyle(diffLines[lineNumber - 1] || '', isDark),
-                    },
-                  })
-                : undefined
-            }
-            customStyle={{
-              margin: 0,
-              padding: '0 12px 8px',
-              borderRadius: 0,
-              border: 'none',
-              background: 'transparent',
-              color: 'var(--text-primary)',
-              overflowX: 'auto',
-              maxWidth: '100%',
-            }}
-            codeTagProps={{
-              style: {
-                color: 'var(--text-primary)',
-                background: 'transparent',
-              },
-            }}
-          />
+          <HighlightedCode code={formattedContent} language={codeLanguage(language)} appearance={currentTheme} />
         </div>
 
         {/* Footer */}
