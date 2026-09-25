@@ -9,14 +9,14 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionUIContext } from "../../coding-agent/src/core/extensions/types.ts";
 import { createHarness, type Harness } from "../../coding-agent/test/suite/harness.ts";
-import { spawnGit } from "../src/checkpoint/git.ts";
+import { findOnPath, GitMissing, type GitProbe, type GitRun, spawnGit } from "../src/checkpoint/git.ts";
 import { isCheckCommand, isMutatingCall, isReadOnlyCommand } from "../src/checkpoint/mutating.ts";
 import { parseConfig } from "../src/config.ts";
 import type { DecisionMode } from "../src/decision.ts";
@@ -103,6 +103,7 @@ describe("checkpoints and the judged rewind", () => {
 			ui?: Ui;
 			navigation?: boolean;
 			git?: string;
+			run?: GitRun;
 			options?: Record<string, unknown>;
 		} = {},
 	): Promise<Started> {
@@ -155,7 +156,7 @@ describe("checkpoints and the judged rewind", () => {
 					config: parseConfig({ features: { checkpoint: { dir: shadow, ...extra.options } } }),
 					only: ["preflight", "monitor", "checkpoint"],
 					onPresentation: (event) => events.push(event),
-					checkpoint: extra.git ? { run: spawnGit(extra.git) } : undefined,
+					checkpoint: extra.run ? { run: extra.run } : extra.git ? { run: spawnGit(extra.git) } : undefined,
 				}),
 			],
 		});
@@ -459,6 +460,54 @@ describe("checkpoints and the judged rewind", () => {
 		expect(ui.notes.at(-1)).toContain("checkpoints are off");
 	});
 
+	/** Two turns that each change a file, then /rewind: what the session said, and what it presented. */
+	async function twoTurnsAndRewind(started: Started) {
+		const { harness } = started;
+		harness.setResponses([call("write", { path: "app.ts", content: "v2\n" }), fauxAssistantMessage("Done.")]);
+		await harness.session.prompt("Change it.");
+		harness.setResponses([call("write", { path: "app.ts", content: "v3\n" }), fauxAssistantMessage("Done.")]);
+		await harness.session.prompt("Change it again.");
+		await harness.session.prompt("/rewind");
+		expect(started.file("app.ts")).toBe("v3\n");
+		expect(started.entries(CHECKPOINT_ENTRY)).toEqual([]);
+		return started.events.filter((event) => event.kind === "checkpoint.off").map((event) => event.payload);
+	}
+
+	// QA on macOS, 2026-09-25: with the Xcode license not accepted, git exits 69, and every turn that wrote a file said
+	// "mu: no checkpoint for this turn (git init exited with 69: You have not agreed to the Xcode license…)", in English.
+	it.skipIf(process.platform === "win32")(
+		"an Xcode whose license nobody accepted yet: the tools run as ever, and the session says why once",
+		async () => {
+			const bin = realpathSync(mkdtempSync(join(tmpdir(), "mu-xcode-git-")));
+			temps.push(bin);
+			const git = join(bin, "git");
+			writeFileSync(
+				git,
+				`#!/bin/sh\necho "You have not agreed to the Xcode license agreements. Please run 'sudo xcodebuild -license' from within a Terminal window to review and agree to the Xcode and Apple SDKs license." >&2\nexit 69\n`,
+				{ mode: 0o755 },
+			);
+			const ui = scriptedUi({});
+			const off = await twoTurnsAndRewind(await start({ ui, navigation: true, git }));
+			const line =
+				"mu: checkpoints are off, because git cannot run on this Mac until the Xcode license is accepted. Accept it with sudo xcodebuild -license in Terminal, then start a new session to get them.";
+			// Once for the session's first change; /rewind says it again because it was asked.
+			expect(ui.notes).toEqual([line, line]);
+			expect(off).toEqual([{ code: "xcode_license", params: {}, message: line }]);
+		},
+	);
+
+	it("never starts git on a Mac without the developer tools, whose /usr/bin/git only opens their installer", async () => {
+		const probe: GitProbe = { platform: "darwin", find: () => "/usr/bin/git", hasDeveloperTools: async () => false };
+		const ui = scriptedUi({});
+		// Started, this binary would be missing and say "git was not found".
+		const run = spawnGit("mu-test-no-such-git-binary", 30_000, probe);
+		const off = await twoTurnsAndRewind(await start({ ui, navigation: true, run }));
+		const line =
+			"mu: checkpoints are off, because this Mac has no command line developer tools, which git needs. Install them with xcode-select --install, then start a new session to get them.";
+		expect(ui.notes).toEqual([line, line]);
+		expect(off).toEqual([{ code: "developer_tools_missing", params: {}, message: line }]);
+	});
+
 	// mu 0.1.3 started in a home folder on a small server: the first change of every turn snapshotted the whole
 	// home into ~/.mu, mu's own snapshots included, so the copy grew with every turn.
 	it("takes no checkpoint in the home folder, copies nothing, and says why once, in one line", async () => {
@@ -521,6 +570,12 @@ describe("checkpoints and the judged rewind", () => {
 				line: "mu：本次会话不拍检查点，因为这个文件夹要拍的文件加起来超过 200 MB。在项目文件夹里启动 mu 就有检查点，或者调高 features.checkpoint.maxTotalMb。",
 				params: { limitMb: 200 },
 			});
+			expect(offNotice("xcode_license", limits).line).toBe(
+				"mu：检查点已关闭，因为这台 Mac 还没有同意 Xcode 许可协议，git 无法运行。在终端里用 sudo xcodebuild -license 同意后，新开一个会话就有检查点。",
+			);
+			expect(offNotice("developer_tools_missing", limits).line).toBe(
+				"mu：检查点已关闭，因为这台 Mac 没有安装 git 所需的命令行开发者工具。用 xcode-select --install 安装后，新开一个会话就有检查点。",
+			);
 		} finally {
 			if (saved === undefined) delete process.env.MU_LANG;
 			else process.env.MU_LANG = saved;
@@ -581,5 +636,57 @@ describe("turn.rewind and what counts as a change", () => {
 		expect(isCheckCommand("npx vitest --run test/a.test.ts")).toBe(true);
 		expect(isCheckCommand("npm run build")).toBe(true);
 		expect(isCheckCommand("ls")).toBe(false);
+	});
+});
+
+describe("a git that is there and cannot run", () => {
+	const temps: string[] = [];
+	afterEach(() => {
+		while (temps.length > 0) rmSync(temps.pop() as string, { recursive: true, force: true });
+	});
+
+	it("asks after the developer tools once, and only for the git macOS itself puts in /usr/bin", async () => {
+		const asked: string[] = [];
+		const probe = (platform: NodeJS.Platform, found: string, tools: boolean): GitProbe => ({
+			platform,
+			find: () => found,
+			hasDeveloperTools: async () => {
+				asked.push(`${platform} ${found}`);
+				return tools;
+			},
+		});
+		const stub = spawnGit("mu-test-no-such-git-binary", 30_000, probe("darwin", "/usr/bin/git", false));
+		for (let run = 0; run < 2; run++) {
+			await expect(stub(["status"], {})).rejects.toMatchObject({
+				name: "GitUnusable",
+				reason: "developer_tools_missing",
+			});
+		}
+		// With the tools there, with another git first on PATH, and off macOS, git itself is started (and not found here).
+		for (const [platform, found, tools] of [
+			["darwin", "/usr/bin/git", true],
+			["darwin", "/opt/homebrew/bin/git", false],
+			["linux", "/usr/bin/git", false],
+		] as const) {
+			await expect(
+				spawnGit("mu-test-no-such-git-binary", 30_000, probe(platform, found, tools))(["status"], {}),
+			).rejects.toBeInstanceOf(GitMissing);
+		}
+		expect(asked).toEqual(["darwin /usr/bin/git", "darwin /usr/bin/git"]);
+	});
+
+	it.skipIf(process.platform === "win32")("finds git where spawn would: the first executable file on PATH", () => {
+		const root = realpathSync(mkdtempSync(join(tmpdir(), "mu-find-git-")));
+		temps.push(root);
+		const first = join(root, "first");
+		const second = join(root, "second");
+		mkdirSync(first);
+		mkdirSync(second);
+		writeFileSync(join(first, "git"), "", { mode: 0o644 });
+		writeFileSync(join(second, "git"), "#!/bin/sh\n", { mode: 0o755 });
+		expect(findOnPath("git", ["", first, second].join(delimiter))).toBe(join(second, "git"));
+		expect(findOnPath("git", first)).toBeUndefined();
+		expect(findOnPath("git", undefined)).toBeUndefined();
+		expect(findOnPath(join(second, "git"), undefined)).toBe(join(second, "git"));
 	});
 });

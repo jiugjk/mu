@@ -1,5 +1,6 @@
-import { spawn } from "node:child_process";
-import { join } from "node:path";
+import { execFile, spawn } from "node:child_process";
+import { accessSync, constants, existsSync, statSync } from "node:fs";
+import { delimiter, join } from "node:path";
 
 export interface GitResult {
 	readonly code: number;
@@ -36,6 +37,24 @@ export class GitMissing extends Error {
 	}
 }
 
+/**
+ * Why git is there and still cannot run, on macOS, where git comes with Apple's developer tools:
+ * - `xcode_license`: an Xcode whose license nobody has accepted yet. Every git exits 69 and says so.
+ * - `developer_tools_missing`: no developer tools at all. /usr/bin/git is then a stub that opens the
+ *   system dialog offering to install them, each time it runs, and fails.
+ */
+export type GitUnusableReason = "xcode_license" | "developer_tools_missing";
+
+/** git cannot run on this machine as it is. The feature says so once and stays quiet, as without git. */
+export class GitUnusable extends Error {
+	readonly reason: GitUnusableReason;
+	constructor(reason: GitUnusableReason, message: string) {
+		super(message);
+		this.name = "GitUnusable";
+		this.reason = reason;
+	}
+}
+
 /** A git command that ran and failed. */
 export class GitFailed extends Error {
 	readonly result: GitResult;
@@ -46,63 +65,135 @@ export class GitFailed extends Error {
 	}
 }
 
+/** What `spawnGit` looks at before it first starts git. Tests stand in for a Mac here. */
+export interface GitProbe {
+	readonly platform: NodeJS.Platform;
+	/** The file `binary` is on this PATH, as spawn finds it. */
+	find(binary: string, path: string | undefined): string | undefined;
+	/** Whether `xcode-select -p` names a developer folder that is there. It opens no dialog when there is none. */
+	hasDeveloperTools(): Promise<boolean>;
+}
+
+/** The first executable file called `binary` in the folders of `path`, or `binary` itself when it is a path. */
+export function findOnPath(binary: string, path: string | undefined): string | undefined {
+	const candidates = binary.includes("/")
+		? [binary]
+		: (path ?? "")
+				.split(delimiter)
+				.filter(Boolean)
+				.map((folder) => join(folder, binary));
+	return candidates.find((candidate) => {
+		try {
+			accessSync(candidate, constants.X_OK);
+			return statSync(candidate).isFile();
+		} catch {
+			return false;
+		}
+	});
+}
+
+export const hostProbe: GitProbe = {
+	platform: process.platform,
+	find: findOnPath,
+	hasDeveloperTools: () =>
+		new Promise((done) => {
+			execFile("/usr/bin/xcode-select", ["-p"], { timeout: 5000 }, (error, stdout) =>
+				done(!error && existsSync(stdout.trim())),
+			);
+		}),
+};
+
+/** Where macOS itself puts git: a stub that runs the developer tools' git, or offers to install them. */
+const MAC_STUB = "/usr/bin/git";
+/** EX_UNAVAILABLE, the exit of every developer tool until the Xcode license is accepted. */
+const XCODE_LICENSE_EXIT = 69;
+
 /**
  * The real runner: no shell, an argument array, no console window on Windows. `git.exe` is a real
  * executable there, so no `.cmd` shim is involved. A command that outlives `timeoutMs` is killed and
  * reported as failed, so a huge project costs a turn its checkpoint rather than its start. With a
  * `limit`, git is ended as soon as its output holds more entries than that, and only those are kept.
+ *
+ * Before git first runs on a Mac, the probe checks that it is no stub without the developer tools
+ * behind it: that git is never started, since each start opens the system's install dialog again.
+ * A git held back by the Xcode license is reported as such, not as a command that failed.
  */
-export function spawnGit(binary = "git", timeoutMs = 30_000): GitRun {
-	return (args, env, input, limit) =>
-		new Promise<GitResult>((resolve, reject) => {
-			let child: ReturnType<typeof spawn>;
-			try {
-				child = spawn(binary, [...args], { env: { ...env }, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
-			} catch (error) {
-				reject(new GitMissing(binary, error));
+export function spawnGit(binary = "git", timeoutMs = 30_000, probe: GitProbe = hostProbe): GitRun {
+	let usable: Promise<void> | undefined;
+	return async (args, env, input, limit) => {
+		usable ??= (async () => {
+			if (probe.platform !== "darwin" || probe.find(binary, env.PATH) !== MAC_STUB) return;
+			if (!(await probe.hasDeveloperTools()))
+				throw new GitUnusable(
+					"developer_tools_missing",
+					`${MAC_STUB} needs the developer tools, which are not installed`,
+				);
+		})();
+		await usable;
+		const result = await spawnOnce(binary, timeoutMs, args, env, input, limit);
+		if (result.code === XCODE_LICENSE_EXIT && /licen[cs]e/i.test(`${result.stderr}\n${result.stdout}`))
+			throw new GitUnusable("xcode_license", `git ${args[0]} exited with 69: ${result.stderr.trim().slice(0, 300)}`);
+		return result;
+	};
+}
+
+function spawnOnce(
+	binary: string,
+	timeoutMs: number,
+	args: readonly string[],
+	env: Readonly<Record<string, string>>,
+	input?: string,
+	limit?: OutputLimit,
+): Promise<GitResult> {
+	return new Promise<GitResult>((resolve, reject) => {
+		let child: ReturnType<typeof spawn>;
+		try {
+			child = spawn(binary, [...args], { env: { ...env }, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
+		} catch (error) {
+			reject(new GitMissing(binary, error));
+			return;
+		}
+		const out: Buffer[] = [];
+		const err: Buffer[] = [];
+		let timedOut = false;
+		let entries = 0;
+		let truncated = false;
+		const timer = setTimeout(() => {
+			timedOut = true;
+			child.kill();
+		}, timeoutMs);
+		timer.unref?.();
+		child.stdout?.on("data", (chunk: Buffer) => {
+			if (truncated) return;
+			out.push(chunk);
+			if (!limit) return;
+			for (let at = chunk.indexOf(0); at !== -1; at = chunk.indexOf(0, at + 1)) entries++;
+			if (entries > limit.maxEntries) {
+				truncated = true;
+				child.kill();
+			}
+		});
+		child.stderr?.on("data", (chunk: Buffer) => err.push(chunk));
+		child.on("error", (error) => {
+			clearTimeout(timer);
+			reject(new GitMissing(binary, error));
+		});
+		child.on("close", (code) => {
+			clearTimeout(timer);
+			if (truncated) {
+				resolve({ code: 0, stdout: Buffer.concat(out).toString("utf8"), stderr: "", truncated: true });
 				return;
 			}
-			const out: Buffer[] = [];
-			const err: Buffer[] = [];
-			let timedOut = false;
-			let entries = 0;
-			let truncated = false;
-			const timer = setTimeout(() => {
-				timedOut = true;
-				child.kill();
-			}, timeoutMs);
-			timer.unref?.();
-			child.stdout?.on("data", (chunk: Buffer) => {
-				if (truncated) return;
-				out.push(chunk);
-				if (!limit) return;
-				for (let at = chunk.indexOf(0); at !== -1; at = chunk.indexOf(0, at + 1)) entries++;
-				if (entries > limit.maxEntries) {
-					truncated = true;
-					child.kill();
-				}
+			resolve({
+				code: timedOut ? TIMED_OUT : (code ?? 1),
+				stdout: Buffer.concat(out).toString("utf8"),
+				stderr: timedOut ? `timed out after ${timeoutMs} ms` : Buffer.concat(err).toString("utf8"),
 			});
-			child.stderr?.on("data", (chunk: Buffer) => err.push(chunk));
-			child.on("error", (error) => {
-				clearTimeout(timer);
-				reject(new GitMissing(binary, error));
-			});
-			child.on("close", (code) => {
-				clearTimeout(timer);
-				if (truncated) {
-					resolve({ code: 0, stdout: Buffer.concat(out).toString("utf8"), stderr: "", truncated: true });
-					return;
-				}
-				resolve({
-					code: timedOut ? TIMED_OUT : (code ?? 1),
-					stdout: Buffer.concat(out).toString("utf8"),
-					stderr: timedOut ? `timed out after ${timeoutMs} ms` : Buffer.concat(err).toString("utf8"),
-				});
-			});
-			// A git that exits before reading its input must not take the process down with EPIPE.
-			child.stdin?.on("error", () => {});
-			child.stdin?.end(input ?? "");
 		});
+		// A git that exits before reading its input must not take the process down with EPIPE.
+		child.stdin?.on("error", () => {});
+		child.stdin?.end(input ?? "");
+	});
 }
 
 /**
