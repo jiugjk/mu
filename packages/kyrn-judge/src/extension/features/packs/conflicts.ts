@@ -2,6 +2,7 @@ import { realpathSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { Type } from "typebox";
+import { UNUSABLE_TEXT } from "../../../checkpoint/git.ts";
 import {
 	type ConflictBlock,
 	type ConflictedFile,
@@ -79,8 +80,9 @@ export function conflictsPack(shared: PackShared, options: { maxSideLines: numbe
 			"For a merge, rebase or cherry-pick that stopped on conflicts: shows each conflicted file with both sides and their common base, and resolves one file at a time.",
 		tools: ["conflicts_list", "conflicts_show", "conflicts_resolve"],
 		async start() {
-			const probe = await shared.run("git", ["--version"], { cwd: shared.cwd(), timeoutMs: 5000 });
+			const probe = await git(["--version"], { cwd: shared.cwd(), timeoutMs: 5000 });
 			if (probe.missing) throw new Error(installHint("git", shared.platform));
+			if (probe.unusable) throw new Error(UNUSABLE_TEXT[probe.unusable]);
 
 			runtime.pi.registerTool({
 				name: "conflicts_list",
