@@ -5,7 +5,8 @@ rem (kyrn\bin\mu does the same for macOS, Linux and WSL.)
 rem
 rem Keep this file ASCII: cmd reads a batch file in the console's code page.
 rem No parentheses around the messages below: a ")" inside a block would end it.
-rem NOT RUN ON A REAL WINDOWS MACHINE YET. See kyrn\docs\features\windows-and-wsl.md for what to check first.
+rem Run through cmd.exe on a Windows runner by the tests in CI (windows-tests.yml). What is still unchecked
+rem on a real machine is in kyrn\docs\features\windows-and-wsl.md.
 setlocal
 set "_MU_MAJOR="
 set "_MU_MINOR="

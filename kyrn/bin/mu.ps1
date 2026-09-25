@@ -5,7 +5,7 @@
 # and the default execution policy on Windows (Restricted) then refuses to run it: `mu` would stop working in
 # PowerShell instead of falling back to mu.cmd. Call this file by its path when you need exact arguments.
 #
-# NOT RUN ON A REAL WINDOWS MACHINE YET. See kyrn\docs\features\windows-and-wsl.md for what to check first.
+# Not run on Windows yet (mu.cmd is, in CI). See kyrn\docs\features\windows-and-wsl.md for what to check first.
 $node = Get-Command node -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $node) {
 	[Console]::Error.WriteLine("mu needs Node.js 22.19 or newer, and no node was found on PATH.")
