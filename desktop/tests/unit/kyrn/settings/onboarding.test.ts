@@ -110,6 +110,13 @@ describe('the judge choice', () => {
     const direct = withJevAccess(settings(), 1, 'typesafe');
     expect(direct.tiers).toEqual(['laya', 'jev']);
     expect(direct.judges.jev.type).toBe('typesafe');
+    // The address it had belonged to the old way in, so it does not come along.
+    const own = settings();
+    const addressed = {
+      ...own,
+      judges: { ...own.judges, jev: { ...own.judges.jev, baseUrl: 'https://gateway.example.com/v1' } },
+    };
+    expect(withJevAccess(addressed, 1, 'typesafe').judges.jev).toMatchObject({ type: 'typesafe', baseUrl: '' });
   });
 
   it('keeps the key of a Jev profile where the profile says, else in TYPESAFE_API_KEY', () => {

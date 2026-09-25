@@ -68,7 +68,8 @@ export function choose(settings: KyrnSettings, choice: JudgeChoice): KyrnSetting
 /**
  * The settings with the judge at `index` of the order reaching Jev by `access`: the profile of that way takes its
  * place (the built-in one, else the first of that type), and is not asked twice. Without such a profile, the judge's
- * own profile changes its type.
+ * own profile changes its type, and leaves behind an address that belonged to the old way in: a TypeSafe URL is no
+ * gateway, nor the other way round.
  */
 export function withJevAccess(settings: KyrnSettings, index: number, access: JevAccess): KyrnSettings {
   const current = settings.tiers[index];
@@ -79,7 +80,10 @@ export function withJevAccess(settings: KyrnSettings, index: number, access: Jev
       ? builtIn
       : Object.keys(settings.judges).find((name) => settings.judges[name].type === access);
   if (!profile)
-    return { ...settings, judges: { ...settings.judges, [current]: { ...settings.judges[current], type: access } } };
+    return {
+      ...settings,
+      judges: { ...settings.judges, [current]: { ...settings.judges[current], type: access, baseUrl: '' } },
+    };
   const tiers = settings.tiers.map((name, at) => (at === index ? profile : name));
   return { ...settings, tiers: tiers.filter((name, at) => tiers.indexOf(name) === at) };
 }
