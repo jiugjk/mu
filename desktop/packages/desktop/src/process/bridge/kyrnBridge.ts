@@ -15,7 +15,7 @@ import { OnnxLocalJudge, openFolder, usesOnnxJudge } from '../agent/kyrn/localJu
 import { importCli, importService } from '../agent/kyrn/importChats';
 import { LessonsStore, lessonsProject, type LessonsProject } from '../agent/kyrn/lessons';
 import { activityPage, modelLevels } from '../agent/kyrn/telemetry';
-import { findRegistration, initializeKyrn } from '../agent/kyrn/product';
+import { findRegistration, initializeKyrn, recheckKyrn } from '../agent/kyrn/product';
 import { muEnv, muHome } from '../agent/kyrn/naming';
 import { asRecord, text } from '../agent/kyrn/piRpc';
 import { sessionBinding } from '../agent/kyrn/sessionBinding';
@@ -102,6 +102,17 @@ export function initKyrnBridge(): void {
       return availableModels(findRegistration(agents, command));
     })
   );
+  // After the start's own check, and one at a time: a change saved while a check runs is checked after it, so the
+  // last check sees the last change.
+  const recheck = async (): Promise<void> => {
+    await catalog().catch((): undefined => undefined);
+    await recheckKyrn(httpRequest, command);
+  };
+  let rechecked = Promise.resolve();
+  kyrnBridge.recheck.provider(() => {
+    rechecked = rechecked.catch((): undefined => undefined).then(recheck);
+    return result(() => rechecked);
+  });
   kyrnBridge.testProvider.provider((input) => result(() => testProvider(input, settings.storedKey(input.id))));
   const login = new LoginManager(spawnAuth(launcherOf(harness, process.platform), agentDir), (url) => {
     if (openable(url)) void shell.openExternal(url);

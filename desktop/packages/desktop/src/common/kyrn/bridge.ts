@@ -14,6 +14,8 @@ export const kyrnBridge = {
   save: bridge.buildProvider<KyrnResult<KyrnSettings>, SaveSettings>('kyrn.save'),
   /** Models the running mu last reported as usable: a snapshot kept by the backend, not a live query. */
   availableModels: bridge.buildProvider<KyrnResult<AvailableModels>, void>('kyrn.availableModels'),
+  /** The backend checks mu again and keeps that snapshot anew; answers once it has. */
+  recheck: bridge.buildProvider<KyrnResult<void>, void>('kyrn.recheck'),
   /** One minimal request to a provider's endpoint, made by the main process. */
   testProvider: bridge.buildProvider<KyrnResult<ProviderTestResult>, ProviderTestInput>('kyrn.testProvider'),
   /** A page of a conversation's activity; with `kinds`, only events of those kinds (the cursor still covers all). */

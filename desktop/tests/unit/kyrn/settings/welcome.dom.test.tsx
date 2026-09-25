@@ -17,6 +17,7 @@ const bridge = vi.hoisted(() => ({
   settings: vi.fn(),
   save: vi.fn(),
   availableModels: vi.fn(),
+  recheck: vi.fn(),
   testProvider: vi.fn(),
   loginStatus: vi.fn(),
   loginState: vi.fn(),
@@ -32,6 +33,7 @@ vi.mock('@/common/kyrn/bridge', () => ({
     settings: { invoke: bridge.settings },
     save: { invoke: bridge.save },
     availableModels: { invoke: bridge.availableModels },
+    recheck: { invoke: bridge.recheck },
     testProvider: { invoke: bridge.testProvider },
     loginStatus: { invoke: bridge.loginStatus },
     loginState: { invoke: bridge.loginState },
@@ -96,6 +98,7 @@ beforeEach(() => {
   localStorage.clear();
   bridge.settings.mockResolvedValue({ ok: true, data: newUser() });
   bridge.availableModels.mockResolvedValue({ ok: true, data: { providers: [], thinkingLevels: [] } });
+  bridge.recheck.mockResolvedValue({ ok: true, data: undefined });
   bridge.loginStatus.mockResolvedValue({ ok: true, data: { signedIn: [] } });
   bridge.loginState.mockResolvedValue({ ok: true, data: { id: 0, phase: 'idle' } });
   bridge.localJudgeState.mockResolvedValue({
@@ -255,6 +258,8 @@ describe('the first-run guide', () => {
 
     expect(await screen.findByText('landing page')).toBeInTheDocument();
     expect(bridge.save).toHaveBeenCalledTimes(1);
+    // The home page it lands on offers the model just connected, not 默认模型 until the app starts again.
+    await waitFor(() => expect(bridge.recheck).toHaveBeenCalledTimes(1));
     const saved = bridge.save.mock.calls[0][0] as SaveSettings;
     expect(saved.models?.providers).toMatchObject([
       {
@@ -414,6 +419,7 @@ describe('the first-run guide', () => {
     fireEvent.click(await screen.findByText('Skip setup'));
     expect(await screen.findByText('landing page')).toBeInTheDocument();
     expect(bridge.save).not.toHaveBeenCalled();
+    expect(bridge.recheck).not.toHaveBeenCalled();
     expect(localStorage.getItem(ONBOARDING_KEY)).toBeTruthy();
   });
 

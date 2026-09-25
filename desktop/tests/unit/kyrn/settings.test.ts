@@ -3,7 +3,11 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, renameSync, rmSync, s
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SettingsStore } from '../../../packages/desktop/src/process/agent/kyrn/settings';
-import { initializeKyrn, type BackendRequest } from '../../../packages/desktop/src/process/agent/kyrn/product';
+import {
+  initializeKyrn,
+  recheckKyrn,
+  type BackendRequest,
+} from '../../../packages/desktop/src/process/agent/kyrn/product';
 import { configPath, muEnv, muHome } from '../../../packages/desktop/src/process/agent/kyrn/naming';
 
 function fixture() {
@@ -492,5 +496,22 @@ describe('mu-only backend catalog', () => {
     const { calls, request } = backend([{ id: 'k', name, command: '/other' }]);
     await expect(initializeKyrn(request, '/kyrn/acp')).rejects.toThrow('different mu command');
     expect(calls).toHaveLength(1);
+  });
+  // The check keeps what mu offers in the record the pickers read: the start makes one, a change to mu's models another.
+  it('checks mu again, found by its command, and changes nothing else', async () => {
+    const { calls, request } = backend([
+      { id: 'other', name: 'Codex', command: '/codex', enabled: false },
+      { id: 'k', name: 'mu', command: '/kyrn/acp', enabled: true, yolo_id: 'full' },
+    ]);
+    await recheckKyrn(request, '/kyrn/acp');
+    expect(calls).toEqual([
+      { method: 'GET', path: '/api/agents/management', body: undefined },
+      { method: 'POST', path: '/api/agents/k/health-check', body: {} },
+    ]);
+  });
+  it('has nothing to check before mu is registered', async () => {
+    const { calls, request } = backend([{ id: 'other', name: 'Codex', command: '/codex', enabled: true }]);
+    await recheckKyrn(request, '/kyrn/acp');
+    expect(calls.map((call) => call.path)).toEqual(['/api/agents/management']);
   });
 });

@@ -30,6 +30,7 @@ const bridge = vi.hoisted(() => ({
   settings: vi.fn(),
   save: vi.fn(),
   availableModels: vi.fn(),
+  recheck: vi.fn(),
   testProvider: vi.fn(),
   loginStatus: vi.fn(),
   loginState: vi.fn(),
@@ -41,6 +42,12 @@ const bridge = vi.hoisted(() => ({
   localJudgeRun: vi.fn(),
   clmCheck: vi.fn(),
 }));
+// The pickers' copy of what mu offers, read again after mu is checked again.
+const catalog = vi.hoisted(() => ({ refresh: vi.fn() }));
+vi.mock('@/renderer/hooks/agent/useManagedAgents', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/renderer/hooks/agent/useManagedAgents')>()),
+  refreshManagedAgentCatalogAndAssistants: catalog.refresh,
+}));
 // The routed page's frame (the settings rail's phone navigation, the scroll box) is not what is tested here.
 vi.mock('@/renderer/pages/settings/components/SettingsPageWrapper', () => ({
   default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -50,6 +57,7 @@ vi.mock('@/common/kyrn/bridge', () => ({
     settings: { invoke: bridge.settings },
     save: { invoke: bridge.save },
     availableModels: { invoke: bridge.availableModels },
+    recheck: { invoke: bridge.recheck },
     testProvider: { invoke: bridge.testProvider },
     loginStatus: { invoke: bridge.loginStatus },
     loginState: { invoke: bridge.loginState },
@@ -158,6 +166,8 @@ beforeEach(async () => {
   });
   bridge.loginStatus.mockResolvedValue({ ok: true, data: { signedIn: [] } });
   bridge.loginState.mockResolvedValue({ ok: true, data: { id: 0, phase: 'idle' } });
+  bridge.recheck.mockResolvedValue({ ok: true, data: undefined });
+  catalog.refresh.mockResolvedValue([]);
   // The store answers a save with the whole state again.
   bridge.save.mockImplementation(
     async ({ models, permissions, boardModel, credentials: _credentials, ...input }: SaveSettings) => {
@@ -478,6 +488,25 @@ describe('the save bar', () => {
     expect(sent).not.toHaveProperty('keys');
     expect(sent).not.toHaveProperty('credentials');
   });
+  it('has mu checked again after a save, and only then the pickers read what it offers', async () => {
+    let checked!: (value: { ok: true; data: undefined }) => void;
+    bridge.recheck.mockReturnValue(new Promise((resolve) => (checked = resolve)));
+    bridge.save.mockResolvedValueOnce({ ok: false, code: 'backend', error: 'EACCES: permission denied' });
+    await open('context');
+    fireEvent.click(screen.getByRole('switch', { name: 'Automatic compaction' }));
+    fireEvent.click(screen.getByText('Save'));
+    expect(await within(screen.getByTestId('mu-save-bar')).findByText(/EACCES/)).toBeInTheDocument();
+    // Nothing was saved, so nothing changed for mu.
+    expect(bridge.recheck).not.toHaveBeenCalled();
+
+    fireEvent.click(within(screen.getByTestId('mu-save-bar')).getByText('Save'));
+    await waitFor(() => expect(screen.queryByTestId('mu-save-bar')).not.toBeInTheDocument());
+    expect(bridge.recheck).toHaveBeenCalledTimes(1);
+    // The save bar is gone while the check runs: nobody waits for it.
+    expect(catalog.refresh).not.toHaveBeenCalled();
+    await act(async () => checked({ ok: true, data: undefined }));
+    await waitFor(() => expect(catalog.refresh).toHaveBeenCalledTimes(1));
+  });
   it('going back to the default removes the override, and discard puts everything back', async () => {
     bridge.settings.mockResolvedValue({ ok: true, data: settings({ decisionModes: { 'tool.risk': 'off' } }) });
     await open('decisions');
@@ -623,6 +652,9 @@ describe('providers and the default model', () => {
     expect(within(detail).getByTestId('mu-account-signout-openai-codex')).toBeInTheDocument();
     expect(screen.queryByTestId('mu-save-bar')).not.toBeInTheDocument();
     expect(bridge.save).not.toHaveBeenCalled();
+    // The account's models reach the home page's pill without a new start of the app.
+    await waitFor(() => expect(bridge.recheck).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(catalog.refresh).toHaveBeenCalledTimes(1));
   });
 
   it('signs out only after asking, and shows who is still signed in', async () => {
@@ -644,6 +676,7 @@ describe('providers and the default model', () => {
     await waitFor(() => expect(bridge.loginLogout).toHaveBeenCalledWith({ provider: 'anthropic' }));
     await waitFor(() => expect(within(detail).getByTestId('mu-account-state')).toHaveTextContent('Not signed in'));
     expect(within(detail).getByTestId('mu-account-signin-anthropic')).toBeInTheDocument();
+    await waitFor(() => expect(bridge.recheck).toHaveBeenCalledTimes(1));
   });
 
   it('says in the app language when signing out or in did not work, with the raw reason under it', async () => {

@@ -145,3 +145,13 @@ export async function initializeKyrn(request: BackendRequest, command: string): 
   const ready = await request<Assistant[]>('GET', '/api/assistants');
   return { agentId: agent.id, assistants: ready.filter((row) => row.agent_id === agent.id && row.enabled) };
 }
+
+/**
+ * Has the backend check mu again. The check starts mu and keeps what it offers (its models, modes and commands) in
+ * the registration's record, where the model pickers and the / menu read it. The start checks once, so a model set up
+ * since then was missing there until the app started again. Without a registration there is nothing to check.
+ */
+export async function recheckKyrn(request: BackendRequest, command: string): Promise<void> {
+  const agent = findRegistration(await request<AgentRow[]>('GET', '/api/agents/management'), command);
+  if (agent) await request('POST', `/api/agents/${encodeURIComponent(agent.id)}/health-check`, {});
+}
