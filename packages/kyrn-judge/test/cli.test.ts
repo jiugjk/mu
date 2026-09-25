@@ -58,10 +58,14 @@ describe("welcome screen", () => {
 
 	it("tells the truth when the judge is down, off, or no model is logged in", () => {
 		const down = renderWelcome({ ...view, health: { ok: false, latencyMs: 4000, error: "unreachable" } }, 100, plain);
+		const keyless = renderWelcome({ ...view, health: { ok: false, latencyMs: 0, error: "auth" } }, 100, plain);
+		const broken = renderWelcome({ ...view, health: { ok: false, latencyMs: 90, error: "server" } }, 100, plain);
 		const off = renderWelcome({ ...view, judge: "off" }, 100, plain);
 		const fresh = renderWelcome({ ...view, model: undefined, health: "checking" }, 100, plain);
 
 		expect(down.join("\n")).toContain("not reachable, falling back to stock behaviour");
+		expect(keyless.join("\n")).toContain("no usable key, falling back to stock behaviour");
+		expect(broken.join("\n")).toContain("failing (server), falling back to stock behaviour");
 		expect(off.join("\n")).toContain("off · pi's stock behaviour everywhere");
 		expect(fresh.join("\n")).toContain("/login, then /model");
 		expect(fresh.join("\n")).toContain("checking");

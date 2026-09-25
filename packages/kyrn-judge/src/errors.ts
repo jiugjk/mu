@@ -1,6 +1,8 @@
 /**
  * Why a judge call failed. Callers never branch on message text.
  *
+ * - `auth`: no usable key, or no judge configured at all. The next call fails
+ *   the same way until the user sets one up.
  * - `payment_required`: the account behind the key cannot service requests yet
  *   (AI Gateway answers 403 until a payment card is on file).
  */

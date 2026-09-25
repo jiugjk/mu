@@ -6,6 +6,7 @@ import {
 	type ToolCallEvent,
 	type ToolCallEventResult,
 } from "@earendil-works/pi-coding-agent";
+import type { Decision } from "../../decision.ts";
 import { toolApproval } from "../../decisions/tool-approval.ts";
 import { toolRisk } from "../../decisions/tool-risk.ts";
 import { say } from "../../language.ts";
@@ -37,7 +38,8 @@ const PENDING_STATUS = "mu.permissions.pending";
 
 /**
  * Why the user is being asked. `nojudge` and `judgedown` are Jev mode without a verdict: no judge can answer yet
- * (it has no usable key, so every step asks), or the judge did not answer this time (down, too slow, a broken answer).
+ * (no usable key or credit, or none trusted with approvals, so every step asks), or the judge did not answer this
+ * time (down, too slow, a broken answer).
  */
 export type AskReason = "ask" | "unsure" | "beyond" | "unrelated" | "flagged" | "protected" | "nojudge" | "judgedown";
 
@@ -75,6 +77,19 @@ export const ANSWERS = {
 
 export function modeLabel(mode: PermissionMode): string {
 	return say({ zh: MODE_TEXT[mode].zh, en: MODE_TEXT[mode].en });
+}
+
+/**
+ * Why no judge looked at a step, when none did. Its answer then says "unsure", which would tell the user Jev
+ * weighed the step. `nojudge`: none will look at the next step either (no usable key, no credit, or only judges
+ * not trusted with this kind of question, like a local judge alone). `judgedown`: one failed this time.
+ */
+function unanswered(decision: Decision<unknown>): "nojudge" | "judgedown" | undefined {
+	if (decision.reason === "error:auth" || decision.reason === "error:payment_required") return "nojudge";
+	if (decision.reason?.startsWith("error:")) return "judgedown";
+	const judges = Object.values(decision.answers ?? {}).map((answer) => answer.judge);
+	if (judges.length > 0 && judges.every((judge) => judge === "untrusted")) return "nojudge";
+	return judges.includes("unavailable") ? "judgedown" : undefined;
 }
 
 /** Where mu keeps its own settings, as a command may spell it, and where it really is: a call touching it is the user's to allow. */
@@ -169,7 +184,13 @@ export function registerPermissions(runtime: KyrnRuntime, roots: HarnessRoots | 
 	});
 
 	const approvedBy = (event: ToolCallEvent, need: PermissionNeed, by: "jev" | "grant") => {
-		runtime.present("permissions.approved", { tool: event.toolName, kind: need.kind, summary: need.summary, by });
+		runtime.present("permissions.approved", {
+			toolCallId: event.toolCallId,
+			tool: event.toolName,
+			kind: need.kind,
+			summary: need.summary,
+			by,
+		});
 		return undefined;
 	};
 
@@ -225,10 +246,7 @@ export function registerPermissions(runtime: KyrnRuntime, roots: HarnessRoots | 
 		);
 		const verdict = decision.judged ?? decision.outcome;
 		if (verdict === "approve") return { approved: true, reason: "ask" };
-		// Without a verdict the fallback says "unsure", but Jev never looked: the user is told the judge did not answer.
-		// A judge without a usable key will not answer the next step either; another failure may be over by then.
-		const failed = decision.reason?.startsWith("error:");
-		return { approved: false, reason: decision.reason === "error:auth" ? "nojudge" : failed ? "judgedown" : verdict };
+		return { approved: false, reason: unanswered(decision) ?? verdict };
 	};
 
 	const askUser = async (

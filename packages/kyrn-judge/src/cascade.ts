@@ -78,7 +78,7 @@ export class CascadeJudge implements JudgeLike {
 		const reports: TierReport[] = [];
 		let requests = 0;
 		let modelId: string | undefined;
-		let lastError: unknown;
+		const errors: unknown[] = [];
 		let pending: string[] = Object.keys(request.questions);
 
 		const capability = (id: string) => capabilityOf(request.questions[id], request.capabilities?.[id]);
@@ -97,7 +97,7 @@ export class CascadeJudge implements JudgeLike {
 			try {
 				result = await tier.judge.evaluate({ state: request.state, questions, signal: request.signal });
 			} catch (error) {
-				lastError = error;
+				errors.push(error);
 				reports.push({
 					judgeId: tier.judge.id,
 					asked: mine.length,
@@ -138,8 +138,13 @@ export class CascadeJudge implements JudgeLike {
 		if (missing.length > 0) {
 			// Nothing at all came back: that is an outage. Otherwise fail open question by question.
 			if (reports.every((report) => report.error !== undefined)) {
-				if (lastError instanceof JudgeError) throw lastError;
-				throw new JudgeError("unreachable", "No judge in the cascade answered", { cause: lastError });
+				// What the next call can expect, whatever the order of the tiers: a judge that may answer then (down, slow)
+				// says more than one that cannot until the user sets it up (no key, no credit).
+				const lasting = (error: unknown) =>
+					error instanceof JudgeError && (error.kind === "auth" || error.kind === "payment_required");
+				const telling = [...errors].reverse().find((error) => !lasting(error)) ?? errors.at(-1);
+				if (telling instanceof JudgeError) throw telling;
+				throw new JudgeError("unreachable", "No judge in the cascade answered", { cause: telling });
 			}
 			for (const id of missing) settled[id] = { ...neutralAnswer(request.questions[id]), judge: "unavailable" };
 		}
