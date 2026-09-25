@@ -254,8 +254,11 @@ export function permissionNeed(
 	if (LOOKING.has(toolName)) return undefined;
 	if (isShellTool(toolName) || toolName === "bg_start") {
 		const command = text(input.command);
-		// A background command on Windows may run in PowerShell as well.
-		if (isReadOnlyCommand(command, toolName === "powershell" || process.platform === "win32")) return undefined;
+		// Read the way PowerShell reads it in the powershell tool, and in a background command on Windows, which runs in
+		// PowerShell where that is the one shell tool. pi's bash tool runs bash on Windows too (Git Bash), where a quoted
+		// parenthesis, as in `rg 'useState\(' src`, is only text.
+		const powershell = toolName === "powershell" || (toolName === "bg_start" && process.platform === "win32");
+		if (isReadOnlyCommand(command, powershell)) return undefined;
 		const guarded = touches(command);
 		const prefix = commandPrefix(command);
 		return {
