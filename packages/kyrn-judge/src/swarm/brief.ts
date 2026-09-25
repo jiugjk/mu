@@ -69,7 +69,11 @@ export function parseBrief(raw: string | undefined): SwarmBrief | undefined {
 	};
 }
 
-/** A part as the parent's model asked for it, with the parent's frame to place it in. */
+/**
+ * A part as the parent's model asked for it, with the parent's frame to place it in. The parent's goal is the
+ * user's: the frame's goal, or without a frame `userGoal`, what the user said this turn. Never the model's words:
+ * inside the sub-agent it is what its calls are weighed against (`subAgentUserGoal`).
+ */
 export function briefFor(
 	task: {
 		readonly title: string;
@@ -78,19 +82,31 @@ export function briefFor(
 		readonly serves?: string;
 	},
 	parent: Frame | undefined,
+	userGoal?: string,
 ): SwarmBrief {
 	const wanted = task.serves?.trim().replace(/^#/, "").toLowerCase();
 	// An id that is not on the parent's list is a slip, not a reason to fail the delegation.
 	const item = wanted ? parent?.acceptance.find((each) => each.id === wanted) : undefined;
 	return {
 		goal: flat(`${task.title}: ${task.instructions}`, GOAL_CHARS),
-		parentGoal: parent?.goal,
+		parentGoal: parent?.goal ?? text(userGoal, GOAL_CHARS),
 		serves: item ? { id: item.id, text: item.text } : undefined,
 		done: (task.done ?? [])
 			.map((each) => text(each, ITEM_CHARS))
 			.filter((each): each is string => each !== undefined)
 			.slice(0, MAX_DONE),
 	};
+}
+
+/**
+ * Inside a sub-agent, the words that speak for the user: the goal its parent passed down. Its first message, and
+ * the frame made from it, are the brief the parent's model wrote, and a brief saying "the user asked for it" must
+ * not vouch for a call the user never asked for (security audit, 2026-09-24). Empty when no goal came down: then
+ * nothing speaks for the user. Undefined outside a sub-agent, where the user's own message does.
+ */
+export function subAgentUserGoal(env: NodeJS.ProcessEnv = process.env): string | undefined {
+	if (!env.KYRN_SWARM_DEPTH) return undefined;
+	return parseBrief(env[BRIEF_ENV])?.parentGoal ?? "";
 }
 
 /** What goes into the child's environment: its frame needs no report of a step before, nor the lessons; the message has them. */

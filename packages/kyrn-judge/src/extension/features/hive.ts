@@ -15,11 +15,11 @@ import { type RoutingOutcome, swarmRouting } from "../../decisions/swarm-routing
 import { Board, foldRelations, isDuplicate, type Note, overlapping } from "../../hive/board.ts";
 import { hiveRequest, parseHiveArgs } from "../../hive/request.ts";
 import { say } from "../../language.ts";
-import { knownLessons } from "../../swarm/brief.ts";
+import { BRIEF_ENV, briefEnv, briefFor, knownLessons } from "../../swarm/brief.ts";
 import { CHECKPOINT, conflictLine, correctionLine, HIVE_MESSAGE, lastCall, NOTES_HEADER } from "../../swarm/markers.ts";
 import { type BeeSpec, type BoardSummary, SwarmRun } from "../../swarm/run.ts";
 import { loadAgents } from "../agents.ts";
-import { clip, failOpen, type KyrnRuntime, textOf } from "../runtime.ts";
+import { clip, failOpen, type KyrnRuntime, textOf, userWords } from "../runtime.ts";
 import {
 	announceRouting,
 	compactSnapshot,
@@ -468,6 +468,14 @@ export function registerHive(runtime: KyrnRuntime, runner: SwarmRunner = spawnRu
 					thinking: member.assignment.thinking,
 					env: {
 						...permissionEnv(runtime),
+						// The angle is the bee's goal; what the user asked for is what its calls are weighed against.
+						[BRIEF_ENV]: briefEnv(
+							briefFor(
+								{ title: member.name, instructions: `${member.focus} (part of: ${params.goal})` },
+								runtime.frame,
+								userWords(runtime.turn.userMessage),
+							),
+						),
 						KYRN_HIVE_DIR: dir,
 						KYRN_HIVE_BEE: member.name,
 						KYRN_HIVE_GOAL: clip(params.goal, 600),

@@ -23,6 +23,7 @@ import {
 	toolPath,
 } from "../../permissions/modes.ts";
 import { threeZone } from "../../policy.ts";
+import { subAgentUserGoal } from "../../swarm/brief.ts";
 import { clip, type KyrnRuntime } from "../runtime.ts";
 import { isShellTool } from "../shell-tools.ts";
 import { describeCall } from "./constraints.ts";
@@ -172,7 +173,9 @@ export function registerPermissions(runtime: KyrnRuntime, roots: HarnessRoots | 
 		ctx: ExtensionContext,
 	): Promise<{ approved: boolean; reason: AskReason }> => {
 		const call = `${event.toolName}: ${clip(describeCall(event.toolName, event.input), 400)}`;
-		const userMessage = clip(runtime.turn.userMessage, 400);
+		// In a sub-agent the message and the frame are what the parent's model wrote: only the user's goal vouches.
+		const inherited = subAgentUserGoal();
+		const userMessage = clip(inherited ?? runtime.turn.userMessage, 400);
 		runtime.progress(
 			say({ zh: `Jev 在审批：${clip(need.summary, 60)}`, en: `Jev is reviewing: ${clip(need.summary, 60)}` }),
 			"permission_review",
@@ -195,7 +198,10 @@ export function registerPermissions(runtime: KyrnRuntime, roots: HarnessRoots | 
 		const decision = await runtime.engine.decide(
 			toolApproval,
 			{
-				task: clip([frame?.goal, frame?.currentSubgoal].filter(Boolean).join(" / now: ") || userMessage, 600),
+				task: clip(
+					inherited ?? ([frame?.goal, frame?.currentSubgoal].filter(Boolean).join(" / now: ") || userMessage),
+					600,
+				),
 				userMessage,
 				call,
 				where:

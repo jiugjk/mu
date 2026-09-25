@@ -34,7 +34,7 @@ import {
 import { type BeeEvent, codedError } from "../../swarm/state.ts";
 import { renderSwarm, swarmText } from "../../swarm/view.ts";
 import { type AgentDefinition, type AgentThinking, loadAgents, THINKING_LEVELS } from "../agents.ts";
-import { clip, type KyrnRuntime } from "../runtime.ts";
+import { clip, type KyrnRuntime, userWords } from "../runtime.ts";
 import { Isolation, type IsolationOutcome, type Placement, patchesOf } from "./swarm-isolation.ts";
 
 /** A role the main model asked for by name is in `agent`. Left out, the judge picks one. */
@@ -505,12 +505,14 @@ export function registerSwarm(runtime: KyrnRuntime, runner: SwarmRunner = spawnR
 		execute: async (_toolCallId, params, signal, onUpdate, ctx) => {
 			runtime.touch(ctx);
 			const parent = runtime.frame;
+			// What the user asked for goes down with each part: inside the sub-agent it is what its calls are weighed against.
+			const userGoal = userWords(runtime.turn.userMessage);
 			// Each part gets a frame of its own: the part as its goal, the caller's criteria as its checklist.
 			const tasks: SwarmTask[] = params.tasks.slice(0, options.maxTasks).map((task) => ({
 				title: task.title,
 				instructions: task.instructions,
 				agent: task.agent,
-				brief: briefFor(task, parent),
+				brief: briefFor(task, parent, userGoal),
 			}));
 			const constraints = (parent?.constraints ?? []).map((constraint) => constraint.text);
 			const inheritedConstraints =

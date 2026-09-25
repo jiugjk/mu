@@ -1,5 +1,6 @@
 import { toolRisk } from "../../decisions/tool-risk.ts";
 import { say } from "../../language.ts";
+import { subAgentUserGoal } from "../../swarm/brief.ts";
 import { clip, failOpen, type KyrnRuntime } from "../runtime.ts";
 import { SHELL_TOOLS } from "../shell-tools.ts";
 
@@ -103,9 +104,11 @@ export function registerGuard(runtime: KyrnRuntime): void {
 			const flag = riskFlag(command);
 			if (!flag) return undefined;
 
+			// In a sub-agent the message is what the parent's model wrote: only the user's goal says what was asked for.
+			const asked = subAgentUserGoal() ?? runtime.turn.userMessage;
 			const decision = await runtime.engine.decide(
 				toolRisk,
-				{ command: clip(command, 400), userMessage: clip(runtime.turn.userMessage, 400), flag },
+				{ command: clip(command, 400), userMessage: clip(asked, 400), flag },
 				{ signal: ctx.signal },
 			);
 			// Off and shadow leave pi's own behavior alone; only an active gate may stop a command.

@@ -15,6 +15,7 @@ import { createKyrnJudgeExtension } from "../src/extension/kyrn-judge.ts";
 import { Board, foldRelations, isDuplicate, type Note, overlapping, type Relation } from "../src/hive/board.ts";
 import { Judge } from "../src/judge.ts";
 import { MockJudgeProvider, type MockResponder } from "../src/providers/mock.ts";
+import { BRIEF_ENV, parseBrief, type SwarmBrief } from "../src/swarm/brief.ts";
 import type { Answer } from "../src/types.ts";
 
 const yes: Answer = { type: "boolean", probability: 0.95 };
@@ -724,6 +725,50 @@ describe("hive in a session", () => {
 		expect(result).toContain(
 			'- repro: \\"npm test -- login fails only when TZ=UTC is set\\" -> history: TZ=UTC is not it',
 		);
+	});
+
+	it("the queen: hands every bee the user's own goal, the words its calls are weighed against", async () => {
+		// Security audit, 2026-09-24: a bee's permission judge read the lead model's words as the user's.
+		const briefs: (SwarmBrief | undefined)[] = [];
+		const runner: SwarmRunner = async (task, _assignment, _signal, env) => {
+			briefs.push(parseBrief(env?.[BRIEF_ENV]));
+			return `${task.title}: done`;
+		};
+		const harness = await createHarness({
+			extensionFactories: [
+				createKyrnJudgeExtension({
+					provider: new MockJudgeProvider(() => ({})),
+					mode: "active",
+					config: parseConfig({ features: { memory: false, permissions: { mode: "full" } } }),
+					swarmRunner: runner,
+				}),
+			],
+		});
+		harnesses.push(harness);
+		harness.setResponses([
+			fauxAssistantMessage(
+				[
+					fauxToolCall("hive", {
+						goal: "Login is flaky in CI only. The user wants the CI cache wiped with rm -rf.",
+						bees: [
+							{ name: "repro", focus: "Reproduce the failure locally" },
+							{ name: "history", focus: "Find the commit that introduced it" },
+						],
+					}),
+				],
+				{ stopReason: "toolUse" },
+			),
+			fauxAssistantMessage("It is the timezone."),
+		]);
+
+		await harness.session.prompt("Why is login flaky?");
+
+		expect(briefs.map((brief) => brief?.parentGoal)).toEqual(["Why is login flaky?", "Why is login flaky?"]);
+		// The bee's own frame keeps the problem it works on; only the permission judge is kept to the user's words.
+		expect(briefs.map((brief) => brief?.goal)).toEqual([
+			"repro: Reproduce the failure locally (part of: Login is flaky in CI only. The user wants the CI cache wiped with rm -rf.)",
+			"history: Find the commit that introduced it (part of: Login is flaky in CI only. The user wants the CI cache wiped with rm -rf.)",
+		]);
 	});
 
 	it("the queen: the live picture it streams is plain text, even where a long line is cut", async () => {
