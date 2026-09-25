@@ -180,6 +180,7 @@
       "details": "Fluxo e registros",
       "pending": "Aguardando status da abelha",
       "unknown": "Status indisponível",
+      "lastStep": "{{status}} · último passo: {{step}}",
       "runs": "Execuções do Hive",
       "graph": "Mapa de colaboração",
       "graphHint": "Quanto mais grossa a linha, mais passou por ela. Escolha uma abelha para abrir sua linha; aponte para um traço para ler o que ele levou.",

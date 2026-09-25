@@ -12,10 +12,13 @@ const profile = mkdtempSync(join(tmpdir(), 'kyrn-host-spike-electron-'));
 app.setPath('userData', profile);
 app.dock?.hide();
 const progress = (step) => process.env.SPIKE_VERBOSE && console.error(`[spike] ${step}`);
-const guard = setTimeout(() => {
-  console.error('spike timed out');
-  app.exit(2);
-}, Number(process.env.SPIKE_TIMEOUT_MS ?? 60000));
+const guard = setTimeout(
+  () => {
+    console.error('spike timed out');
+    app.exit(2);
+  },
+  Number(process.env.SPIKE_TIMEOUT_MS ?? 60000)
+);
 
 async function run() {
   progress('app ready');

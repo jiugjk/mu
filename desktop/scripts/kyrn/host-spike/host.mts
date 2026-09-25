@@ -24,7 +24,11 @@ export type HostCommand =
   | { id: number; type: 'close' };
 
 /** One assistant message of the faux model. */
-export type ScriptedReply = { thinking?: string; text?: string; tool?: { name: string; args: Record<string, unknown> } };
+export type ScriptedReply = {
+  thinking?: string;
+  text?: string;
+  tool?: { name: string; args: Record<string, unknown> };
+};
 /** One answer of the mock judge; `holdMs` keeps it thinking, `hold: true` until a `release` command. */
 export type ScriptedVerdict = { turnType: string; holdMs?: number; hold?: boolean };
 
@@ -285,7 +289,12 @@ port.listen((command) => {
   handle(command).then(
     (data) => port.post({ type: 'response', id: command.id, ok: true, data }),
     (error: unknown) =>
-      port.post({ type: 'response', id: command.id, ok: false, error: error instanceof Error ? error.message : String(error) })
+      port.post({
+        type: 'response',
+        id: command.id,
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      })
   );
 });
 port.post({

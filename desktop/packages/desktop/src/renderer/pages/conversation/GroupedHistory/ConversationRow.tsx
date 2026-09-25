@@ -186,12 +186,7 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
   };
 
   return (
-    <Tooltip
-      key={conversation.id}
-      {...siderTooltipProps}
-      content={displayName}
-      position='right'
-    >
+    <Tooltip key={conversation.id} {...siderTooltipProps} content={displayName} position='right'>
       <div
         id={'c-' + conversation.id}
         className={classNames(

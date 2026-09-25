@@ -9,7 +9,7 @@ import {
 import { normalizeAcpToolCall } from '@/common/chat/normalizeToolCall';
 import { buildHiveRuns, beeRecords } from '@/renderer/pages/conversation/KyrnPanel/Hive/activity';
 import { mergeActivity } from '@/renderer/pages/conversation/KyrnPanel/activity';
-import { activity, hiveEvents, hiveMessage, hiveSnapshot } from './hiveFixtures';
+import { activity, hiveEvents, hiveMessage, hiveSnapshot, relayed } from './hiveFixtures';
 
 describe('Native Hive event projection', () => {
   it('ignores delegate and malformed snapshots instead of manufacturing bee state', () => {
@@ -231,6 +231,65 @@ describe('Native Hive event projection', () => {
       params: {},
     });
     expect(parseBeeActivity('not a list')).toEqual([]);
+  });
+
+  it('reads a snapshot the relay snake_cased on its way to the transcript', () => {
+    const output = relayed({
+      details: {
+        snapshot: {
+          kind: 'delegate',
+          title: '2 tasks',
+          titleCode: { code: 'delegate_tasks', params: { count: 2 } },
+          startedAt: 1000,
+          endedAt: 9000,
+          bees: [
+            {
+              name: 'scan',
+              status: 'failed',
+              turns: 5,
+              toolCalls: 25,
+              toolErrors: 1,
+              quietMs: 4000,
+              error: 'the model request kept failing',
+              errorCode: 'retries_exhausted',
+              errorParams: { message: 'overloaded', stopReason: 'error' },
+              wrapUp: { at: 5, reason: 'time budget of 10 min reached', code: 'time_budget', params: { minutes: 10 } },
+              recent: [
+                {
+                  at: 3,
+                  text: 'retry 1/3: overloaded',
+                  code: 'retry',
+                  params: { attempt: 1, maxAttempts: 3, message: 'overloaded' },
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    // What arrives: `title_code`, `tool_calls`, `max_attempts`.
+    expect(JSON.stringify(output)).toContain('"title_code"');
+    const message = hiveMessage();
+    const update = message.content.update as Record<string, unknown>;
+    update.title = 'delegate';
+    delete update.rawOutput;
+    update.raw_output = output;
+    const snapshot = normalizeAcpToolCall(message)?.hive?.snapshot;
+    expect(snapshot).toMatchObject({
+      titleCode: { code: 'delegate_tasks', params: { count: 2 } },
+      startedAt: 1000,
+      endedAt: 9000,
+    });
+    expect(snapshot?.bees[0]).toMatchObject({
+      turns: 5,
+      toolCalls: 25,
+      toolErrors: 1,
+      quietMs: 4000,
+      errorCode: 'retries_exhausted',
+      errorParams: { message: 'overloaded', stopReason: 'error' },
+      wrapUp: { code: 'time_budget', params: { minutes: 10 } },
+      recent: [{ code: 'retry', params: { attempt: 1, maxAttempts: 3, message: 'overloaded' } }],
+    });
   });
 
   it('reads the routing step before the first snapshot, and nothing once there is one', () => {

@@ -8,9 +8,16 @@ import { Preferences } from '../main/preferences.mjs';
 test('desktop defaults and project overrides persist without changing CLI settings or exposing keys', () => {
   const home = mkdtempSync(join(tmpdir(), 'kyrn-settings-'));
   try {
-    const agent = join(home, 'agent'); mkdirSync(agent);
-    writeFileSync(join(agent, 'settings.json'), JSON.stringify({ defaultProvider: 'openai-codex', defaultModel: 'fixture', defaultThinkingLevel: 'medium' }));
-    writeFileSync(join(agent, 'kyrn.json'), JSON.stringify({ tiers: ['jev'], judges: { local: { type: 'http', apiKey: 'never-render' } } }));
+    const agent = join(home, 'agent');
+    mkdirSync(agent);
+    writeFileSync(
+      join(agent, 'settings.json'),
+      JSON.stringify({ defaultProvider: 'openai-codex', defaultModel: 'fixture', defaultThinkingLevel: 'medium' })
+    );
+    writeFileSync(
+      join(agent, 'kyrn.json'),
+      JSON.stringify({ tiers: ['jev'], judges: { local: { type: 'http', apiKey: 'never-render' } } })
+    );
     const prefs = new Preferences(home, agent);
     assert.equal(prefs.effective('/project').model, 'openai-codex/fixture');
     prefs.save('defaults', '', { thinking: 'high', judge: 'jev,local', mode: 'active' });
@@ -23,5 +30,7 @@ test('desktop defaults and project overrides persist without changing CLI settin
     assert.throws(() => prefs.save('defaults', '', { judge: 'arbitrary-endpoint' }), /未知/);
     prefs.save('project', '/project', {});
     assert.equal(prefs.effective('/project').thinking, 'high');
-  } finally { rmSync(home, { recursive: true, force: true }); }
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
 });

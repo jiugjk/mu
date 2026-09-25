@@ -614,6 +614,7 @@ export type I18nKey =
   | 'common.kyrn.hiveView.graphHint'
   | 'common.kyrn.hiveView.input'
   | 'common.kyrn.hiveView.inspect'
+  | 'common.kyrn.hiveView.lastStep'
   | 'common.kyrn.hiveView.legend'
   | 'common.kyrn.hiveView.legendConflict'
   | 'common.kyrn.hiveView.legendCorrection'

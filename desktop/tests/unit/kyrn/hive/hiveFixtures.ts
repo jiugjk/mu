@@ -33,6 +33,18 @@ export const hiveSnapshot = {
   ],
 };
 
+/** A tool call's output as the relay (AionCore) streams and stores it: every key snake_cased, at every depth. */
+export function relayed(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(relayed);
+  if (value === null || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [
+      key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`),
+      relayed(item),
+    ])
+  );
+}
+
 export function activity(
   id: string,
   kind: string,

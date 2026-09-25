@@ -124,7 +124,7 @@ Cross-process communication MUST go through:
 
 | Type       | Pattern               | Examples                          |
 | ---------- | --------------------- | --------------------------------- |
-| Bridge     | `<domain>Bridge.ts`   | `cronBridge.ts` |
+| Bridge     | `<domain>Bridge.ts`   | `cronBridge.ts`                   |
 | Service    | `<Name>Service.ts`    | `CronService.ts`, `McpService.ts` |
 | Interface  | `I<Name>Service.ts`   | `IConversationService.ts`         |
 | Repository | `<Name>Repository.ts` | `SqliteConversationRepository.ts` |

@@ -45,5 +45,7 @@ export const entryToRootRef = (entry: ProjectEntryDto): RootRef => ({
 export const toRootRefs = (detail: ProjectDetailDto, workspaceTitle?: string): RootRef[] =>
   detail.explorer.entries.map((entry) => {
     const root = entryToRootRef(entry);
-    return workspaceTitle && entry.pe_id === detail.explorer.workspace_pe_id ? { ...root, title: workspaceTitle } : root;
+    return workspaceTitle && entry.pe_id === detail.explorer.workspace_pe_id
+      ? { ...root, title: workspaceTitle }
+      : root;
   });

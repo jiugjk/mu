@@ -140,11 +140,11 @@ Use the Rust MSVC toolchain and install Microsoft C++ Build Tools. After install
 
 ### Development
 
-| Command                     | Description                                                                                                    |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `bun start`                 | Start Electron app in development mode (desktop)                                                               |
-| `bun run start:multi`       | Start a second Electron instance alongside an existing one (see [Multi-Instance](#multi-instance-development)) |
-| `bun run cli`               | Alias for `bun start`                                                                                          |
+| Command               | Description                                                                                                    |
+| --------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `bun start`           | Start Electron app in development mode (desktop)                                                               |
+| `bun run start:multi` | Start a second Electron instance alongside an existing one (see [Multi-Instance](#multi-instance-development)) |
+| `bun run cli`         | Alias for `bun start`                                                                                          |
 
 ### Build & Distribution
 
@@ -224,7 +224,6 @@ This sets `AIONUI_MULTI_INSTANCE=1`, which:
 - Skips the Electron single-instance lock
 - Uses a separate userData directory (`AionUi-Dev-2`) to avoid database and config conflicts
 - Isolates data/config symlink paths (`~/.aionui-dev-2`, `~/.aionui-config-dev-2`)
-
 
 ## Code Checks (prek)
 

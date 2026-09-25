@@ -180,6 +180,7 @@
       "details": "Fluss und Aufzeichnungen",
       "pending": "Warte auf Bienenstatus",
       "unknown": "Status nicht verfügbar",
+      "lastStep": "{{status}} · zuletzt: {{step}}",
       "runs": "Hive-Läufe",
       "graph": "Kollaborationskarte",
       "graphHint": "Je dicker eine Linie, desto mehr ging darüber. Eine Biene wählen öffnet ihre Zeile; auf eine Linie zeigen zeigt, was sie trug.",

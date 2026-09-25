@@ -8,7 +8,20 @@ const { downloadArtifact } = require('@electron/get');
 const { extract } = require('@electron-internal/extract-zip');
 const { version } = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
 const checksums = JSON.parse(await readFile(join(root, 'checksums.json'), 'utf8'));
-const zip = await downloadArtifact({ version, artifactName: 'electron', platform: process.platform, arch: process.arch, checksums });
+const zip = await downloadArtifact({
+  version,
+  artifactName: 'electron',
+  platform: process.platform,
+  arch: process.arch,
+  checksums,
+});
 await extract(zip, { dir: join(root, 'dist') });
-await writeFile(join(root, 'path.txt'), process.platform === 'darwin' ? 'Electron.app/Contents/MacOS/Electron' : process.platform === 'win32' ? 'electron.exe' : 'electron');
+await writeFile(
+  join(root, 'path.txt'),
+  process.platform === 'darwin'
+    ? 'Electron.app/Contents/MacOS/Electron'
+    : process.platform === 'win32'
+      ? 'electron.exe'
+      : 'electron'
+);
 console.log(`Electron ${version} (${process.platform}/${process.arch}) ready`);

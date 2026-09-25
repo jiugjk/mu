@@ -180,6 +180,7 @@
       "details": "Flux et enregistrements",
       "pending": "En attente du statut de l’abeille",
       "unknown": "Statut indisponible",
+      "lastStep": "{{status}} · dernière étape : {{step}}",
       "runs": "Exécutions de la ruche",
       "graph": "Carte de collaboration",
       "graphHint": "Plus une ligne est épaisse, plus il y est passé de choses. Choisissez une abeille pour ouvrir sa ligne ; pointez un trait pour lire ce qu'il a porté.",
