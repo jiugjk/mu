@@ -37,7 +37,8 @@ describe("lsp diagnostics feature", () => {
 			await harness.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
 			harness.cleanup();
 		}
-		for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+		// A server that was stopped on Windows goes through taskkill, which takes a moment to let go of its folders.
+		for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 	});
 
 	const scratch = () => {
@@ -318,7 +319,6 @@ describe("lsp diagnostics feature", () => {
 	});
 
 	it("is silent when no server is installed, and finds one on PATH when it is", async () => {
-		if (process.platform === "win32") return;
 		const bin = scratch();
 		vi.stubEnv("PATH", bin);
 		const silent = await start(verdict(no), { lsp: { builtin: true, servers: {} } });
@@ -327,11 +327,21 @@ describe("lsp diagnostics feature", () => {
 		expect(silent.kinds()).toEqual([]);
 
 		const log = join(bin, "found.log");
-		writeFileSync(
-			join(bin, "typescript-language-server"),
-			`#!/bin/sh\nexec "${process.execPath}" "${FAKE_SERVER}" '${JSON.stringify({ log })}'\n`,
-		);
-		chmodSync(join(bin, "typescript-language-server"), 0o755);
+		const config = JSON.stringify({ log });
+		if (process.platform === "win32") {
+			// As npm installs one on Windows: name.cmd, which only cmd can start. Node reads a quote in its command line as \".
+			const quoted = config.replaceAll('"', '\\"');
+			writeFileSync(
+				join(bin, "typescript-language-server.cmd"),
+				`@"${process.execPath}" "${FAKE_SERVER}" "${quoted}" %*\r\n`,
+			);
+		} else {
+			writeFileSync(
+				join(bin, "typescript-language-server"),
+				`#!/bin/sh\nexec "${process.execPath}" "${FAKE_SERVER}" '${config}'\n`,
+			);
+			chmodSync(join(bin, "typescript-language-server"), 0o755);
+		}
 		// The server starts on the first edit, which on a cold, busy machine takes longer than the usual settle wait;
 		// the wait ends as soon as the server has spoken, so a longer one only costs a slow run.
 		const found = await start(verdict(no), { lsp: { builtin: true, servers: {}, settleMs: 15_000 } });
