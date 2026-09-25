@@ -179,7 +179,7 @@ describe("commands in the app's language", () => {
 				agentDir: harness.tempDir,
 				promptPaths: promptPaths.map((entry) => entry.path),
 				includeDefaults: false,
-			}).map((template) => [template.name, template] as const),
+			}).templates.map((template) => [template.name, template] as const),
 		);
 		expect(templates.implement?.description).toBe("侦察、计划、实现：三个子代理接力，每个按自己的清单做");
 		expect(templates.implement?.argumentHint).toBe("<要做或要修的事>");
