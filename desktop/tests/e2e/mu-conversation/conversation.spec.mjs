@@ -10,7 +10,16 @@ import { existsSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { launchApp, leftoverProcesses, problems, processTree, quitApp } from './app.mjs';
+import {
+  endProcessLook,
+  launchApp,
+  leftoverProcesses,
+  packagedApp,
+  problems,
+  processTree,
+  quitApp,
+  warmUpProcessLook,
+} from './app.mjs';
 import {
   BOARD_REPLY,
   FAKE_API_KEY,
@@ -23,7 +32,6 @@ import {
 import { createProfile } from './profile.mjs';
 
 const desktopRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
-const appVersion = JSON.parse(readFileSync(join(desktopRoot, 'package.json'), 'utf8')).version;
 
 const PROVIDER_NAME = 'E2E Fake';
 /** The id the settings give a provider named PROVIDER_NAME. */
@@ -70,6 +78,32 @@ const stopButton = () => page().getByTestId('sendbox-stop-btn');
 /** A tab of the work panel (看板, 文件, ...) by its key, whatever its name says. */
 const workPanelTab = (tab) => page().locator(`[role="tab"][data-tab="${tab}"]`);
 
+// A window with little room (a laptop's, a CI runner's 1024 x 768 screen) folds the sidebar to its rail of icons, and
+// a row's words are hidden then: the sidebar and the settings rail are reached by what stays, their icons' test ids.
+
+/** Opens a page of the settings (`providers`, `default-model`, `about`, ...) from the sidebar's 设置 and the rail. */
+async function openSettings(path) {
+  const p = page();
+  if (!/#\/settings\//.test(p.url())) await p.getByTestId('sider-settings').click();
+  await p.locator(`[data-settings-path="${path}"]`).click();
+  await p.waitForURL(new RegExp(`#/settings/${path}`));
+}
+
+/** Leaves the settings by the sidebar's 返回聊天 (in the settings, 设置's row turns into it). */
+async function backToChat() {
+  const p = page();
+  await p.getByTestId('sider-settings').click();
+  await p.waitForURL((url) => !url.hash.startsWith('#/settings'));
+}
+
+/** Opens a conversation from the sidebar's list, by its title; a sidebar folded to its rail is opened first. */
+async function openConversation(title) {
+  const p = page();
+  const unfold = p.getByRole('button', { name: '展开侧边栏' });
+  if (await unfold.isVisible().catch(() => false)) await unfold.click();
+  await p.getByText(title, { exact: true }).first().click();
+}
+
 /** A file's size and time, or `missing`: enough to show it was left alone, without reading it. */
 const stamp = (path) => {
   if (!existsSync(path)) return 'missing';
@@ -81,27 +115,70 @@ const stamp = (path) => {
  * Remembers the processes the app runs now (the backend, the adapter, mu), so a quit can show that none of them stayed.
  * The app's own process is followed by `quitApp`.
  */
-function noteProcesses() {
+async function noteProcesses() {
   const pid = run.state?.app.process().pid;
   if (!pid) return;
-  for (const entry of processTree(pid)) run.seen.set(entry.pid, entry);
+  for (const entry of await processTree(pid)) run.seen.set(entry.pid, entry);
+}
+
+/**
+ * MU_E2E_WINDOW=<width>x<height> sizes the app's window, so a layout another screen gets can be tried on this one: the
+ * Windows runner's 1024 x 768 screen gives a window of 819x691, where the sidebar folds to its rail beside the work panel.
+ */
+const windowSize = (() => {
+  const size = /^(\d+)x(\d+)$/.exec(process.env.MU_E2E_WINDOW ?? '');
+  return size ? { width: Number(size[1]), height: Number(size[2]) } : undefined;
+})();
+
+/**
+ * The app's own folders, as Electron names them: printed at the first start, to show which of them follow the profile
+ * (on Windows Electron asks the system, not the environment, for some).
+ */
+async function printFolders() {
+  const names = ['home', 'appData', 'userData', 'temp', 'documents', 'downloads'];
+  const folders = await run.state?.app.evaluate(({ app }, list) => {
+    const where = (name) => {
+      try {
+        return app.getPath(name);
+      } catch (error) {
+        return `none (${error instanceof Error ? error.message : String(error)})`;
+      }
+    };
+    return Object.fromEntries(list.map((name) => [name, where(name)]));
+  }, names);
+  console.log(`[mu e2e] the app's folders: ${JSON.stringify(folders)}`);
+}
+
+/**
+ * Waits for everything the app ran to be gone after a quit, and fails naming what is left. The wait is by the clock,
+ * not by a number of looks: one look at the processes takes a moment on a Mac, and far longer on a slow Windows
+ * machine.
+ */
+async function expectNothingLeft(deadline = Date.now() + 60_000) {
+  const left = await leftoverProcesses(run.profile, [...run.seen.values()]);
+  if (left.length > 0 && Date.now() < deadline) {
+    await sleep(500);
+    return expectNothingLeft(deadline);
+  }
+  expect(left, 'processes left running after the quit').toEqual([]);
 }
 
 async function start() {
   if (!run.profile) throw new Error('no profile');
   run.starts += 1;
-  run.state = await launchApp({ desktopRoot, profile: run.profile, run: run.starts, electron });
+  run.state = await launchApp({ desktopRoot, profile: run.profile, run: run.starts, electron, window: windowSize });
+  if (run.starts === 1) await printFolders();
   // The system's folder picker cannot be driven: "choosing" a folder answers with the test's project.
   await run.state.app.evaluate(({ dialog }, folder) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
   }, run.profile.paths.project);
-  noteProcesses();
+  await noteProcesses();
 }
 
 async function stop() {
   const state = run.state;
   if (!state) return;
-  noteProcesses();
+  await noteProcesses();
   await quitApp(state);
 }
 
@@ -123,7 +200,7 @@ async function send(text) {
 async function replyWith(text, timeout = 60_000) {
   await expect(replies().filter({ hasText: text }).first()).toBeVisible({ timeout });
   await expect(stopButton()).toHaveCount(0, { timeout: 30_000 });
-  noteProcesses();
+  await noteProcesses();
 }
 
 /**
@@ -165,17 +242,26 @@ async function sendAndAnswer(message, answer, done) {
 }
 
 test.beforeAll(async () => {
+  warmUpProcessLook();
   run.fake = await startFakeModel();
-  run.profile = createProfile({ desktopRoot, root: process.env.MU_E2E_ROOT });
+  // MU_E2E_APP: a packaged app (its executable, the app, or electron-builder's output folder) instead of out/.
+  const named = process.env.MU_E2E_APP;
+  const app = named ? packagedApp(named) : undefined;
+  if (named && !app)
+    throw new Error(`MU_E2E_APP names no packaged app for ${process.platform}-${process.arch}: ${named}`);
+  run.profile = createProfile({ desktopRoot, root: process.env.MU_E2E_ROOT, app });
   const { harness } = run.profile;
-  // The harness checkout's keys: stamped (never read) before, compared after.
+  // The harness's keys (a checkout's own .env; none beside the mu a packaged app carries): stamped (never read)
+  // before, compared after.
   run.untouched = [join(harness.root, '.env')].map((path) => ({ path, before: stamp(path) }));
+  console.log(`[mu e2e] app: ${app ? app.executable : join(desktopRoot, 'out')}`);
   console.log(`[mu e2e] profile: ${run.profile.paths.root}`);
   console.log(`[mu e2e] fake model: ${run.fake.baseUrl}`);
 });
 
 test.afterAll(async () => {
   await stop().catch(() => {});
+  endProcessLook();
   await run.fake?.close();
   const root = run.profile?.paths.root;
   if (!root) return;
@@ -234,7 +320,7 @@ test('first start: the guide opens, and a custom endpoint added in the settings 
   });
 
   await test.step('the fake model is added as an OpenAI-compatible endpoint', async () => {
-    await p.getByText('设置', { exact: true }).last().click();
+    await p.getByTestId('sider-settings').click();
     await p.waitForURL(/#\/settings\/providers/);
     await p.getByTestId('mu-provider-add').click();
     const editor = p.getByTestId('mu-provider-editor');
@@ -256,8 +342,7 @@ test('first start: the guide opens, and a custom endpoint added in the settings 
   });
 
   await test.step('the fake model is picked as the default model', async () => {
-    await p.getByText('默认模型', { exact: true }).first().click();
-    await p.waitForURL(/#\/settings\/default-model/);
+    await openSettings('default-model');
     const card = p.getByTestId('mu-defaults');
     await card.getByRole('combobox', { name: '提供商' }).click();
     await p.locator('.arco-select-popup:visible .arco-select-option', { hasText: PROVIDER_NAME }).click();
@@ -275,7 +360,7 @@ test('first start: the guide opens, and a custom endpoint added in the settings 
 
 test('a plain reply streams in, in several pieces', async () => {
   const p = page();
-  await p.getByText('返回聊天', { exact: true }).click();
+  await backToChat();
   await p.waitForURL(/#\/guid/);
 
   await test.step('the test project is chosen as the folder to work in', async () => {
@@ -319,7 +404,7 @@ test('a plain reply streams in, in several pieces', async () => {
   });
   expect(plain?.tools).toEqual(expect.arrayContaining(['write', 'bash']));
   await expect(p.getByTestId('composer-model-pill')).toContainText(FAKE_MODEL_ID);
-  noteProcesses();
+  await noteProcesses();
   expectNoProblems();
 });
 
@@ -375,7 +460,7 @@ test('a reply stopped halfway stays stopped, and the next message works', async 
   await send('E2E:SLOW 请慢慢说。');
   const reply = replies().filter({ hasText: 'SLOW-001' }).last();
   await expect(reply).toContainText('SLOW-005', { timeout: 60_000 });
-  noteProcesses();
+  await noteProcesses();
   await stopButton().click();
   await expect(stopButton()).toHaveCount(0, { timeout: 15_000 });
   await expect(page().getByTestId('sendbox-send-btn')).toBeVisible();
@@ -408,9 +493,7 @@ test('the files tab lists the written file, and the board is written by the fake
   });
 
   await test.step('the fake model is picked to write the board', async () => {
-    await p.getByText('设置', { exact: true }).last().click();
-    await p.getByText('默认模型', { exact: true }).first().click();
-    await p.waitForURL(/#\/settings\/default-model/);
+    await openSettings('default-model');
     const card = p.getByTestId('mu-board-model');
     await card.getByRole('combobox', { name: '提供商' }).click();
     await p.locator('.arco-select-popup:visible .arco-select-option', { hasText: PROVIDER_NAME }).click();
@@ -422,8 +505,8 @@ test('the files tab lists the written file, and the board is written by the fake
         timeout: 15_000,
       })
       .toBe(`${PROVIDER_ID}/${FAKE_MODEL_ID}`);
-    await p.getByText('返回聊天', { exact: true }).click();
-    if (p.url() !== run.conversationUrl) await p.getByText(FIRST_MESSAGE, { exact: true }).first().click();
+    await backToChat();
+    if (p.url() !== run.conversationUrl) await openConversation(FIRST_MESSAGE);
     await p.waitForURL(run.conversationUrl, { timeout: 30_000 });
     await expect(p.getByTestId('sendbox-input')).toBeVisible({ timeout: 30_000 });
   });
@@ -447,23 +530,18 @@ test('the files tab lists the written file, and the board is written by the fake
     const writer = requests().find((request) => request.scenario === 'board');
     expect(writer, 'the board was written by the fake model').toMatchObject({ model: FAKE_MODEL_ID });
   });
-  noteProcesses();
+  await noteProcesses();
   expectNoProblems();
 });
 
 test('after a quit and a new start the conversation opens with its history, and a new message works', async () => {
   await stop();
   expectNoProblems();
-  await expect
-    .poll(() => leftoverProcesses(run.profile, [...run.seen.values()]), {
-      timeout: 20_000,
-      message: 'processes left running after the quit',
-    })
-    .toEqual([]);
+  await expectNothingLeft();
 
   await start();
   const p = page();
-  await p.getByText(FIRST_MESSAGE, { exact: true }).first().click();
+  await openConversation(FIRST_MESSAGE);
   await p.waitForURL(run.conversationUrl, { timeout: 30_000 });
   for (const text of [PLAIN_TEXT, 'WRITE-DONE', 'BASH-SAW', 'AFTER-REFUSAL-OK', 'SLOW-005', 'AFTER-STOP-OK']) {
     await expect(replies().filter({ hasText: text }).first()).toBeVisible({ timeout: 30_000 });
@@ -476,12 +554,33 @@ test('after a quit and a new start the conversation opens with its history, and 
 
 test('关于 shows the version, and 检查更新 downloads nothing', async () => {
   const p = page();
-  const downloads = join(paths().home, 'Downloads');
+  const app = run.state?.app;
+  if (!app) throw new Error('the app is not running');
   const fakeAssets = `${run.fake?.baseUrl.replace(/\/v1$/, '')}/__e2e/asset`;
-  // GitHub is answered here, with a newer release: a check must offer it and download nothing. Every request the
-  // main process makes is kept.
-  await run.state?.app.evaluate(
-    (_electron, { assets, version }) => {
+  const version = '99.0.0';
+  // The app's own version (a packaged app's is the one it was built with), its downloads folder, and how it checks: an
+  // installed app on macOS and Windows asks electron-updater, which reads GitHub's release feed through a session of its
+  // own (the releases' atom feed, then the newest release's latest-mac.yml or latest.yml); the others ask GitHub's API
+  // with fetch.
+  const own = await app.evaluate(({ app: electronApp }) => ({
+    packaged: electronApp.isPackaged,
+    version: electronApp.getVersion(),
+    downloads: electronApp.getPath('downloads'),
+  }));
+  const restarts = own.packaged && (process.platform === 'darwin' || process.platform === 'win32');
+  const appVersion = own.packaged
+    ? own.version
+    : JSON.parse(readFileSync(join(desktopRoot, 'package.json'), 'utf8')).version;
+  const feed = 'https://github.com/qybaihe/mu/releases.atom';
+  const channel = `https://github.com/qybaihe/mu/releases/download/v${version}/${
+    process.platform === 'darwin' ? 'latest-mac.yml' : 'latest.yml'
+  }`;
+  const listDownloads = () => (existsSync(own.downloads) ? readdirSync(own.downloads).toSorted() : []);
+  const downloadsBefore = listDownloads();
+  // GitHub is answered here, both ways, with a newer release: a check must offer it and download nothing. Every
+  // request the main process makes either way is kept.
+  await app.evaluate(
+    ({ session }, { assets, version: newer, feedUrl, channelUrl, platform }) => {
       const scope = /** @type {any} */ (globalThis);
       scope.__e2eRequests = [];
       scope.__e2eFetch ??= scope.fetch;
@@ -489,14 +588,14 @@ test('关于 shows the version, and 检查更新 downloads nothing', async () =>
         const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
         scope.__e2eRequests.push(url);
         if (url.startsWith('https://api.github.com/repos/qybaihe/mu/releases')) {
-          const names = [`mu-${version}-mac-arm64.dmg`, `mu-${version}-mac-x64.dmg`, `mu-${version}-win-x64.exe`];
+          const names = [`mu-${newer}-mac-arm64.dmg`, `mu-${newer}-mac-x64.dmg`, `mu-${newer}-win-x64.exe`];
           const release = {
-            tag_name: `v${version}`,
-            name: `mu ${version}`,
-            html_url: `https://github.com/qybaihe/mu/releases/tag/v${version}`,
+            tag_name: `v${newer}`,
+            name: `mu ${newer}`,
+            html_url: `https://github.com/qybaihe/mu/releases/tag/v${newer}`,
             prerelease: true,
             draft: false,
-            assets: [...names, `mu-${version}-linux-amd64.deb`].map((name) => ({
+            assets: [...names, `mu-${newer}-linux-amd64.deb`].map((name) => ({
               name,
               browser_download_url: `${assets}/${name}`,
               size: 123_456_789,
@@ -506,42 +605,71 @@ test('关于 shows the version, and 检查更新 downloads nothing', async () =>
         }
         return scope.__e2eFetch(input, init);
       };
+      // electron-updater's session (NET_SESSION_NAME in electron-updater's electronHttpExecutor.js): GitHub's feed of
+      // the releases, newest first, and the update file of the newest one, which lists its installers.
+      const files =
+        platform === 'darwin'
+          ? [`mu-${newer}-mac-arm64.zip`, `mu-${newer}-mac-x64.zip`]
+          : [`mu-${newer}-win-x64.exe`, `mu-${newer}-win-arm64.exe`];
+      const sha512 = `${'A'.repeat(86)}==`;
+      const updateFile = [
+        `version: ${newer}`,
+        'files:',
+        ...files.flatMap((file) => [`  - url: ${file}`, `    sha512: ${sha512}`, '    size: 123456789']),
+        `path: ${files[0]}`,
+        `sha512: ${sha512}`,
+        "releaseDate: '2026-09-25T00:00:00.000Z'",
+        '',
+      ].join('\n');
+      const atom = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en-US">',
+        '  <id>tag:github.com,2008:https://github.com/qybaihe/mu/releases</id>',
+        '  <title>Release notes from mu</title>',
+        '  <updated>2026-09-25T00:00:00Z</updated>',
+        '  <entry>',
+        `    <id>tag:github.com,2008:Repository/1/v${newer}</id>`,
+        '    <updated>2026-09-25T00:00:00Z</updated>',
+        `    <link rel="alternate" type="text/html" href="https://github.com/qybaihe/mu/releases/tag/v${newer}"/>`,
+        `    <title>mu ${newer}</title>`,
+        '    <content type="html">No content.</content>',
+        '  </entry>',
+        '</feed>',
+        '',
+      ].join('\n');
+      session.fromPartition('electron-updater', { cache: false }).protocol.handle('https', async (request) => {
+        scope.__e2eRequests.push(request.url);
+        if (request.url === feedUrl) return new Response(atom, { headers: { 'content-type': 'application/atom+xml' } });
+        if (request.url === channelUrl) return new Response(updateFile, { headers: { 'content-type': 'text/yaml' } });
+        return new Response('not in the E2E feed', { status: 404 });
+      });
     },
-    { assets: fakeAssets, version: '99.0.0' }
+    { assets: fakeAssets, version, feedUrl: feed, channelUrl: channel, platform: process.platform }
   );
 
-  await p.getByText('设置', { exact: true }).last().click();
-  await p.getByText('关于', { exact: true }).first().click();
-  await p.waitForURL(/#\/settings\/about/);
+  await openSettings('about');
   await expect(p.getByTestId('about-version')).toContainText(`v${appVersion}`);
   await p.getByTestId('about-content').getByRole('button', { name: '检查更新' }).click();
-  await expect(p.getByTestId('about-update-status')).toContainText('99.0.0', { timeout: 30_000 });
+  await expect(p.getByTestId('about-update-status')).toContainText(version, { timeout: 30_000 });
   await sleep(3_000);
 
-  const asked = /** @type {string[]} */ (
-    await run.state?.app.evaluate(() => /** @type {any} */ (globalThis).__e2eRequests)
-  );
+  const asked = /** @type {string[]} */ (await app.evaluate(() => /** @type {any} */ (globalThis).__e2eRequests));
   const outside = asked.filter((url) => !/^https?:\/\/(127\.0\.0\.1|localhost)[:/]/.test(url));
-  expect(outside, 'the check asked only for the release list').toEqual([
-    'https://api.github.com/repos/qybaihe/mu/releases',
-  ]);
+  expect(outside, 'the check asked only for the release list').toEqual(
+    restarts ? [feed, channel] : ['https://api.github.com/repos/qybaihe/mu/releases']
+  );
   expect(
     (run.fake?.hits ?? []).filter((hit) => hit.path.startsWith('/__e2e/asset')),
     'no installer was fetched'
   ).toEqual([]);
-  expect(existsSync(downloads) ? readdirSync(downloads) : [], 'nothing downloaded').toEqual([]);
+  expect(listDownloads(), 'nothing downloaded').toEqual(downloadsBefore);
   expectNoProblems();
 });
 
 test('the test stayed in its profile, and left nothing running', async () => {
   await stop();
   expectNoProblems();
-  await expect
-    .poll(() => leftoverProcesses(run.profile, [...run.seen.values()]), {
-      timeout: 20_000,
-      message: 'processes left running after the quit',
-    })
-    .toEqual([]);
+  await expectNothingLeft();
 
   const { project, home, agentDir } = paths();
   const slug = `--${project.replace(/^[/\\]/, '').replace(/[/\\:]/g, '-')}--`;
