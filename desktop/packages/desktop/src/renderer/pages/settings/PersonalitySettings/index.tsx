@@ -37,16 +37,19 @@ const PersonalitySettings: React.FC = () => {
   const [error, setError] = useState<unknown>();
   const [busy, setBusy] = useState(false);
 
-  const apply = useCallback((next: PersonalityState, id = next.active) => {
-    setState(next);
-    setSelected(id);
-    const entry = next.entries.find((item) => item.id === id) ?? next.entries[0];
-    if (!entry) return;
-    const text = words(entry, zh);
-    setName(text.name);
-    setDescription(text.description);
-    setPrompt(entry.prompt);
-  }, [zh]);
+  const apply = useCallback(
+    (next: PersonalityState, id = next.active) => {
+      setState(next);
+      setSelected(id);
+      const entry = next.entries.find((item) => item.id === id) ?? next.entries[0];
+      if (!entry) return;
+      const text = words(entry, zh);
+      setName(text.name);
+      setDescription(text.description);
+      setPrompt(entry.prompt);
+    },
+    [zh]
+  );
 
   const load = useCallback(() => {
     setError(undefined);
@@ -85,16 +88,28 @@ const PersonalitySettings: React.FC = () => {
       : undefined;
 
   return (
-    <SettingsPage title={t('mu.sections.personality')} description={t('mu.personality.description')} data-testid='mu-personality'>
+    <SettingsPage
+      title={t('mu.sections.personality')}
+      description={t('mu.personality.description')}
+      data-testid='mu-personality'
+    >
       {state?.invalid ? <Alert type='warning' content={t('mu.personality.invalid')} /> : null}
       {error ? (
-        <Alert type='error' content={problemText ?? <MuErrorMessage error={error} />} action={<Button onClick={load}>{t('mu.reload')}</Button>} />
+        <Alert
+          type='error'
+          content={problemText ?? <MuErrorMessage error={error} />}
+          action={<Button onClick={load}>{t('mu.reload')}</Button>}
+        />
       ) : null}
       {state ? (
         <div className={choiceStyles.choices} role='radiogroup' aria-label={t('mu.sections.personality')}>
           {state.entries.map((item) => {
             const text = words(item, zh);
-            const tag = !item.builtin ? t('mu.personality.custom') : item.overridden ? t('mu.personality.edited') : t('mu.personality.builtin');
+            const tag = !item.builtin
+              ? t('mu.personality.custom')
+              : item.overridden
+                ? t('mu.personality.edited')
+                : t('mu.personality.builtin');
             return (
               <ChoiceTile
                 key={item.id}
@@ -123,7 +138,12 @@ const PersonalitySettings: React.FC = () => {
                     </label>
                     <label className={choiceStyles.choiceLabel}>
                       {t('mu.personality.prompt')}
-                      <Input.TextArea value={prompt} autoSize={{ minRows: 6, maxRows: 16 }} onChange={setPrompt} aria-label={t('mu.personality.prompt')} />
+                      <Input.TextArea
+                        value={prompt}
+                        autoSize={{ minRows: 6, maxRows: 16 }}
+                        onChange={setPrompt}
+                        aria-label={t('mu.personality.prompt')}
+                      />
                     </label>
                     <p className={choiceStyles.choiceHint}>{t('mu.personality.promptHelp')}</p>
                     <div className='flex gap-8px'>
@@ -148,7 +168,11 @@ const PersonalitySettings: React.FC = () => {
                         </Button>
                       ) : null}
                       {!item.builtin ? (
-                        <Button status='danger' loading={busy} onClick={() => void save({ action: 'remove', id: item.id })}>
+                        <Button
+                          status='danger'
+                          loading={busy}
+                          onClick={() => void save({ action: 'remove', id: item.id })}
+                        >
                           {t('mu.personality.remove')}
                         </Button>
                       ) : null}
@@ -162,8 +186,18 @@ const PersonalitySettings: React.FC = () => {
       ) : null}
       {adding ? (
         <div className='flex flex-col gap-12px'>
-          <Input aria-label={t('mu.personality.id')} placeholder={t('mu.personality.id')} value={draftId} onChange={setDraftId} />
-          <Input aria-label={t('mu.personality.name')} placeholder={t('mu.personality.name')} value={draftName} onChange={setDraftName} />
+          <Input
+            aria-label={t('mu.personality.id')}
+            placeholder={t('mu.personality.id')}
+            value={draftId}
+            onChange={setDraftId}
+          />
+          <Input
+            aria-label={t('mu.personality.name')}
+            placeholder={t('mu.personality.name')}
+            value={draftName}
+            onChange={setDraftName}
+          />
           <Input
             aria-label={t('mu.personality.about')}
             placeholder={t('mu.personality.about')}

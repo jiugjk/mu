@@ -78,11 +78,7 @@ export default function ModelCapabilities({ value, onChange, capabilities }: Mod
               <span className={choiceStyles.choiceLabel}>{t('mu.welcome.model.reasoning')}</span>
               <span className={choiceStyles.choiceHint}>{t('mu.welcome.model.reasoningHelp')}</span>
             </span>
-            <Switch
-              aria-label={t('mu.welcome.model.reasoning')}
-              checked={value.reasoning}
-              onChange={turnReasoning}
-            />
+            <Switch aria-label={t('mu.welcome.model.reasoning')} checked={value.reasoning} onChange={turnReasoning} />
           </div>
           {value.reasoning ? (
             <div className={styles.field}>

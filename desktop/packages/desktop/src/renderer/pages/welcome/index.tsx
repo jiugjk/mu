@@ -400,9 +400,7 @@ export default function Welcome() {
       />
     );
   } else if (step === 'startup') {
-    body = (
-      <StartupStep value={startup} ready={startupReady} onLoaded={onStartupLoaded} onChange={setStartup} />
-    );
+    body = <StartupStep value={startup} ready={startupReady} onLoaded={onStartupLoaded} onChange={setStartup} />;
   } else {
     const { provider: startProvider, model } = settings.models.defaults;
     const apiModel = added ? settings.models.providers.find((entry) => entry.id === added)?.models[0] : undefined;
@@ -489,13 +487,14 @@ export default function Welcome() {
           <Alert
             type='error'
             content={
-              <MuErrorMessage error={toMuError(gateError)} frame={(reason) => t('mu.welcome.done.saveFailed', { reason })} />
+              <MuErrorMessage
+                error={toMuError(gateError)}
+                frame={(reason) => t('mu.welcome.done.saveFailed', { reason })}
+              />
             }
           />
         ) : null}
-        {machineError ? (
-          <Alert type='error' content={t(`mu.welcome.startup.problems.${machineError}`)} />
-        ) : null}
+        {machineError ? <Alert type='error' content={t(`mu.welcome.startup.problems.${machineError}`)} /> : null}
       </>
     );
   }

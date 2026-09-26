@@ -6,7 +6,11 @@ import {
   type PersonalityAction,
   type PersonalityState,
 } from '../../../common/kyrn/personality';
-import { loadPersonality, personalityPath, writePersonality } from '../../../../../../../packages/kyrn-judge/src/personality/store.ts';
+import {
+  loadPersonality,
+  personalityPath,
+  writePersonality,
+} from '../../../../../../../packages/kyrn-judge/src/personality/store.ts';
 
 /** The personalities on disk, including the built-ins. A broken file is reported and not rewritten here. */
 export function readPersonalityState(agentDir: string): PersonalityState {
