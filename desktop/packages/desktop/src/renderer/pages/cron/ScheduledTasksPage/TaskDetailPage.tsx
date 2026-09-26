@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button, Message, Switch, Popconfirm, Spin, Empty, Tooltip, Checkbox, Modal } from '@arco-design/web-react';
@@ -43,6 +43,12 @@ const resolveTeamId = (conversation: TChatConversation): string | undefined => {
 
 const TaskDetailPage: React.FC = () => {
   const { t, i18n } = useTranslation();
+  // A switch is named by its section's heading (the schedule's also by the schedule it turns on), so a screen reader
+  // says what it switches.
+  const repeatsId = useId();
+  const scheduleId = useId();
+  const queueId = useId();
+  const queueHintId = useId();
   const navigate = useNavigate();
   const { job_id } = useParams<{ job_id: string }>();
   const [job, setJob] = useState<ICronJob | null>(null);
@@ -547,10 +553,19 @@ const TaskDetailPage: React.FC = () => {
             )}
 
             <section className='flex flex-col gap-10px'>
-              <h2 className='m-0 text-13px font-medium text-t-secondary'>{t('cron.detail.repeats')}</h2>
+              <h2 id={repeatsId} className='m-0 text-13px font-medium text-t-secondary'>
+                {t('cron.detail.repeats')}
+              </h2>
               <div className='flex flex-wrap items-center gap-10px'>
-                {!isManualOnly && <Switch size='small' checked={job.enabled} onChange={handleToggleEnabled} />}
-                <span className='min-w-0 flex-1 text-14px leading-20px text-t-primary'>
+                {!isManualOnly && (
+                  <Switch
+                    size='small'
+                    checked={job.enabled}
+                    onChange={handleToggleEnabled}
+                    aria-labelledby={`${repeatsId} ${scheduleId}`}
+                  />
+                )}
+                <span id={scheduleId} className='min-w-0 flex-1 text-14px leading-20px text-t-primary'>
                   {formatSchedule(job, t, i18n.language)}
                 </span>
               </div>
@@ -574,10 +589,18 @@ const TaskDetailPage: React.FC = () => {
             </section>
 
             <section className='flex flex-col gap-10px'>
-              <h2 className='m-0 text-13px font-medium text-t-secondary'>{t('cron.page.form.queue')}</h2>
+              <h2 id={queueId} className='m-0 text-13px font-medium text-t-secondary'>
+                {t('cron.page.form.queue')}
+              </h2>
               <div className='flex items-center gap-10px'>
-                <Switch size='small' checked={job.state.queue_enabled} disabled />
-                <span className='min-w-0 flex-1 text-13px leading-18px text-t-secondary'>
+                <Switch
+                  size='small'
+                  checked={job.state.queue_enabled}
+                  disabled
+                  aria-labelledby={queueId}
+                  aria-describedby={queueHintId}
+                />
+                <span id={queueHintId} className='min-w-0 flex-1 text-13px leading-18px text-t-secondary'>
                   {t('cron.page.form.queueHint')}
                 </span>
               </div>

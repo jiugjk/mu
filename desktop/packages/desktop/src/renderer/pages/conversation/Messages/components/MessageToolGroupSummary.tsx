@@ -24,13 +24,16 @@ import {
   clipOutput,
   shouldFoldActivity,
   summarizeToolActivity,
+  toolActivityDenied,
   toolActivityErrors,
   toolErrorLine,
   toolLabel,
   type ToolLabel,
 } from './toolActivity';
 
-const statusToBadge = (status: NormalizedToolStatus): BadgeProps['status'] => {
+const statusToBadge = (status: NormalizedToolStatus, denied?: boolean): BadgeProps['status'] => {
+  // A call the person said no to never ran: no failure, no success.
+  if (denied) return 'default';
   switch (status) {
     case 'completed':
       return 'success';
@@ -45,12 +48,34 @@ const statusToBadge = (status: NormalizedToolStatus): BadgeProps['status'] => {
   }
 };
 
-/** `tools.status.*` uses the legacy tool-group wording for the same states. */
-const statusLabelKey = (status: NormalizedToolStatus): string =>
-  status === 'running' ? 'executing' : status === 'completed' ? 'success' : status;
+/** `tools.status.*` uses the legacy tool-group wording for the same states; a refused call did not run. */
+const statusLabelKey = (status: NormalizedToolStatus, denied?: boolean): string =>
+  denied ? 'denied' : status === 'running' ? 'executing' : status === 'completed' ? 'success' : status;
 
 /** "read src/a.ts", "bash npm test": what the reader sees on a folded line. */
 const labelText = ({ verb, target }: ToolLabel): string => (target ? `${verb} ${target}` : verb);
+
+/**
+ * What a call ran on, whole on hover. A path cut for a narrow row gives up the middle of its folders, never its own
+ * name: `/Users/me/project/src/…/index.ts`, not `/Users/me/project/src/comp…`.
+ */
+const CallTarget: React.FC<{ label: ToolLabel }> = ({ label }) => {
+  const { target } = label;
+  if (!target) return null;
+  if (!label.path)
+    return (
+      <code className={styles.callPreview} title={target}>
+        {target}
+      </code>
+    );
+  const cut = Math.max(target.lastIndexOf('/'), target.lastIndexOf('\\')) + 1;
+  return (
+    <code className={`${styles.callPreview} ${styles.pathPreview}`} title={target} data-testid='tool-call-path'>
+      <span className={styles.pathHead}>{target.slice(0, cut)}</span>
+      <span className={styles.pathTail}>{target.slice(cut)}</span>
+    </code>
+  );
+};
 
 const ClippedOutput: React.FC<{ text: string }> = ({ text }) => {
   const { t } = useTranslation();
@@ -75,8 +100,10 @@ const ToolItemDetail: React.FC<{ item: NormalizedToolCall }> = ({ item }) => {
   const [loadError, setLoadError] = useState(false);
   const displayItem = fullItem ?? item;
   const label = toolLabel(displayItem);
-  const statusKey = statusLabelKey(item.status);
-  const hasDetail = Boolean(displayItem.input || displayItem.output || item.truncated || item.imagePath);
+  const statusKey = statusLabelKey(item.status, item.denied);
+  // A refused call's output is mu's refusal, written for the model: the row says what happened instead.
+  const output = item.denied ? undefined : displayItem.output;
+  const hasDetail = Boolean(displayItem.input || output || item.truncated || item.imagePath);
   const [messageApi, messageContext] = Message.useMessage();
   const handleDownloadImage = useCallback(
     async (path: string) => {
@@ -117,10 +144,13 @@ const ToolItemDetail: React.FC<{ item: NormalizedToolCall }> = ({ item }) => {
 
   const line = (
     <>
-      <Badge status={statusToBadge(item.status)} className={item.status === 'running' ? styles.breathing : undefined} />
+      <Badge
+        status={statusToBadge(item.status, item.denied)}
+        className={item.status === 'running' ? styles.breathing : undefined}
+      />
       <ToolKindIcon name={displayItem.name} />
       <span className={styles.callName}>{label.verb}</span>
-      {label.target && <code className={styles.callPreview}>{label.target}</code>}
+      <CallTarget label={label} />
     </>
   );
 
@@ -156,8 +186,13 @@ const ToolItemDetail: React.FC<{ item: NormalizedToolCall }> = ({ item }) => {
       ) : (
         <div className={styles.callStatic}>{line}</div>
       )}
-      {/* A failure says what went wrong without asking for a click. */}
-      {item.status === 'error' && !expanded && !displayItem.hive && (
+      {/* A failure says what went wrong without asking for a click; a refused call, quietly, that it did not run. */}
+      {item.denied && (
+        <div className={styles.callDenied} data-testid='tool-call-denied'>
+          {t('tools.execution.denied')}
+        </div>
+      )}
+      {!item.denied && item.status === 'error' && !expanded && !displayItem.hive && (
         <div className={styles.callError}>{toolErrorLine(displayItem)}</div>
       )}
       {expanded && hasDetail && (
@@ -177,10 +212,10 @@ const ToolItemDetail: React.FC<{ item: NormalizedToolCall }> = ({ item }) => {
               <ClippedOutput text={displayItem.input} />
             </div>
           )}
-          {displayItem.output && (
+          {output && (
             <div className={styles.detailSection}>
               <div className={styles.detailLabel}>{t('tools.execution.output')}</div>
-              <ClippedOutput text={swarmProgressText(t, displayItem.swarmProgress, displayItem.output)} />
+              <ClippedOutput text={swarmProgressText(t, displayItem.swarmProgress, output)} />
             </div>
           )}
         </div>
@@ -230,6 +265,7 @@ const ToolActivityGroup: React.FC<{ tools: NormalizedToolCall[]; language?: stri
   const [expanded, setExpanded] = useState(false);
   const summary = useMemo(() => summarizeToolActivity(tools), [tools]);
   const errors = useMemo(() => toolActivityErrors(tools), [tools]);
+  const refused = useMemo(() => toolActivityDenied(tools), [tools]);
   const steps = formatNumber(summary.steps, language);
   const headline =
     summary.status === 'running'
@@ -261,6 +297,16 @@ const ToolActivityGroup: React.FC<{ tools: NormalizedToolCall[]; language?: stri
             <span className={styles.activityErrorLine}>{error.line}</span>
           </div>
         ))}
+      {!expanded &&
+        refused.map((call) => (
+          <div key={call.key} className={styles.activityError} data-testid='tool-activity-denied'>
+            <span className={styles.callName}>{call.label.verb}</span>
+            <span className={styles.activityDeniedLine}>
+              {call.label.target ? `${call.label.target} · ` : ''}
+              {t('tools.execution.denied')}
+            </span>
+          </div>
+        ))}
       {expanded && (
         <div className={styles.activityBody}>
           <ToolRows tools={tools} />
@@ -273,10 +319,25 @@ const ToolActivityGroup: React.FC<{ tools: NormalizedToolCall[]; language?: stri
 /**
  * The tools a stretch of the reply ran. One call is its own quiet line; several fold into one activity line that
  * opens to them (user, 2026-09-22: a "tool activity" header over a single call was one box too many).
+ *
+ * A stored "running" is not proof of activity: only a conversation that is processing runs anything (`live`), and a
+ * call already seen running while it was idle (`stale`, by message id) belongs to a turn that ended without it, as
+ * when mu's process closed mid-call. Those read as over, a sub-agent card with them.
  */
-const MessageToolGroupSummary: React.FC<{ messages: ToolMessage[] }> = ({ messages }) => {
+const MessageToolGroupSummary: React.FC<{
+  messages: ToolMessage[];
+  live?: boolean;
+  stale?: ReadonlySet<string>;
+}> = ({ messages, live = true, stale }) => {
   const { t, i18n } = useTranslation();
-  const tools = useMemo(() => normalizeToolMessages(messages), [messages]);
+  const tools = useMemo(() => {
+    const calls = normalizeToolMessages(messages);
+    for (const call of calls) {
+      const over = !live || (call.messageId !== undefined && stale?.has(call.messageId));
+      if (over && (call.status === 'running' || call.status === 'pending')) call.status = 'canceled';
+    }
+    return calls;
+  }, [messages, live, stale]);
   if (!tools.length) return null;
   // A sub-agent run is its own panel, never a step in a fold.
   const folds = shouldFoldActivity(tools) && !tools.some((item) => item.hive);

@@ -6,6 +6,8 @@ import { I18nextProvider } from 'react-i18next';
 import common from '@/renderer/services/i18n/locales/en-US/common.json';
 import mu from '@/renderer/services/i18n/locales/en-US/mu.json';
 import HiveRows from '@/renderer/pages/conversation/KyrnPanel/Hive/HiveRows';
+import { endedRuns } from '@/renderer/pages/conversation/KyrnPanel/Hive/activity';
+import type { Activity } from '@/common/kyrn/types';
 import { activity, hiveEvents, hiveSnapshot } from './hiveFixtures';
 
 vi.mock('@/renderer/components/media/LocalImageView', () => ({ default: () => null }));
@@ -188,5 +190,45 @@ describe('the map of a run', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('a run whose turn is over', () => {
+  const closed = (at: number): Activity => ({ id: `closed-${at}`, at, kind: 'kyrn_rpc_closed', payload: {} });
+
+  it('reads a bee that mu’s death caught at work as stopped, and says what did not get done', () => {
+    render(view(<HiveRows events={[...hiveEvents, closed(20000)]} />));
+    const row = run('run-1').querySelector('[data-bee="prefix-mutations"]') as HTMLElement;
+    expect(within(row).getAllByText('Stopped')).not.toHaveLength(0);
+    // Its mark is no longer the dot of a bee at work.
+    expect(row.querySelector('[data-shape]')).toHaveAttribute('data-shape', 'idle');
+    expect(within(run('run-1')).getByText('1 done / 2 · 1 not finished')).toBeInTheDocument();
+  });
+
+  it('keeps a running run as it is, and the counts of a run that ended with every bee done', () => {
+    const { rerender } = render(view(<HiveRows events={hiveEvents} />));
+    expect(within(run('run-1')).getByText('1 running · 1 done · 0 failed')).toBeInTheDocument();
+    // A turn that ended before this run began says nothing about it.
+    rerender(view(<HiveRows events={[closed(5000), ...hiveEvents]} />));
+    expect(within(run('run-1')).getByText('1 running · 1 done · 0 failed')).toBeInTheDocument();
+    const done = activity('final', 'swarm.snapshot', {
+      ...hiveSnapshot,
+      bees: hiveSnapshot.bees.map((bee) => Object.assign({}, bee, { status: 'done' })),
+    });
+    rerender(view(<HiveRows events={[...hiveEvents, done, closed(20000)]} />));
+    expect(within(run('run-1')).getByText('0 running · 2 done · 0 failed')).toBeInTheDocument();
+  });
+});
+
+describe('endedRuns', () => {
+  it('ends a run once a turn settles or mu closes after its last word, and only then', () => {
+    const at = (event: Activity, time: number): Activity => ({ ...event, at: time });
+    const settled: Activity = { id: 'settled', at: 0, kind: 'agent_settled', payload: {} };
+    const word = activity('snapshot-2', 'swarm.snapshot', hiveSnapshot, 'run-2');
+    expect(endedRuns([at(word, 100)])).toEqual(new Set());
+    expect(endedRuns([at(word, 100), at(settled, 200)])).toEqual(new Set(['run-2']));
+    // The order the events arrive in does not matter, their time does.
+    expect(endedRuns([at(settled, 200), at(word, 100)])).toEqual(new Set(['run-2']));
+    expect(endedRuns([at(settled, 50), at(word, 100)])).toEqual(new Set());
   });
 });

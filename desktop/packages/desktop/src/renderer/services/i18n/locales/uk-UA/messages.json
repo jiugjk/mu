@@ -70,6 +70,7 @@
   "noOptionsAvailable": "Немає доступних варіантів",
   "processing": "Обробка...",
   "responseSentSuccessfully": "Відповідь надіслано успішно",
+  "permissionAnswered": "Відповідь: {{option}}",
   "permissionResponseFailed": "Не вдалося надіслати відповідь. Спробуйте ще раз.",
   "permissionNoLongerPending": "Цей запит більше не чекає на відповідь.",
   "confirmation": {

@@ -67,6 +67,7 @@
   "tray.showWindow": "mu anzeigen",
   "tray.newChat": "Neuer Chat",
   "tray.closeToTray": "In Taskleiste minimieren",
+  "tray.hideToMenuBar": "In die Menüleiste minimieren",
   "tray.about": "Über mu",
   "tray.restart": "App neu starten",
   "tray.quit": "Beenden",
@@ -175,6 +176,8 @@
       "open": "Hive öffnen",
       "inspect": "{{name}} prüfen",
       "summary": "{{active}} aktiv · {{done}} erledigt / {{total}}",
+      "summaryEnded": "{{done}} erledigt / {{total}}",
+      "summaryUnfinished": "{{done}} erledigt / {{total}} · {{unfinished}} nicht fertig",
       "counts": "{{running}} aktiv · {{done}} fertig · {{failed}} fehlgeschlagen",
       "none": "In dieser Unterhaltung gibt es noch keine Unteragenten.",
       "details": "Fluss und Aufzeichnungen",
@@ -890,7 +893,8 @@
       "log": {
         "thisTurn": "Dieser Durchgang",
         "earlier": "Frühere Zeilen anzeigen",
-        "latest": "Zum Neuesten"
+        "latest": "Zum Neuesten",
+        "times": "×{{times}}"
       }
     },
     "empty": "In dieser Sitzung wurden noch keine Ereignisse aufgezeichnet.",
@@ -945,10 +949,14 @@
         "switched": "Board ein- oder ausgeschaltet"
       },
       "permissions": {
-        "mode": "Berechtigungsmodus"
+        "mode": "Berechtigungsmodus",
+        "request": "Erlaubnis angefragt",
+        "resolved": "Erlaubnis beantwortet",
+        "approved": "Ohne Rückfrage ausgeführt"
       },
       "checkpoint": {
-        "taken": "Checkpoint gespeichert"
+        "taken": "Checkpoint gespeichert",
+        "off": "Checkpoints aus"
       },
       "rewind": {
         "proposed": "Zurücksetzen vorgeschlagen",
@@ -1070,6 +1078,7 @@
       "empty": "Gib dem Agenten einen Moment; hier steht dann in einfachen Worten, wie es läuft.",
       "checks": "{{done}} von {{total}} Prüfpunkten erledigt",
       "ended": "Angehalten",
+      "done": "Fertig",
       "brief": "Kurzfassung",
       "briefHelp": "Das Modell hat diese Fassung nicht rechtzeitig geschrieben; das ist eine kurze feste Zusammenfassung.",
       "needsYou": "Braucht dich",
@@ -1236,12 +1245,17 @@
     "compactionDropped_one": "{{count}} Aufruf entfernt",
     "compactionDropped_other": "{{count}} Aufrufe entfernt",
     "jevLine": {
-      "classifying": "Jev ordnet die Nachricht ein…",
-      "classified": "Von Jev eingeordnet: {{type}}",
+      "classifying": "{{judge}} ordnet die Nachricht ein…",
+      "classified": "Von {{judge}} eingeordnet: {{type}}",
       "byRule": "Per Regel eingeordnet: {{type}}",
       "shadow": "{{line}} (nur beobachtet, nicht angewendet)",
       "late": "{{line}} (zu spät für diese Runde)",
-      "fallback": "Diesmal keine Einordnung von Jev; es geht wie gewohnt weiter"
+      "fallback": "Diesmal keine klare Einordnung von {{judge}}; es geht wie gewohnt weiter",
+      "unanswered": "{{judge}} hat diesmal nicht geantwortet; es geht wie gewohnt weiter",
+      "noJudge": "Noch ist kein Judge verfügbar, daher werden Nachrichten nicht eingeordnet.",
+      "setUp": "Judge einrichten",
+      "skipped": "Einordnung übersprungen",
+      "off": "Einordnung ist aus"
     },
     "eventLine": {
       "detail": "Details: {{detail}}",
@@ -1338,7 +1352,19 @@
         }
       },
       "permissions": {
-        "mode": "Berechtigungsmodus: {{mode}}"
+        "mode": "Berechtigungsmodus: {{mode}}",
+        "request": "Wartet auf deine Erlaubnis: {{summary}}",
+        "waiting": "Wartet auf deine Erlaubnis",
+        "answers": {
+          "once": "Du hast es einmal erlaubt",
+          "session": "Für diese Unterhaltung erlaubt",
+          "deny": "Du hast es nicht erlaubt"
+        },
+        "about": "{{answer}}: {{summary}}",
+        "approved": {
+          "judge": "Der Judge hat es ohne Rückfrage durchgelassen: {{summary}}",
+          "grant": "Ohne Rückfrage, weil für diese Unterhaltung erlaubt: {{summary}}"
+        }
       },
       "board": {
         "on": "Klartext: ein",
@@ -1355,11 +1381,15 @@
   },
   "menu": {
     "about": "Über {{name}}",
+    "settings": "Einstellungen…",
     "services": "Dienste",
     "hide": "{{name}} ausblenden",
     "hideOthers": "Andere ausblenden",
     "unhide": "Alle einblenden",
     "quit": "{{name}} beenden",
+    "file": "Datei",
+    "newChat": "Neuer Chat",
+    "closeWindow": "Fenster schließen",
     "edit": "Bearbeiten",
     "undo": "Rückgängig",
     "redo": "Wiederholen",
@@ -1377,8 +1407,13 @@
     "zoomIn": "Vergrößern",
     "zoomOut": "Verkleinern",
     "toggleFullScreen": "Vollbild ein/aus",
+    "window": "Fenster",
+    "minimize": "Im Dock ablegen",
+    "zoomWindow": "Zoomen",
+    "bringAllToFront": "Alle nach vorne bringen",
     "help": "Hilfe",
-    "checkForUpdates": "Nach Updates suchen…"
+    "checkForUpdates": "Nach Updates suchen…",
+    "projectPage": "{{name}} auf GitHub"
   },
   "trayMenu": {
     "runningTasks": "Laufende Aufgaben: {{count}}"

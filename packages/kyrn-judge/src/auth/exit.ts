@@ -19,7 +19,7 @@ export async function exitWhenUnlocked(
 	exit: (code: number) => void,
 	{ limitMs = 5000, pollMs = 20 }: { readonly limitMs?: number; readonly pollMs?: number } = {},
 ): Promise<void> {
-	const locks = [...new Set(files.map((file) => `${resolve(file)}.lock`))];
+	const locks = lockFolders(files);
 	const deadline = Date.now() + limitMs;
 	while (true) {
 		const taken = takeAll(locks);
@@ -30,6 +30,49 @@ export async function exitWhenUnlocked(
 		}
 		await sleep(pollMs);
 	}
+}
+
+/**
+ * How a session of mu ends (`session_shutdown`, reason `quit`): pi calls process.exit soon after, and a lock of its
+ * stores this process is taking or dropping then stays behind, as with `mu auth` above. pi still awaits things before
+ * it exits (its output is flushed), so looking once would not do: the lock folders are taken as soon as none is held,
+ * and kept until the process exits, which removes them in the same step. Whatever of this process wants one
+ * meanwhile waits, and never starts. A lock another process keeps past `limitMs` is that process's own: then nothing
+ * is taken. A process that lives on after its session ended (pi run as a library) gives them back after `holdMs`.
+ *
+ * @returns a function that gives the folders back now, or undefined when none was taken
+ */
+export async function holdLocksUntilExit(
+	files: readonly string[],
+	{
+		limitMs = 3000,
+		pollMs = 20,
+		holdMs = 2000,
+	}: { readonly limitMs?: number; readonly pollMs?: number; readonly holdMs?: number } = {},
+): Promise<(() => void) | undefined> {
+	const locks = lockFolders(files);
+	const deadline = Date.now() + limitMs;
+	let taken = takeAll(locks);
+	while (!taken && Date.now() < deadline) {
+		await sleep(pollMs);
+		taken = takeAll(locks);
+	}
+	if (!taken) return undefined;
+	const held = taken;
+	const release = () => {
+		clearTimeout(timer);
+		process.off("exit", release);
+		for (const lock of held) drop(lock);
+	};
+	const timer = setTimeout(release, holdMs);
+	timer.unref();
+	process.once("exit", release);
+	return release;
+}
+
+/** The folder proper-lockfile makes beside each file while it is locked, once each. */
+function lockFolders(files: readonly string[]): string[] {
+	return [...new Set(files.map((file) => `${resolve(file)}.lock`))];
 }
 
 /**

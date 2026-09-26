@@ -34,7 +34,7 @@ describe('buildSkillImportNotice', () => {
       'Imported 3 skills: alpha, beta, and gamma'
     );
     expect(buildSkillImportNotice({ skill_names: ['alpha', 'beta'] }, zh, 'zh-CN').message).toBe(
-      '已导入 2 个技能：alpha和beta'
+      '已导入 2 个技能：alpha 和 beta'
     );
   });
 

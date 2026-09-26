@@ -54,6 +54,16 @@ function setup() {
   return { manager, runners, opened };
 }
 
+/** Whether a process is still running. */
+const alive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 /** Lines are read asynchronously, as from a real child. */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 5));
 
@@ -290,6 +300,113 @@ describe('who is signed in', () => {
     await vi.advanceTimersByTimeAsync(1000);
     await expect(slow).resolves.toEqual({ signedIn: [] });
     expect(runners[1].killed).toBe(true);
+  });
+});
+
+describe('one runner at a time', () => {
+  // Two `mu auth status` runners 0.7 s apart at the app's start: the first exited holding mu's model store lock, and
+  // the second (and the first conversation after it) waited half a minute for it.
+  it('gives a look asked for while one runs that one’s answer, and starts a new runner only after it', async () => {
+    const { manager, runners } = setup();
+    const first = manager.status();
+    const second = manager.status();
+    expect(second).toBe(first);
+    expect(runners).toHaveLength(1);
+    runners[0].say({ type: 'status', signedIn: [{ provider: 'anthropic', models: [] }] });
+    runners[0].end(0);
+    await expect(second).resolves.toEqual({ signedIn: [{ provider: 'anthropic', models: [] }] });
+    await settle();
+    const later = manager.status();
+    expect(later).not.toBe(first);
+    expect(runners).toHaveLength(2);
+    runners[1].say({ type: 'status', signedIn: [] });
+    runners[1].end(0);
+    await expect(later).resolves.toEqual({ signedIn: [] });
+  });
+
+  it('starts a sign-out once the look under way has ended, and a look asked for then after the sign-out', async () => {
+    const { manager, runners } = setup();
+    const look = manager.status();
+    const left = manager.logout('anthropic');
+    await settle();
+    expect(runners.map((runner) => runner.args)).toEqual([['status']]);
+    runners[0].say({ type: 'status', signedIn: [{ provider: 'anthropic', models: [] }] });
+    runners[0].end(0);
+    await look;
+    await settle();
+    expect(runners.map((runner) => runner.args)).toEqual([['status'], ['logout', 'anthropic']]);
+    const after = manager.status();
+    await settle();
+    expect(runners).toHaveLength(2);
+    runners[1].say({ type: 'status', signedIn: [] });
+    runners[1].end(0);
+    await expect(left).resolves.toEqual({ signedIn: [] });
+    await settle();
+    expect(runners[2].args).toEqual(['status']);
+    runners[2].say({ type: 'status', signedIn: [] });
+    runners[2].end(0);
+    await expect(after).resolves.toEqual({ signedIn: [] });
+  });
+
+  it('goes on after a runner that failed', async () => {
+    const { manager, runners } = setup();
+    const failed = manager.logout('openai-codex');
+    const look = manager.status();
+    runners[0].say({ type: 'error', message: 'Credential store delete failed for openai-codex' });
+    runners[0].end(1);
+    await expect(failed).rejects.toThrow('Credential store delete failed');
+    await settle();
+    runners[1].say({ type: 'status', signedIn: [] });
+    runners[1].end(0);
+    await expect(look).resolves.toEqual({ signedIn: [] });
+  });
+});
+
+describe('when the app quits', () => {
+  it('ends the sign-in and the look at who is signed in that still runs, and starts nothing after', async () => {
+    const { manager, runners } = setup();
+    manager.start('anthropic');
+    const cut = manager.status();
+    const waiting = manager.logout('anthropic');
+    manager.dispose();
+    expect(runners.map((runner) => runner.killed)).toEqual([true, true]);
+    // The look that was cut short says nobody, as one that does not answer does.
+    runners[1].end(1);
+    await expect(cut).resolves.toEqual({ signedIn: [] });
+    await expect(waiting).rejects.toThrow('quitting');
+    await expect(manager.status()).resolves.toEqual({ signedIn: [] });
+    expect(runners).toHaveLength(2);
+  });
+
+  it.skipIf(process.platform === 'win32')('ends what the runner started too, not just the runner', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mu-auth-'));
+    let started: number | undefined;
+    try {
+      // As a checkout runs `mu auth`: tsx, which starts a second Node for pi.
+      const launcher = join(dir, 'mu.mjs');
+      writeFileSync(
+        launcher,
+        [
+          "import { spawn } from 'node:child_process';",
+          "const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });",
+          "console.log(JSON.stringify({ type: 'started', pid: child.pid }));",
+          'setInterval(() => {}, 1000);',
+        ].join('\n')
+      );
+      const runner = spawnAuth(launcher, join(dir, 'agent'))(['status']);
+      started = await new Promise<number>((resolve) => {
+        runner.stdout.setEncoding('utf8');
+        runner.stdout.on('data', (chunk: string) => resolve((JSON.parse(chunk) as { pid: number }).pid));
+      });
+      expect(alive(started)).toBe(true);
+      const closed = new Promise((resolve) => runner.on('close', resolve));
+      runner.kill();
+      await closed;
+      await vi.waitFor(() => expect(alive(started as number)).toBe(false), { timeout: 5000 });
+    } finally {
+      if (started && alive(started)) process.kill(started, 'SIGKILL');
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

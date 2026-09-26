@@ -22,30 +22,12 @@
 }
 
 /*
- * A window too narrow for both: the panel lies over the transcript's edge, set apart by its hairline and a soft
- * shadow, and stops above the composer (its inline `bottom`), where its own bottom edge gets the hairline too.
+ * A row too narrow for the panel and a readable transcript: the panel takes the whole row (the Layout sets the
+ * transcript aside, mounted), and its strip leads with the way back. Nothing lies over text.
  */
-.host[data-mode='float'] {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  inset-inline-end: 0;
-  z-index: 40;
-  height: auto;
-  box-shadow: var(--mu-shadow-2, none);
-}
-
-.host[data-mode='float'][data-open='false'] {
-  box-shadow: none;
-}
-
-.host[data-mode='float'][data-lifted='true'] {
-  border-bottom: 1px solid var(--border-base);
-  border-end-start-radius: 8px;
-}
-
-.host[data-mode='float'][data-maximized='true'] {
-  inset-inline-start: 0;
+.host[data-mode='fill'][data-open='true'] {
+  flex: 1 1 0;
+  border-inline-start-width: 0;
 }
 
 /* A phone: a sheet from the side, over everything, kept in place off-screen while closed. */
@@ -172,6 +154,19 @@
   flex: none;
   align-self: center;
   color: var(--text-secondary);
+}
+
+/* The way back to the transcript while the panel fills the row: first in the strip, named, never cut. */
+.back:global(.arco-btn) {
+  flex: none;
+  align-self: center;
+  padding: 0 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.back:global(.arco-btn:not(:disabled):hover) {
+  background: var(--bg-hover);
 }
 
 .close:global(.arco-btn:not(:disabled):hover) {

@@ -149,7 +149,8 @@
     "customTier": "你自己加的判定器，要改它请编辑 mu 的设置文件。",
     "endpointDefault": "使用服务的默认地址",
     "types": {
-      "localHelp": "在这台电脑上运行。"
+      "localHelp": "在这台电脑上运行。",
+      "clmHelp": "运行在你自己的 CLM 服务器上。"
     },
     "intro": "mu 工作时要做很多小判断：这条消息该怎么处理、这一步会不会违反你定的规则……判定器负责回答。选一个就行。",
     "choose": "选择判定器",
@@ -165,6 +166,11 @@
         "title": "本地 Laya",
         "tag": "免费 · 离线",
         "description": "在这台电脑上运行，不联网、不花钱。适合分类判断，关联和打分不够可靠。"
+      },
+      "clm": {
+        "title": "CLM",
+        "tag": "自建",
+        "description": "回答和 Jev 一样的问题，运行在你自己的服务器上（clm-serve）。编码器需要 GPU，不按次计费。"
       }
     },
     "localAddress": "服务地址：{{address}}",
@@ -211,6 +217,26 @@
           "foreign": "这里在运行一个不是 mu 启动的 Laya，请在启动它的地方停止它。"
         }
       }
+    },
+    "clm": {
+      "address": "服务器地址",
+      "addressHelp": "clm-serve 监听的地址，比如 http://192.168.1.20:8700。留空就是这台电脑（{{address}}）。",
+      "key": "服务器密钥",
+      "keyPlaceholder": "服务器要求时才填",
+      "keyHelp": "只有用 CLM_API_KEY 启动的服务器才要密钥：填同一个值。保存后不再显示。",
+      "check": "检查服务器",
+      "unmeasured": "CLM 做 mu 的判定做得怎么样，目前还没有测过。",
+      "status": {
+        "checking": "正在询问服务器…",
+        "ready": "正在应答 · {{models}} · {{ms}} 毫秒",
+        "down": "{{address}} 没有应答。请在那台机器上启动 clm-serve，或者改正地址。",
+        "encoderDown": "服务器有应答，但它的编码器没有：嵌入服务（vLLM）运行起来之前，每道题都会失败。",
+        "model": "服务器没有提供 {{model}}，它提供的是 {{models}}。",
+        "keyNeeded": "服务器要求密钥：请填它启动时用的那个（CLM_API_KEY）。",
+        "keySaved": "服务器要求密钥，已经保存了一个。",
+        "mock": "这台服务器运行的是 CLM 的模拟编码器：它的回答是噪声，不是 CLM 的判断。",
+        "failed": "没能询问服务器。"
+      }
     }
   },
   "keyState": {
@@ -256,7 +282,9 @@
       "unsure": "Jev 拿不准这一步是不是你要的。",
       "beyond": "Jev 认为这一步超出了你的要求。",
       "unrelated": "Jev 认为这一步和当前任务无关。",
-      "protected": "这会动到 mu 自己的设置，只能由你决定。"
+      "protected": "这会动到 mu 自己的设置，只能由你决定。",
+      "nojudge": "还没有可用的判定器，所以每一步都先问你。",
+      "judgedown": "判定器这次没有回答，所以先问你。"
     },
     "flagged": "危险操作：{{flag}}。",
     "flag": {
@@ -275,6 +303,11 @@
       "session": "这次对话都允许",
       "sessionFor": "这次对话都允许（{{grant}}）",
       "deny": "不允许"
+    },
+    "decided": {
+      "once": "你允许了这一次：{{summary}}",
+      "session": "这次对话都允许：{{summary}}",
+      "deny": "你没允许：{{summary}}"
     }
   },
   "providers": {
@@ -438,7 +471,7 @@
     "update": "这个版本的 mu 还不能在这里选写看板的模型，更新 mu 后就可以。"
   },
   "levels": {
-    "off": "关闭",
+    "off": "不思考",
     "minimal": "极低",
     "low": "低",
     "medium": "中",
@@ -473,7 +506,7 @@
       "signedIn": {
         "title": "用订阅账号登录",
         "tag": "免 API 密钥",
-        "description": "ChatGPT、Claude 或 Grok 的订阅"
+        "description": "ChatGPT、Claude、Grok 等订阅"
       },
       "openai": {
         "title": "OpenAI 兼容接口",
@@ -673,9 +706,28 @@
     "notPersisted": "mu 没能保存这个对话。",
     "startFailed": "mu 无法启动。",
     "timeout": "mu 没有及时响应。",
-    "processClosed": "mu 已退出，重新发送消息即可重启。"
+    "processClosed": "mu 已退出，重新发送消息即可重启。",
+    "noModel": "mu 还没有可用的模型来回答。"
+  },
+  "noModel": {
+    "title": "还没有可用的模型",
+    "body": "mu 需要一个能用的模型才能回答。请到「{{place}}」登录账号或填写密钥，然后重新发送消息。",
+    "open": "打开{{page}}",
+    "chip": "选择模型"
   },
   "notices": {
+    "checkpointOff": "这个对话的检查点已关闭。",
+    "checkpointOffWhy": {
+      "gitMissing": "这个对话的检查点已关闭：这台电脑上找不到 Git。装好 Git 后新开一个对话就有了。",
+      "xcodeLicense": "这个对话的检查点已关闭：这台 Mac 要先同意 Xcode 许可协议才能运行 Git。在终端运行 sudo xcodebuild -license 同意后，新开一个对话就有了。",
+      "developerToolsMissing": "这个对话的检查点已关闭：这台 Mac 没有装 Git 需要的命令行开发者工具。在终端运行 xcode-select --install 装好后，新开一个对话就有了。",
+      "homeFolder": "这个对话的检查点已关闭：它的文件夹是你的主文件夹，或者包含主文件夹。在项目文件夹里开对话就有了。",
+      "muFolder": "这个对话的检查点已关闭：它的文件夹在 mu 自己的文件夹里。在项目文件夹里开对话就有了。",
+      "tooManyFiles": "这个对话的检查点已关闭：它的文件夹里有超过 {{limit}} 个文件。在项目文件夹里开对话就有了。",
+      "tooManyBytes": "这个对话的检查点已关闭：它的文件夹里的文件超过 {{limitMb}} MB。在项目文件夹里开对话就有了。",
+      "tooSlow": "这个对话的检查点已关闭：列出它文件夹里的文件用了超过 {{seconds}} 秒。在项目文件夹里开对话就有了。"
+    },
+    "stopped": "你停止了这次回复。",
     "answerLost": "mu 没有收到你的回答，已按不同意处理。",
     "bashMissing": "mu 运行命令需要 Git for Windows，安装好后重新发送消息即可。下载地址："
   },
@@ -783,5 +835,34 @@
       "earlier_other": "更早的 {{count}} 段没有显示。",
       "empty": "没有可显示的内容。"
     }
+  },
+  "commands": {
+    "frame": "任务帧：目标、你的硬约束（原话加出处）、当前子目标、验收条件",
+    "remember": "给这个项目记一条经验，以后的会话都会用上：/remember <该怎么做>",
+    "lessons": "这个项目的经验：/lessons 列出 id · 类型 · 召回/照做次数 · 经验，/lessons all 连到处适用的和已退役的一起列",
+    "forget": "让一条经验退役，以后不再召回：/forget <id 前几位>（id 见 /lessons）",
+    "capabilities": "装了哪些能力、这次打开了哪些：/capabilities 查看，/capabilities open <ID> 打开",
+    "permissions": "mu 不问你就能做多少事：/permissions full（完全访问）| jev（Jev 审批）| ask（最小权限），不带参数就弹出选择；/permissions reset 忘掉这次对话里允许过的操作",
+    "lsp": "语言服务器：装了哪些、哪些在运行、最近一次出错",
+    "goal": "目标模式：让代理一直干到某个条件成立。/goal <条件> 设定，/goal 查看（没有时会问你），/goal clear 结束",
+    "board": "人话看板：/board 查看，/board on、/board off 为这个项目打开或关闭，/board model 换个模型来讲",
+    "checkpoints": "这次对话的检查点：第几回合、什么时间、之后改了哪些文件",
+    "rewind": "回到一个检查点：/rewind [序号] [both|files|conversation]，/rewind undo 撤销回退；both 文件和对话都退，files 只退文件，conversation 只退对话",
+    "swarm": "正在干活的子代理：/swarm 看每个在做什么，/swarm stop [名字] 让它现在交报告，/swarm kill [名字] 立刻结束它",
+    "agents": "列出 delegate 工具能用的子代理角色，以及在哪里加你自己的",
+    "hive": "让几个调查员同时查一个问题：/hive <问题>；不带问题时同 /swarm，看正在干活的子代理",
+    "browse": "让内置浏览器打开网址，照你说的去做：/browse <网址> [要做的事]",
+    "inherit": "mu 从 Claude Code、Cursor 和 Codex 沿用了什么，各来自哪个文件",
+    "mcp": "MCP 服务器：/mcp 查看，/mcp open <ID> 打开，/mcp restart <ID> 重启",
+    "jobs": "后台命令：/jobs 查看，/jobs stop <编号|all> 停掉",
+    "commit": "把还没提交的改动拆成几个提交：先给你看计划，你同意才提交，从不推送",
+    "review": "让评审子代理审查还没提交的改动（或你指定的内容），评审发现按轻重排成 P0 到 P3",
+    "mu": "mu 的状态。另外：/mu judge <判定器> | /mu route <判定点> <判定器|default> | /mu mode <判定点|default> <off|shadow|active>",
+    "status": "模型、判定器、各判定点的模式、省下的上下文和最近的判定",
+    "help": "mu 能做什么，以及常用命令一览",
+    "ledger": "判定器最近的判定和用时：/ledger [条数]",
+    "doctor": "检查判定器、模型、浏览器和子代理有没有接好",
+    "import-chat": "导入这个项目在 Claude Code 或 Codex 里的对话，接着在这里聊：/import-chat [文件]",
+    "llama": "管理 llama.cpp 路由器上的模型"
   }
 }

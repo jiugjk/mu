@@ -55,11 +55,39 @@
   color: var(--text-secondary);
   font: 12px/1.6 var(--font-mono);
 }
+/* A path keeps its own name: the folders before it give way first. Paths read left to right in every language. */
+.pathPreview {
+  display: flex;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+.pathHead {
+  flex: 0 100000 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pathTail {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* A failed step says what went wrong where it stands, with no click and no box. */
 .callError {
   margin: 0 8px 4px 32px;
   color: var(--danger);
   font: 12px/1.6 var(--font-mono);
+  overflow-wrap: anywhere;
+}
+/* A step the person said no to: it did not run, which is no failure. Said quietly, in words. */
+.callDenied {
+  margin: 0 8px 4px 32px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
   overflow-wrap: anywhere;
 }
 .breathing :global(.arco-badge-status-dot) {
@@ -124,6 +152,16 @@
   white-space: nowrap;
   color: var(--danger);
   font: 12px/1.6 var(--font-mono);
+}
+.activityDeniedLine {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 /* ── an opened call ──────────────────────────────────────────────────────── */

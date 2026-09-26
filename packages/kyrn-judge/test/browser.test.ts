@@ -216,7 +216,11 @@ describe.skipIf(!findChrome())("runBrowserTask (real Chrome, local fixture)", ()
 				chrome = await launchChrome({ profileDir });
 				break;
 			} catch (error) {
-				rmSync(profileDir, { recursive: true, force: true });
+				// The next try gets a fresh folder. One still held on Windows (Chrome's helper processes outlive it for a
+				// moment) is left behind rather than failing the run in place of the error it came from.
+				try {
+					rmSync(profileDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+				} catch {}
 				if (attempt === 3 || codeOf(error)?.code !== "devtools_port_timeout") throw error;
 			}
 		}

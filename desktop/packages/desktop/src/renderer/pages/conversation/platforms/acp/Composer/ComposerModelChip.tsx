@@ -61,7 +61,10 @@ const ComposerModelChip: React.FC<{
   const setting = setStatus.state === 'setting';
   const disabled = busy || setting || isConfigOptionBlocked(model.id);
   const current = model.options.find((option) => option.value === model.currentValue);
-  const modelLabel = current?.label || model.currentValue || t('common.defaultModel');
+  // mu without a model reports none (older conversations: pi's placeholder `unknown/unknown`). The chip says so, with
+  // no thinking level, and opens the list to pick one.
+  const noModel = !model.currentValue || model.currentValue === 'unknown/unknown';
+  const modelLabel = noModel ? t('mu.noModel.chip') : current?.label || model.currentValue || t('common.defaultModel');
 
   const pick = (value: string, level?: string) => {
     setVisible(false);
@@ -83,11 +86,15 @@ const ComposerModelChip: React.FC<{
   });
 
   const pill = (
-    <span data-testid='composer-model-chip' data-model={model.currentValue ?? ''} className='inline-flex min-w-0'>
+    <span
+      data-testid='composer-model-chip'
+      data-model={noModel ? '' : model.currentValue}
+      className='inline-flex min-w-0'
+    >
       <RuntimeSelectorPill
         testId='composer-model-pill'
         className='sendbox-model-btn agent-mode-compact-pill'
-        label={composeRuntimeSelectorLabel({ t, modelLabel, thoughtLevel })}
+        label={noModel ? modelLabel : composeRuntimeSelectorLabel({ t, modelLabel, thoughtLevel })}
         leading={<Brain theme='outline' size='14' fill={iconColors.secondary} className='shrink-0' />}
         trailing={<Down size={12} className='text-t-tertiary shrink-0' />}
         loading={setting}

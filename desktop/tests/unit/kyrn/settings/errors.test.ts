@@ -295,7 +295,7 @@ describe('the words a screen shows for a code', () => {
     expect(word('stale').text).toMatch(/^Another program/);
     await i18n.changeLanguage('zh-CN');
     expect(muErrorText(t, 'zh-CN', { code: 'sharedKey', params: params.sharedKey, message: '' }).text).toBe(
-      'a.b和a-b 会共用同一个密钥变量，请修改其中一个 ID。'
+      'a.b 和 a-b 会共用同一个密钥变量，请修改其中一个 ID。'
     );
     expect(
       muErrorText(t, 'zh-CN', { code: 'optionValue', params: params.optionValue, message: '' }, manifest).text

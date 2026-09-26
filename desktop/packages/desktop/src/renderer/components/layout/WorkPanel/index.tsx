@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button } from '@arco-design/web-react';
 import { useTranslation } from 'react-i18next';
 import { useCurrentConversation } from '@/renderer/pages/conversation/explorer/currentConversationStore';
@@ -14,58 +14,16 @@ import { KernelBody, useKyrnActivity, type KernelTab } from '@/renderer/pages/co
 import { PreviewPanel, usePreviewContext } from '@/renderer/pages/conversation/Preview';
 import BrowserPanel from '@/renderer/pages/conversation/Preview/browser/BrowserPanel';
 import { setBrowserMaximized, useBrowserMaximized } from '@/renderer/pages/conversation/Preview/browser/browserStore';
+import { panelGeometry } from './panelGeometry';
 import { useWorkPanel } from './useWorkPanel';
 import WorkPanelTabs, { workPanelBodyId, workPanelTabId } from './WorkPanelTabs';
 import { WORK_PANEL_DEFAULT_WIDTH, WORK_PANEL_MIN_WIDTH, type WorkPanelTab } from './workPanelStore';
 import styles from './WorkPanel.module.css';
 
-/**
- * The transcript keeps at least this much of the row while the panel sits beside it: the app's minimum content width
- * (`--app-min-width`, which the route content keeps too), about a phone's. Its lines stay readable and the composer
- * stays whole: its toolbar wraps and its chips give up label width before anything is hidden.
- */
-export const MIN_TRANSCRIPT_PX = 360;
-/** The panel takes at most this share of the window. */
-const MAX_WINDOW_SHARE = 0.6;
-/** The panel's hairline edge, drawn outside its width. */
-const EDGE_PX = 1;
-/** The mobile sheet: most of the screen, capped. */
-const SHEET_SHARE = 0.85;
-const SHEET_MAX_PX = 420;
+export { MIN_TRANSCRIPT_PX, panelGeometry } from './panelGeometry';
+
 /** One arrow key press on the resize handle. */
 const KEY_STEP_PX = 16;
-/**
- * What a floating panel leaves uncovered at the bottom of the row: the plan bar, the composer and what sits on it
- * (the queue, the working line). The chat pages mark these with `data-composer-zone`; any send box counts too.
- */
-const COMPOSER_ZONE = '[data-composer-zone], .sendbox-panel';
-/** The gap between a floating panel's bottom edge and the composer. */
-const COMPOSER_GAP_PX = 8;
-
-/**
- * Where the panel sits and how wide it is. Beside the transcript (`dock`) while both fit: at least 270px for the
- * panel, at most 60% of the window, and 360px left for the transcript, which shrinks rather than being covered. A
- * window too narrow for that shows the panel over the transcript (`float`), above the composer, and a phone as a
- * sheet from the side (`sheet`).
- */
-export function panelGeometry(
-  rowWidth: number,
-  viewportWidth: number,
-  isMobile: boolean,
-  wanted: number
-): { mode: 'dock' | 'float' | 'sheet'; width: number; max: number } {
-  if (isMobile) {
-    const width = Math.min(viewportWidth, SHEET_MAX_PX, Math.max(WORK_PANEL_MIN_WIDTH, viewportWidth * SHEET_SHARE));
-    return { mode: 'sheet', width: Math.round(width), max: Math.round(width) };
-  }
-  const byWindow = Math.floor(viewportWidth * MAX_WINDOW_SHARE);
-  const inFlow = rowWidth > 0 ? Math.min(byWindow, rowWidth - MIN_TRANSCRIPT_PX - EDGE_PX) : byWindow;
-  if (inFlow >= WORK_PANEL_MIN_WIDTH) {
-    return { mode: 'dock', max: inFlow, width: Math.min(inFlow, Math.max(WORK_PANEL_MIN_WIDTH, wanted)) };
-  }
-  const max = Math.min(Math.max(WORK_PANEL_MIN_WIDTH, byWindow), rowWidth > 0 ? rowWidth - EDGE_PX : Infinity);
-  return { mode: 'float', max, width: Math.min(max, Math.max(WORK_PANEL_MIN_WIDTH, wanted)) };
-}
 
 const useViewportWidth = (): number => {
   const [width, setWidth] = useState(() => (typeof window === 'undefined' ? 1280 : window.innerWidth));
@@ -76,61 +34,6 @@ const useViewportWidth = (): number => {
   }, []);
   return width;
 };
-
-/**
- * How far a floating panel stops above the row's bottom so that it never covers the composer: the distance from the
- * top of the composer zone to the bottom of the row, plus a small gap. It follows the composer growing (a second
- * line, an attachment, the working line) and coming and going (another page); 0 while inactive or with no composer.
- */
-function useComposerClearance(host: React.RefObject<HTMLElement | null>, active: boolean): number {
-  const [clearance, setClearance] = useState(0);
-  useEffect(() => {
-    const row = host.current?.parentElement;
-    if (!active || !row) {
-      setClearance(0);
-      return undefined;
-    }
-    let frame = 0;
-    let sizes: ResizeObserver | null = null;
-    const watched = new Set<Element>();
-    const measure = () => {
-      frame = 0;
-      const zones = Array.from(row.querySelectorAll(COMPOSER_ZONE));
-      for (const zone of watched) {
-        if (!zones.includes(zone)) {
-          sizes?.unobserve(zone);
-          watched.delete(zone);
-        }
-      }
-      let top = Infinity;
-      for (const zone of zones) {
-        if (!watched.has(zone)) {
-          sizes?.observe(zone);
-          watched.add(zone);
-        }
-        const rect = zone.getBoundingClientRect();
-        if (rect.height > 0) top = Math.min(top, rect.top);
-      }
-      const bottom = row.getBoundingClientRect().bottom;
-      setClearance(top < bottom ? Math.ceil(bottom - top) + COMPOSER_GAP_PX : 0);
-    };
-    const schedule = () => {
-      if (!frame) frame = requestAnimationFrame(measure);
-    };
-    sizes = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
-    measure();
-    const mutations = new MutationObserver(schedule);
-    mutations.observe(row, { childList: true, subtree: true });
-    window.addEventListener('resize', schedule);
-    return () => {
-      if (frame) cancelAnimationFrame(frame);
-      mutations.disconnect();
-      sizes?.disconnect();
-      window.removeEventListener('resize', schedule);
-    };
-  }, [host, active]);
-  return clearance;
-}
 
 /**
  * The drag handle between the transcript and the panel. It follows the pointer frame by frame and remembers the
@@ -265,16 +168,13 @@ export default function WorkPanelHost({ rowWidth, isMobile }: { rowWidth: number
   const [live, setLive] = useState<number | null>(null);
   const geometry = panelGeometry(rowWidth, viewportWidth, isMobile, live ?? memory.width);
   const { open, tab: active } = memory;
-  const hostRef = useRef<HTMLElement>(null);
-  // The preview and the browser can each fill the page (the transcript hidden), each by its own button.
+  // Too narrow for both: the panel has the row, and the Layout sets the transcript aside until it closes.
+  const fill = open && geometry.mode === 'fill';
+  // Docked, the preview and the browser can each fill the page (the transcript hidden), each by its own button.
   const maximized =
     open &&
-    geometry.mode !== 'sheet' &&
+    geometry.mode === 'dock' &&
     ((active === 'preview' && isMaximized) || (active === 'browser' && browserMaximized));
-  const clearance = useComposerClearance(
-    hostRef,
-    Boolean(conversationId) && geometry.mode === 'float' && open && !maximized
-  );
   // 文件 and 源码 are one explorer: it keeps the view last asked for while another tab is shown.
   const [explorerView, setExplorerView] = useState<ExplorerView>('files');
   const wantedView: ExplorerView = active === 'source' ? 'changes' : active === 'files' ? 'files' : explorerView;
@@ -309,25 +209,28 @@ export default function WorkPanelHost({ rowWidth, isMobile }: { rowWidth: number
         <div className={styles.backdrop} onClick={close} aria-hidden='true' />
       ) : null}
       <aside
-        ref={hostRef}
         className={styles.host}
         data-testid='work-panel'
         data-mode={geometry.mode}
         data-open={open ? 'true' : 'false'}
         data-maximized={maximized ? 'true' : undefined}
-        data-lifted={clearance > 0 ? 'true' : undefined}
         aria-label={t('common.workPanel.label')}
         inert={!open}
         style={{
-          width: maximized ? undefined : open || geometry.mode === 'sheet' ? geometry.width : 0,
-          bottom: clearance > 0 ? clearance : undefined,
+          width: maximized || fill ? undefined : open || geometry.mode === 'sheet' ? geometry.width : 0,
         }}
       >
-        {open && geometry.mode !== 'sheet' && !maximized ? (
+        {open && geometry.mode === 'dock' && !maximized ? (
           <ResizeHandle width={geometry.width} max={geometry.max} onLive={setLive} onCommit={resize} />
         ) : null}
-        <div className={styles.frame} style={{ width: maximized ? '100%' : geometry.width }}>
-          <WorkPanelTabs active={active} unread={unread} onSelect={select} onClose={close} />
+        <div className={styles.frame} style={{ width: maximized || fill ? '100%' : geometry.width }}>
+          <WorkPanelTabs
+            active={active}
+            unread={unread}
+            onSelect={select}
+            onClose={close}
+            onBack={fill ? close : undefined}
+          />
           <div className={styles.bodies}>
             {KERNEL_TABS.map((tab) =>
               body(
@@ -366,7 +269,7 @@ export default function WorkPanelHost({ rowWidth, isMobile }: { rowWidth: number
               'browser',
               <BrowserPanel
                 maximized={maximized}
-                onToggleMaximize={geometry.mode === 'sheet' ? undefined : () => setBrowserMaximized(!browserMaximized)}
+                onToggleMaximize={geometry.mode === 'dock' ? () => setBrowserMaximized(!browserMaximized) : undefined}
               />
             )}
           </div>

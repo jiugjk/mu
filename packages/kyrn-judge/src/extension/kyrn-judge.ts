@@ -60,6 +60,7 @@ import { registerWarmup } from "./features/warmup.ts";
 import { registerWeb } from "./features/web.ts";
 import { registerWelcome } from "./features/welcome.ts";
 import type { PresentationListener } from "./presentation.ts";
+import { registerLockSafeQuit } from "./quit.ts";
 import { registerRejectionLog } from "./rejections.ts";
 import { KyrnRuntime, recentTurnDigests } from "./runtime.ts";
 
@@ -174,6 +175,7 @@ function registerKyrn(pi: ExtensionAPI, options: KyrnJudgeExtensionOptions): voi
 		if (!options.only || options.only.includes("permissions")) registerPermissions(runtime, roots);
 		registerCommands(runtime, roots);
 		registerImport(pi);
+		if (roots) registerLockSafeQuit(pi, roots.agentDir);
 		return;
 	}
 
@@ -229,4 +231,5 @@ function registerKyrn(pi: ExtensionAPI, options: KyrnJudgeExtensionOptions): voi
 	}
 	registerCommands(runtime, roots);
 	registerImport(pi);
+	if (roots) registerLockSafeQuit(pi, roots.agentDir);
 }

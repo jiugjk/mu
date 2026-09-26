@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import React from 'react';
 import GuidActionRow from '@/renderer/pages/guid/components/GuidActionRow';
@@ -194,6 +194,16 @@ describe('GuidActionRow skill/MCP submenu search', () => {
     fireEvent.click(screen.getByTestId('attach'));
 
     await waitFor(() => expect(onFilesPicked).toHaveBeenCalledWith(['/host/project/a.txt']));
+  });
+
+  it('names its icon buttons: the plus by what its menu adds (the sheet on a phone), the arrow as send', () => {
+    renderActionRow();
+    expect(screen.getByRole('button', { name: 'common.add' })).toHaveAttribute('data-testid', 'file-upload-btn');
+    expect(screen.getByRole('button', { name: 'common.send' })).toHaveAttribute('data-testid', 'guid-send-btn');
+    cleanup();
+    environment.isMobile = true;
+    renderActionRow();
+    expect(screen.getByRole('button', { name: 'common.more' })).toHaveAttribute('data-testid', 'file-upload-btn');
   });
 
   it('shows both search boxes when skills and MCP servers exceed the threshold', () => {

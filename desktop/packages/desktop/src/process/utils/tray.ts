@@ -79,6 +79,13 @@ export const toggleMainWindowFromTray = (): void => {
   }
 };
 
+/**
+ * The menu item that hides the window: a Mac has no tray, its icon sits in the menu bar, so the item says so there.
+ * Exported for unit tests.
+ */
+export const hideItemLabelKey = (platform: NodeJS.Platform): 'common.tray.hideToMenuBar' | 'common.tray.closeToTray' =>
+  platform === 'darwin' ? 'common.tray.hideToMenuBar' : 'common.tray.closeToTray';
+
 /** Room for a chat title in the tray menu, in columns: a CJK or emoji character takes two, others one. */
 const TRAY_TITLE_MAX_COLUMNS = 32;
 
@@ -157,7 +164,7 @@ const buildTrayContextMenu = async (): Promise<Electron.Menu> => {
       click: showAndFocusMainWindow,
     },
     {
-      label: i18n.t('common.tray.closeToTray'),
+      label: i18n.t(hideItemLabelKey(process.platform)),
       click: hideMainWindowToTray,
     },
     { type: 'separator' },

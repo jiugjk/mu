@@ -31,7 +31,8 @@
     "executing": "En cours",
     "success": "Succès",
     "error": "Erreur",
-    "canceled": "Annulé"
+    "canceled": "Annulé",
+    "denied": "Non autorisé"
   },
   "titles": {
     "web_search_started": "Recherche web démarrée",
@@ -75,6 +76,7 @@
     "loadError": "Impossible de charger la sortie complète.",
     "retry": "Réessayer",
     "callAria": "{{name}} · {{status}}",
+    "denied": "Non exécuté : vous ne l’avez pas autorisé.",
     "showMore": "Afficher plus",
     "showLess": "Afficher moins"
   },

@@ -31,7 +31,8 @@
     "executing": "执行中",
     "success": "成功",
     "error": "错误",
-    "canceled": "已取消"
+    "canceled": "已取消",
+    "denied": "未允许"
   },
   "titles": {
     "web_search_started": "网页搜索已开始",
@@ -75,6 +76,7 @@
     "loadError": "无法加载完整输出。",
     "retry": "重试",
     "callAria": "{{name}} · {{status}}",
+    "denied": "没有运行：你没有允许。",
     "showMore": "展开全部",
     "showLess": "收起"
   },

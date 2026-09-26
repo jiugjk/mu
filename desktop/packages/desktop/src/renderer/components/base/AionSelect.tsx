@@ -8,7 +8,7 @@ import { Select } from '@arco-design/web-react';
 import type { SelectProps } from '@arco-design/web-react';
 import type { SelectHandle } from '@arco-design/web-react/es/Select/interface';
 import classNames from 'classnames';
-import React from 'react';
+import React, { useEffect, useImperativeHandle, useRef } from 'react';
 
 /**
  * 自定义下拉选择组件属性 / Custom select component props
@@ -113,9 +113,19 @@ type AionSelectComponent = React.ForwardRefExoticComponent<AionSelectProps & Rea
 const InternalSelect = React.forwardRef<SelectHandle, AionSelectProps>(
   ({ className, getPopupContainer, size = 'middle', ...rest }, ref) => {
     const normalizedSize = mapSizeToNative(size);
+    const select = useRef<SelectHandle>(null);
+    useImperativeHandle(ref, () => select.current as SelectHandle);
+    // In multiple mode the field that takes the focus is Arco's typing input among the tags, which has no name of its
+    // own: it gets the select's, so a screen reader says what the field picks. (JSX passes aria-* to any component
+    // without it being a declared prop, hence the cast.)
+    const label = (rest as { 'aria-label'?: string })['aria-label'];
+    const multiple = rest.mode === 'multiple';
+    useEffect(() => {
+      if (multiple && label) select.current?.dom?.querySelector('input')?.setAttribute('aria-label', label);
+    });
     return (
       <Select
-        ref={ref}
+        ref={select}
         size={normalizedSize}
         className={classNames(BASE_CLASS, className)}
         getPopupContainer={getPopupContainer || defaultGetPopupContainer}

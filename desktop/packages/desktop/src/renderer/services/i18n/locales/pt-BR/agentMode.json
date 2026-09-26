@@ -14,9 +14,17 @@
   "bypassPermissions": "YOLO",
   "smart": "Inteligente",
   "build": "Modo de Construção",
+  "full": "Acesso total",
+  "jev": "O Jev aprova",
+  "ask": "Permissões mínimas",
   "permission": "Permissão",
   "switchMode": "Modo de Permissão",
   "switchSuccess": "Modo alternado com sucesso",
   "switchPendingNextTurn": "Entra em vigor no próximo turno",
-  "switchFailed": "Falha ao alternar modo"
+  "switchFailed": "Falha ao alternar modo",
+  "descriptions": {
+    "full": "Executa tudo sem perguntar. O que você disse para não fazer continua bloqueado.",
+    "jev": "Leituras e edições no projeto seguem direto; o Jev aprova por você comandos, mudanças fora do projeto e ações externas, e só pergunta quando não tem certeza.",
+    "ask": "Só a leitura segue direto; toda edição, comando ou ação externa pergunta a você primeiro."
+  }
 }

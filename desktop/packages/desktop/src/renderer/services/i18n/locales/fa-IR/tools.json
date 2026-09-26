@@ -31,7 +31,8 @@
     "executing": "در حال اجرا",
     "success": "موفقیت",
     "error": "خطا",
-    "canceled": "لغو شده"
+    "canceled": "لغو شده",
+    "denied": "اجازه داده نشد"
   },
   "titles": {
     "web_search_started": "جستجوی وب شروع شد",
@@ -75,6 +76,7 @@
     "loadError": "خروجی کامل بارگیری نشد.",
     "retry": "تلاش دوباره",
     "callAria": "{{name}} · {{status}}",
+    "denied": "اجرا نشد: شما اجازه ندادید.",
     "showMore": "نمایش بیشتر",
     "showLess": "نمایش کمتر"
   },

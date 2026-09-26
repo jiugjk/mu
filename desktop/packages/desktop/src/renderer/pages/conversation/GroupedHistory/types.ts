@@ -57,6 +57,11 @@ export type ConversationRowProps = {
   checked: boolean;
   selected: boolean;
   menuVisible: boolean;
+  /**
+   * The row's place in the Tab order: 0 for the one row of the sidebar's list that Tab reaches, -1 for the others,
+   * which the arrow keys reach (`useRovingRows`). A row on its own is a stop.
+   */
+  tabIndex?: number;
   onToggleChecked: (conversation: TChatConversation) => void;
   onConversationClick: (conversation: TChatConversation) => void;
   onOpenMenu: (conversation: TChatConversation) => void;

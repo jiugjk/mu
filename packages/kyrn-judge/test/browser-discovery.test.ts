@@ -1,3 +1,6 @@
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	type BrowserHost,
@@ -220,6 +223,34 @@ describe("finding a browser under WSL", () => {
 			coded: { code: "no_browser", params: { platform: "linux", wsl: 1 } },
 		});
 	});
+});
+
+describe("a browser that does not come up", () => {
+	// A shell script stands in for Chrome: it never opens a DevTools port, and when it is ended it takes a moment to go.
+	it.skipIf(process.platform === "win32")(
+		"is ended and waited for before the timeout is reported, so the next start does not meet it in its profile",
+		async () => {
+			const dir = mkdtempSync(join(tmpdir(), "mu-chrome-port-"));
+			try {
+				const gone = join(dir, "gone");
+				const browser = join(dir, "browser");
+				writeFileSync(
+					browser,
+					`#!/bin/sh\ntrap 'sleep 0.3; echo gone > "${gone}"; exit 0' TERM\nwhile :; do sleep 0.1; done\n`,
+					{ mode: 0o755 },
+				);
+				const failure = await launchChrome({
+					executable: browser,
+					profileDir: join(dir, "profile"),
+					portWaitMs: 300,
+				}).catch((error: unknown) => error);
+				expect(failure).toMatchObject({ coded: { code: "devtools_port_timeout" } });
+				expect(existsSync(gone)).toBe(true);
+			} finally {
+				rmSync(dir, { recursive: true, force: true });
+			}
+		},
+	);
 });
 
 describe("telling the platforms apart, and their paths", () => {

@@ -26,6 +26,7 @@ async function ready(container: HTMLElement) {
     return true;
   });
   view.getWebContentsId = () => 7;
+  view.loadURL = vi.fn(async () => undefined);
   view.canGoBack = () => false;
   view.canGoForward = () => false;
   view.setZoomFactor = () => undefined;
@@ -118,6 +119,53 @@ describe('the seam for an owner that draws the navigation itself (the in-app bro
     expect(calls).toEqual(['back', 'forward', 'reload', 'reload']);
 
     act(() => navigation.current?.go('https://other.test/'));
-    expect((view as unknown as { src: string }).src).toBe('https://other.test/');
+    expect(view.loadURL).toHaveBeenCalledTimes(1);
+    expect(view.loadURL).toHaveBeenCalledWith('https://other.test/');
+  });
+});
+
+// Electron loads whatever a webview's src is set to, even the address the page is already on. The page's own
+// address written back to src reloaded it after every redirect, every route change of a single-page app, and every
+// form it submitted (as a GET, losing a POST's result).
+describe('where the page goes, and where it is sent', () => {
+  it('follows the page where it goes by itself without loading it again', async () => {
+    const states: WebviewNavigationState[] = [];
+    const { container } = render(
+      <WebviewHost url='https://example.com/' onNavigationChange={(state) => states.push(state)} />
+    );
+    const { view } = await ready(container);
+    // A link or a redirect, then a route change inside a single-page app.
+    await act(async () => {
+      view.dispatchEvent(Object.assign(new Event('did-navigate'), { url: 'https://example.com/next' }));
+    });
+    expect(states.at(-1)?.url).toBe('https://example.com/next');
+    await act(async () => {
+      view.dispatchEvent(Object.assign(new Event('did-navigate-in-page'), { url: 'https://example.com/next/route' }));
+    });
+    expect(states.at(-1)?.url).toBe('https://example.com/next/route');
+    expect(view.getAttribute('src')).toBe('https://example.com/');
+    expect(view.loadURL).not.toHaveBeenCalled();
+  });
+
+  it('goes to an address asked for once, by loadURL, with src left alone', async () => {
+    const navigation = React.createRef<WebviewNavigation>();
+    const { container } = render(
+      <WebviewHost url='https://example.com/' onNavigationChange={() => {}} navigationRef={navigation} />
+    );
+    const { view } = await ready(container);
+    act(() => navigation.current?.go('https://other.test/'));
+    expect(view.loadURL).toHaveBeenCalledTimes(1);
+    expect(view.getAttribute('src')).toBe('https://example.com/');
+  });
+
+  it('loads an address its owner gives once: through src before the page is ready, by loadURL after', async () => {
+    const { container, rerender } = render(<WebviewHost url='https://example.com/' />);
+    rerender(<WebviewHost url='https://first.test/' />);
+    expect(container.querySelector('webview')?.getAttribute('src')).toBe('https://first.test/');
+    const { view } = await ready(container);
+    rerender(<WebviewHost url='https://second.test/' />);
+    expect(view.loadURL).toHaveBeenCalledTimes(1);
+    expect(view.loadURL).toHaveBeenCalledWith('https://second.test/');
+    expect(view.getAttribute('src')).toBe('https://first.test/');
   });
 });

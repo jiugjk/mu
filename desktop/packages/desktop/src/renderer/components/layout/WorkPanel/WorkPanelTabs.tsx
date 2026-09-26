@@ -6,7 +6,18 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Button, Tooltip } from '@arco-design/web-react';
-import { Bee, Brain, Browser, Close, Code, FolderOpen, Gavel, PreviewOpen, ViewGridDetail } from '@icon-park/react';
+import {
+  ArrowLeft,
+  Bee,
+  Brain,
+  Browser,
+  Close,
+  Code,
+  FolderOpen,
+  Gavel,
+  PreviewOpen,
+  ViewGridDetail,
+} from '@icon-park/react';
 import { useTranslation } from 'react-i18next';
 import { WORK_PANEL_TABS, type WorkPanelTab } from './workPanelStore';
 import styles from './WorkPanel.module.css';
@@ -65,18 +76,21 @@ function useLabelsFit(list: React.RefObject<HTMLDivElement | null>, labels: stri
  * The 40px strip: 看板 · 判定 · 蜂群 · 经验 · 文件 · 预览 · 源码 · 浏览器, then a close button. The open tab is underlined
  * in the one accent colour; a tab with news the person has not seen carries a small dot. Arrow keys move between
  * tabs. A panel too narrow for every label shows one icon per tab instead, each named by its tooltip, so no tab is
- * ever out of view.
+ * ever out of view. While the panel fills the row (the transcript set aside), the strip leads with a named way back
+ * to the conversation (`onBack`).
  */
 export default function WorkPanelTabs({
   active,
   unread,
   onSelect,
   onClose,
+  onBack,
 }: {
   active: WorkPanelTab;
   unread: ReadonlySet<WorkPanelTab>;
   onSelect: (tab: WorkPanelTab) => void;
   onClose: () => void;
+  onBack?: () => void;
 }) {
   const { t } = useTranslation();
   const list = useRef<HTMLDivElement>(null);
@@ -112,6 +126,18 @@ export default function WorkPanelTabs({
   };
   return (
     <div className={styles.strip}>
+      {onBack ? (
+        <Button
+          type='text'
+          size='mini'
+          className={styles.back}
+          icon={<ArrowLeft size={14} className='rtl-mirror' />}
+          onClick={onBack}
+          data-testid='work-panel-back'
+        >
+          {t('common.back')}
+        </Button>
+      ) : null}
       <div
         ref={list}
         role='tablist'

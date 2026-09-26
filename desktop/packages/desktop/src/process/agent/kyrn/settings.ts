@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
+import { CLM_DEFAULT_MODEL, CLM_KEY_VARIABLE } from '../../../common/kyrn/clm';
 import { KyrnError } from '../../../common/kyrn/errors';
 import { DECISION_MODES, type DecisionMode, type FeatureState } from '../../../common/kyrn/manifest';
 import type { Credential, JudgeSettings, JudgeType, KyrnSettings, SaveSettings } from '../../../common/kyrn/types';
@@ -30,17 +31,20 @@ const defaults: Record<string, Partial<JudgeSettings>> = {
   },
   'jev-gateway': { type: 'gateway', model: 'typesafe-ai/jev', apiKeyEnv: 'AI_GATEWAY_API_KEY' },
   laya: { type: 'local', baseUrl: 'http://127.0.0.1:47823' },
+  // CLM on a server of one's own; no address is clm-serve's default on this machine (common/kyrn/clm.ts).
+  clm: { type: 'clm', model: CLM_DEFAULT_MODEL, apiKeyEnv: CLM_KEY_VARIABLE },
   mock: { type: 'mock' },
 };
-const types = new Set(['jev', 'typesafe', 'gateway', 'local', 'http', 'llm', 'mock']);
+const types = new Set(['jev', 'typesafe', 'clm', 'gateway', 'local', 'http', 'llm', 'mock']);
 const modes = new Set<string>(DECISION_MODES);
 /** What a judge may name as its credential. A provider's key is deliberately not among them. */
 const variable = /^(?:TYPESAFE_API_KEY|AI_GATEWAY_API_KEY|(?:MU|KYRN)_JUDGE_[A-Z0-9_]+)$/;
 /**
- * Keys for Jev at a service other than TypeSafe. The harness refuses a System One judge keyed by one of them that has
- * no address of its own (KEYS_FOR_ELSEWHERE in kyrn-judge's registry), so such a key never goes to TypeSafe.
+ * Keys for a service other than TypeSafe: Jev on OpenRouter or at an address of one's own, and a CLM server. The
+ * harness refuses a System One judge keyed by one of them that has no address of its own (KEYS_FOR_ELSEWHERE in
+ * kyrn-judge's registry), so such a key never goes to TypeSafe.
  */
-const keysForElsewhere = new Set(['MU_JUDGE_OPENROUTER_API_KEY', 'MU_JUDGE_CUSTOM_API_KEY']);
+const keysForElsewhere = new Set(['MU_JUDGE_OPENROUTER_API_KEY', 'MU_JUDGE_CUSTOM_API_KEY', CLM_KEY_VARIABLE]);
 /** Keys of custom model providers, referenced from models.json as `"$MU_PROVIDER_<ID>_API_KEY"`. */
 const providerVariable = /^MU_PROVIDER_[A-Z0-9_]{1,80}_API_KEY$/;
 /** The .env is sourced by a shell (`kyrn/bin/mu`), so nothing a shell would interpret may get into a value. */

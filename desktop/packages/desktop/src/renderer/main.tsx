@@ -62,6 +62,7 @@ import { registerPwa } from './services/registerPwa';
 import { ipcBridge } from '@/common';
 import { repairAllCronJobTimeZonesOnce } from '@renderer/pages/cron/repairCronJobTimeZone';
 import { bootstrapRendererConfig } from '@renderer/services/bootstrapRenderer';
+import { ARCO_COMPONENT_CONFIG } from '@renderer/utils/ui/arcoComponentConfig';
 
 // Components and utilities
 import BackendStartingView from './components/layout/BackendStartingView';
@@ -264,7 +265,11 @@ const Config: React.FC<PropsWithChildren> = ({ children }) => {
 
   // No `theme` here: Arco writes a primaryColor inline on <body>, one value for both appearances. mu's primary,
   // per appearance, is in styles/themes/mu-arco.css.
-  return React.createElement(ConfigProvider, { locale: arcoLocale, rtl: isRtlLanguage(language) }, children);
+  return React.createElement(
+    ConfigProvider,
+    { locale: arcoLocale, rtl: isRtlLanguage(language), componentConfig: ARCO_COMPONENT_CONFIG },
+    children
+  );
 };
 
 const Main = () => {

@@ -1,12 +1,23 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Switch, Tooltip } from '@arco-design/web-react';
+import { Check } from '@icon-park/react';
 import classNames from 'classnames';
 import { useTranslation } from 'react-i18next';
 import type { Activity } from '@/common/kyrn/types';
 import { formatNumber } from '@/renderer/services/i18n/format';
 import { emitter, type SendBoxCommandState } from '@/renderer/utils/emitter';
 import Account from './Account';
-import { asksUser, boardAccount, boardView, share, type BoardNote, type BoardUpdate } from './board';
+import {
+  asksUser,
+  boardAccount,
+  boardState,
+  boardStateKey,
+  boardView,
+  share,
+  type BoardNote,
+  type BoardState,
+  type BoardUpdate,
+} from './board';
 import { noteWords } from './noteWords';
 import { boardWords, type BoardWords } from './wording';
 import styles from './Board.module.css';
@@ -105,12 +116,13 @@ export default function Board({ events, conversationId }: { events: Activity[]; 
   };
   const switching = pending !== undefined;
   // One paragraph per part, read with a pause between them in any language: the model's lines bring their own
-  // punctuation. A new board is read as its stage, what it does now and how far it is; a line, as its words.
+  // punctuation. A new board is read as its state, what it does now and how far it is; a line, as its words.
   const saidBoard = news && latest.said.board === news.id ? news : undefined;
+  const saidState = saidBoard ? boardState(saidBoard) : undefined;
   const said = on
     ? [
         ...(saidBoard && words
-          ? [saidBoard.phase ? t(`common.kyrn.boardView.phases.${saidBoard.phase}`) : '', words.now, words.progress]
+          ? [saidState ? t(`common.kyrn.boardView.${boardStateKey(saidState)}`) : '', words.now, words.progress]
           : []),
         ...account.filter((note) => latest.said.notes.includes(note.id)).map((note) => note.text),
       ].filter(Boolean)
@@ -172,12 +184,22 @@ function Off() {
 }
 
 /**
- * The latest board, top to bottom: the stage, what the agent does now (the main paragraph), how far it is, and
+ * A state's mark, never a colour: a dot while the agent works (hollow when it seems stuck), a tick when the run is
+ * done, a hollow dot when it waits for the person, a dash when it stopped.
+ */
+function stateMark(state: BoardState): 'dot' | 'hollow' | 'tick' | 'dash' {
+  if (state.ended === false) return state.phase === 'stuck' ? 'hollow' : 'dot';
+  return state.outcome === 'done' ? 'tick' : state.outcome === 'waiting' ? 'hollow' : 'dash';
+}
+
+/**
+ * The latest board, top to bottom: its state, what the agent does now (the main paragraph), how far it is, and
  * what it needs from the person, each item with its action. A new one (`fresh`) fades in.
  */
 function Current({ update, words, fresh }: { update: BoardUpdate; words: BoardWords; fresh: boolean }) {
   const { t, i18n } = useTranslation();
   const part = share(update);
+  const state = boardState(update);
   const checks = t('common.kyrn.boardView.checks', {
     done: formatNumber(update.done, i18n.language),
     total: formatNumber(update.total, i18n.language),
@@ -185,18 +207,22 @@ function Current({ update, words, fresh }: { update: BoardUpdate; words: BoardWo
   });
   const quote = (item: string) =>
     emitter.emit('sendbox.reply', { messageId: `mu-board:${update.id}`, content: item, position: 'left' });
+  const mark = state ? stateMark(state) : undefined;
   const marks = [
-    update.phase ? (
+    // One state only: a working run's stage, or how a run that stopped ended.
+    state ? (
       <span
-        key='phase'
-        className={classNames(styles.phase, update.phase === 'stuck' && styles.stuck)}
-        data-testid='mu-board-phase'
+        key='state'
+        className={styles.state}
+        data-testid='mu-board-state'
+        data-state={state.ended ? state.outcome : 'working'}
       >
-        <span className={styles.phaseDot} aria-hidden='true' />
-        {t(`common.kyrn.boardView.phases.${update.phase}`)}
+        <span className={styles.stateMark} data-mark={mark} aria-hidden='true'>
+          {mark === 'tick' ? <Check size={11} strokeWidth={4} /> : null}
+        </span>
+        {t(`common.kyrn.boardView.${boardStateKey(state)}`)}
       </span>
     ) : null,
-    update.ended ? <span key='ended'>{t('common.kyrn.boardView.ended')}</span> : null,
     update.by === 'rules' ? (
       <Tooltip key='brief' content={t('common.kyrn.boardView.briefHelp')}>
         <span className={styles.brief}>{t('common.kyrn.boardView.brief')}</span>

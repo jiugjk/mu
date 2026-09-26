@@ -36,8 +36,9 @@ describe('Appearance page', () => {
     render(<AppearanceModalContent />);
     const row = screen.getByTestId('appearance-language');
     expect(within(row).getByText('settings.language')).toBeInTheDocument();
-    // The switch shows the language in its own name.
+    // The switch shows the language in its own name, and says what it picks.
     expect(within(row).getByText('English')).toBeInTheDocument();
+    expect(within(row).getByRole('combobox', { name: 'settings.language' })).toBeInTheDocument();
     // It comes before the theme gallery.
     const theme = screen.getByText('settings.theme');
     expect(row.compareDocumentPosition(theme) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

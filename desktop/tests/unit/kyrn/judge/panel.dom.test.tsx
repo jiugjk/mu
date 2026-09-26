@@ -383,7 +383,7 @@ describe('a judgment, opened', () => {
     const [skills, preflight] = cards().map((card) => within(card));
     expect(preflight.getByText(`原因：${zh.values.error} · ${zh.values.timeout}`)).toBeInTheDocument();
     expect(preflight.getByText(`思考强度：${zhMu.levels.medium} → ${zhMu.levels.xhigh}`)).toBeInTheDocument();
-    expect(skills.getByText(zh.fields.relevant).parentElement).toHaveTextContent('git、deploy和docs');
+    expect(skills.getByText(zh.fields.relevant).parentElement).toHaveTextContent('git、deploy 和 docs');
   });
 
   it('says the preflight’s hints, answers and reason in the app language by their codes', async () => {
@@ -774,6 +774,21 @@ describe('the judge log', () => {
     rerender([...later, event('ttsr.interrupted', { text: 'rule 10' })]);
     expect(scroller.scrollTop).toBe(bottom());
     expect(screen.queryByText(copy.log.latest)).not.toBeInTheDocument();
+  });
+
+  it('says the same line many times in a row once, with a count, and an opened line stays open as it grows', () => {
+    const look = () => event('ttsr.interrupted', { text: 'rule a' });
+    const before = [event('mcp.failed', { name: 'github', code: 'timeout', reason: 'no answer' }), look(), look()];
+    const { rerender } = showLog(before);
+    expect(lines()).toHaveLength(2);
+    expect(within(lines()[0]).queryByTestId('judge-line-count')).not.toBeInTheDocument();
+    expect(within(lines()[1]).getByTestId('judge-line-count')).toHaveTextContent('×2');
+
+    fireEvent.click(within(lines()[1]).getByRole('button'));
+    rerender([...before, look()]);
+    expect(lines()).toHaveLength(2);
+    expect(within(lines()[1]).getByTestId('judge-line-count')).toHaveTextContent('×3');
+    expect(within(lines()[1]).getByRole('button')).toHaveAttribute('aria-expanded', 'true');
   });
 
   it('shows the preflight’s hints as short chips after its verdict, and an unknown hint by its code', () => {

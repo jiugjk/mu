@@ -9,6 +9,7 @@ import mu from '@/renderer/services/i18n/locales/en-US/mu.json';
 import { emitter } from '@/renderer/utils/emitter';
 import ImportChatsModal from '@/renderer/pages/settings/SystemSettings/ImportChats/ImportChatsModal';
 import ImportedChatNotice from '@/renderer/pages/conversation/platforms/acp/ImportedChat';
+import ImportedHistoryModal from '@/renderer/pages/conversation/platforms/acp/ImportedChat/ImportedHistoryModal';
 
 type Answer<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -28,6 +29,8 @@ vi.mock('@/common/kyrn/bridge', () => ({
   },
 }));
 vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }));
+// The dialog frame (AionModal) sizes itself by the font scale.
+vi.mock('@/renderer/hooks/context/ThemeContext', () => ({ useThemeContext: () => ({ fontScale: 1 }) }));
 vi.mock('@arco-design/web-react', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@arco-design/web-react')>();
   const toast = (kind: string) => (text: string) => {
@@ -180,9 +183,43 @@ describe('the import dialog', () => {
     render(<Dialog />);
     await settle();
     expect(screen.getByRole('alert').textContent).toContain('mu import did not start');
+    expect(screen.queryByPlaceholderText('Search by words or folder')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     await settle();
     expect(screen.getAllByTestId('import-chat-row')).toHaveLength(3);
+  });
+
+  it('is framed as the settings dialogs are: the title at the start and a close button', async () => {
+    const onClose = vi.fn();
+    render(<Dialog onClose={onClose} />);
+    await settle();
+    const title = screen.getByRole('heading', { name: 'Import conversations' });
+    expect(title.closest('.arco-modal')?.classList.contains('aionui-modal-standard')).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('shows a search box only once there is something to search', async () => {
+    const answers: ((result: Answer<ImportList>) => void)[] = [];
+    list.mockReturnValueOnce(new Promise((done) => answers.push(done)));
+    render(<Dialog />);
+    await settle();
+    expect(screen.getByText('Looking for conversations…')).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Search by words or folder')).toBeNull();
+    await act(async () => answers[0]({ ok: true, data: { conversations: found } }));
+    expect(screen.getByPlaceholderText('Search by words or folder')).toBeInTheDocument();
+  });
+
+  it('says nothing was found on the line where the description starts, with no search box', async () => {
+    list.mockResolvedValue({ ok: true, data: { conversations: [] } });
+    render(<Dialog />);
+    await settle();
+    const empty = screen.getByText('No Claude Code or Codex conversations were found on this computer.');
+    const hint = screen.getByText(/Each conversation you choose becomes a mu conversation/);
+    // Both in the dialog's one column, the empty line not in the list that reaches past it.
+    expect(empty.parentElement).toBe(hint.parentElement);
+    expect(screen.queryByTestId('import-chats-list')).toBeNull();
+    expect(screen.queryByPlaceholderText('Search by words or folder')).toBeNull();
   });
 });
 
@@ -230,5 +267,23 @@ describe('an imported conversation', () => {
     expect(steps[2].textContent).toContain('Claude Code');
     expect(steps[2].textContent).toContain('Used: Bash ×2 and Edit');
     expect(screen.getByText('2 earlier steps are not shown.')).toBeInTheDocument();
+  });
+
+  it('reads it back in a dialog framed as the settings dialogs are: the title at the start and a close button', async () => {
+    history.mockResolvedValue({
+      ok: true,
+      data: { tool: 'claude-code', source: '/t/0001.jsonl', earlier: 0, items: [{ kind: 'user', text: 'Hello' }] },
+    });
+    const onClose = vi.fn();
+    render(
+      <I18nextProvider i18n={i18n}>
+        <ImportedHistoryModal conversationId='conv-1' tool='Claude Code' visible onClose={onClose} />
+      </I18nextProvider>
+    );
+    await settle();
+    const title = screen.getByRole('heading', { name: 'Earlier, in Claude Code' });
+    expect(title.closest('.arco-modal')?.classList.contains('aionui-modal-standard')).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(onClose).toHaveBeenCalled();
   });
 });

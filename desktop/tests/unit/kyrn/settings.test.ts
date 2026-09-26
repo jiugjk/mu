@@ -3,7 +3,11 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, renameSync, rmSync, s
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SettingsStore } from '../../../packages/desktop/src/process/agent/kyrn/settings';
-import { initializeKyrn, type BackendRequest } from '../../../packages/desktop/src/process/agent/kyrn/product';
+import {
+  initializeKyrn,
+  recheckKyrn,
+  type BackendRequest,
+} from '../../../packages/desktop/src/process/agent/kyrn/product';
 import { configPath, muEnv, muHome } from '../../../packages/desktop/src/process/agent/kyrn/naming';
 
 function fixture() {
@@ -192,6 +196,56 @@ describe('native mu settings', () => {
       value.judges.jev.baseUrl = 'https://secret@example.com';
       expect(() => f.store.save(value)).toThrow('without embedded credentials');
       expect(f.store.read().judges.jev.baseUrl).toBe('');
+    } finally {
+      f.cleanup();
+    }
+  });
+  it('offers CLM as a built-in: on this machine, or at an address on the network with the key its server asks for', () => {
+    const f = fixture();
+    try {
+      const read = f.store.read();
+      expect(read.judges.clm).toEqual({
+        type: 'clm',
+        model: 'clm-latest',
+        baseUrl: '',
+        apiKeyEnv: 'MU_JUDGE_CLM_API_KEY',
+        timeoutMs: 10000,
+      });
+      expect(read.keys.MU_JUDGE_CLM_API_KEY).toBe(false);
+      // Chosen as it is: only the order is written, and the harness finds clm-serve on this machine.
+      f.store.save({ ...read, tiers: ['clm'] });
+      let raw = JSON.parse(readFileSync(join(f.dir, 'kyrn.json'), 'utf8'));
+      expect(raw.tiers).toEqual(['clm']);
+      expect(raw.judges.clm).toBeUndefined();
+      // A server on the network, with the key it was started with.
+      const address = 'http://192.168.1.20:8700';
+      const now = f.store.read();
+      const saved = f.store.save({
+        ...now,
+        judges: { ...now.judges, clm: { ...now.judges.clm, baseUrl: address } },
+        credentials: [{ name: 'MU_JUDGE_CLM_API_KEY', value: 'fixture-clm' }],
+      });
+      expect(saved.judges.clm.baseUrl).toBe(address);
+      expect(saved.keys.MU_JUDGE_CLM_API_KEY).toBe(true);
+      raw = JSON.parse(readFileSync(join(f.dir, 'kyrn.json'), 'utf8'));
+      expect(raw.judges.clm).toMatchObject({ type: 'clm', baseUrl: address, apiKeyEnv: 'MU_JUDGE_CLM_API_KEY' });
+      // The questions hold what the person wrote: plain HTTP to the internet is refused.
+      const later = f.store.read();
+      const exposed = { ...later.judges.clm, baseUrl: 'http://example.com:8700' };
+      expect(() => f.store.save({ ...later, judges: { ...later.judges, clm: exposed } })).toThrow(
+        'private-network address'
+      );
+      // And the CLM key never reaches TypeSafe through a System One judge without an address.
+      const stray = {
+        type: 'typesafe' as const,
+        model: '',
+        baseUrl: '',
+        apiKeyEnv: 'MU_JUDGE_CLM_API_KEY',
+        timeoutMs: 10000,
+      };
+      expect(() => f.store.save({ ...later, tiers: ['stray'], judges: { ...later.judges, stray } })).toThrow(
+        'no base URL'
+      );
     } finally {
       f.cleanup();
     }
@@ -442,5 +496,22 @@ describe('mu-only backend catalog', () => {
     const { calls, request } = backend([{ id: 'k', name, command: '/other' }]);
     await expect(initializeKyrn(request, '/kyrn/acp')).rejects.toThrow('different mu command');
     expect(calls).toHaveLength(1);
+  });
+  // The check keeps what mu offers in the record the pickers read: the start makes one, a change to mu's models another.
+  it('checks mu again, found by its command, and changes nothing else', async () => {
+    const { calls, request } = backend([
+      { id: 'other', name: 'Codex', command: '/codex', enabled: false },
+      { id: 'k', name: 'mu', command: '/kyrn/acp', enabled: true, yolo_id: 'full' },
+    ]);
+    await recheckKyrn(request, '/kyrn/acp');
+    expect(calls).toEqual([
+      { method: 'GET', path: '/api/agents/management', body: undefined },
+      { method: 'POST', path: '/api/agents/k/health-check', body: {} },
+    ]);
+  });
+  it('has nothing to check before mu is registered', async () => {
+    const { calls, request } = backend([{ id: 'other', name: 'Codex', command: '/codex', enabled: true }]);
+    await recheckKyrn(request, '/kyrn/acp');
+    expect(calls.map((call) => call.path)).toEqual(['/api/agents/management']);
   });
 });

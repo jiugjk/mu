@@ -1,6 +1,6 @@
 {
   "name": "mu-desktop",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "mu, the coding agent with Jev judgment, as a desktop app.",
   "keywords": [],
   "license": "Apache-2.0",
@@ -55,6 +55,7 @@
     "debug:mcp:validate": "bunx tsx scripts/debug-mcp.ts validate",
     "debug:custom-agent": "bunx tsx scripts/debug-custom-agent.ts",
     "test:e2e": "playwright test --config playwright.config.ts",
+    "e2e:conversation": "node scripts/kyrn/e2e-conversation.mjs",
     "test:e2e:team": "playwright test --config playwright.config.ts tests/e2e/cases/teams/*.e2e.ts --reporter=list",
     "test:e2e:team:create": "playwright test --config playwright.config.ts tests/e2e/cases/teams/team-create.e2e.ts --reporter=list",
     "test:e2e:team:lifecycle": "playwright test --config playwright.config.ts tests/e2e/cases/teams/team-agent-lifecycle.e2e.ts --reporter=list",
@@ -259,7 +260,7 @@
   "electronRebuild": {
     "electronVersion": "^37.3.1"
   },
-  "muAgentVersion": "0.1.3",
+  "muAgentVersion": "0.1.4",
   "patchedDependencies": {
     "7zip-bin@5.2.0": "patches/7zip-bin@5.2.0.patch"
   },

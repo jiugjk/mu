@@ -68,6 +68,7 @@
   "tray.showWindow": "顯示 mu",
   "tray.newChat": "新建對話",
   "tray.closeToTray": "隱藏到托盤",
+  "tray.hideToMenuBar": "隱藏到選單列",
   "tray.about": "關於 mu",
   "tray.restart": "重啟應用",
   "tray.quit": "結束",
@@ -175,6 +176,8 @@
       "open": "開啟蜂群",
       "inspect": "檢視 {{name}}",
       "summary": "{{active}} 個進行中 · 已完成 {{done}} / 共 {{total}}",
+      "summaryEnded": "已完成 {{done}} / 共 {{total}}",
+      "summaryUnfinished": "已完成 {{done}} / 共 {{total}} · {{unfinished}} 個沒做完",
       "counts": "執行中 {{running}} · 已完成 {{done}} · 失敗 {{failed}}",
       "none": "這個對話還沒有子智慧體。",
       "details": "資訊流與記錄",
@@ -890,7 +893,8 @@
       "log": {
         "thisTurn": "本輪",
         "earlier": "顯示更早的紀錄",
-        "latest": "跳到最新"
+        "latest": "跳到最新",
+        "times": "{{times}} 次"
       }
     },
     "empty": "目前的對話還沒有這類紀錄。",
@@ -945,10 +949,14 @@
         "switched": "看板開關已切換"
       },
       "permissions": {
-        "mode": "權限模式"
+        "mode": "權限模式",
+        "request": "請求授權",
+        "resolved": "授權已回覆",
+        "approved": "未詢問即執行"
       },
       "checkpoint": {
-        "taken": "已儲存檢查點"
+        "taken": "已儲存檢查點",
+        "off": "檢查點已關閉"
       },
       "rewind": {
         "proposed": "建議回退",
@@ -1070,6 +1078,7 @@
       "empty": "等代理做一會兒，這裡會用白話告訴你進展",
       "checks": "驗收 {{done}}/{{total}}",
       "ended": "已停下",
+      "done": "已完成",
       "brief": "簡要版",
       "briefHelp": "這次模型沒來得及寫，先用固定的簡短說明。",
       "needsYou": "需要你確認",
@@ -1236,12 +1245,17 @@
     "compactionDropped_one": "移除 {{count}} 次呼叫",
     "compactionDropped_other": "移除 {{count}} 次呼叫",
     "jevLine": {
-      "classifying": "Jev 正在分類這則訊息…",
-      "classified": "Jev 分類為{{type}}",
+      "classifying": "{{judge}} 正在分類這則訊息…",
+      "classified": "{{judge}} 分類為{{type}}",
       "byRule": "依規則分類為{{type}}",
       "shadow": "{{line}}（僅觀察，沒有生效）",
       "late": "{{line}}（來晚了，這一輪沒用上）",
-      "fallback": "Jev 這次沒給出分類，按預設方式繼續"
+      "fallback": "{{judge}} 這次沒給出明確分類，按預設方式繼續",
+      "unanswered": "{{judge}} 這次沒有回答，按預設方式繼續",
+      "noJudge": "還沒有可用的判定器，訊息不會被分類。",
+      "setUp": "設定判定器",
+      "skipped": "已略過分類",
+      "off": "分類已關閉"
     },
     "eventLine": {
       "detail": "詳細資訊：{{detail}}",
@@ -1338,7 +1352,19 @@
         }
       },
       "permissions": {
-        "mode": "權限模式：{{mode}}"
+        "mode": "權限模式：{{mode}}",
+        "request": "等你授權：{{summary}}",
+        "waiting": "等你授權",
+        "answers": {
+          "once": "你允許了一次",
+          "session": "這次對話都允許",
+          "deny": "你沒允許"
+        },
+        "about": "{{answer}}：{{summary}}",
+        "approved": {
+          "judge": "判定器放行了，沒有問你：{{summary}}",
+          "grant": "這次對話已允許，沒有再問：{{summary}}"
+        }
       },
       "board": {
         "on": "看板：開啟",
@@ -1355,11 +1381,15 @@
   },
   "menu": {
     "about": "關於 {{name}}",
+    "settings": "設定…",
     "services": "服務",
     "hide": "隱藏 {{name}}",
     "hideOthers": "隱藏其他",
     "unhide": "全部顯示",
     "quit": "結束 {{name}}",
+    "file": "檔案",
+    "newChat": "新會話",
+    "closeWindow": "關閉視窗",
     "edit": "編輯",
     "undo": "還原",
     "redo": "重做",
@@ -1377,8 +1407,13 @@
     "zoomIn": "放大",
     "zoomOut": "縮小",
     "toggleFullScreen": "切換全螢幕",
+    "window": "視窗",
+    "minimize": "縮到最小",
+    "zoomWindow": "縮放",
+    "bringAllToFront": "將全部移至最前",
     "help": "說明",
-    "checkForUpdates": "檢查更新…"
+    "checkForUpdates": "檢查更新…",
+    "projectPage": "GitHub 上的 {{name}}"
   },
   "trayMenu": {
     "runningTasks": "執行中的任務：{{count}}"

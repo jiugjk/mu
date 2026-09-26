@@ -16,6 +16,8 @@
 
 import { ipcBridge } from '@/common';
 import type { Theme } from '@/common/theme/types';
+import { ProcessConfig } from '@process/utils/initStorage';
+import { setWindowAppearance } from '@process/utils/windowBackground';
 
 let cachedTheme: Theme | null = null;
 type ThemeListener = (t: Theme) => void;
@@ -49,4 +51,9 @@ export function initThemeBridge(): void {
 
   // A surface that loads later (the markdown shadow DOM) pulls the current theme on load.
   ipcBridge.theme.requestCurrent.provider(async () => cachedTheme);
+
+  // The theme in effect paints the window's own background, now and at the next start (see windowBackground.ts).
+  ipcBridge.theme.windowAppearance.provider(async (appearance) => {
+    setWindowAppearance(appearance, (hint) => ProcessConfig.set('window.appearance', hint));
+  });
 }

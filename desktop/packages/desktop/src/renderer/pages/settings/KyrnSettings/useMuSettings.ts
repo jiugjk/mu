@@ -13,6 +13,7 @@ import type { AvailableModels } from '@/common/kyrn/models';
 import type { KyrnSettings } from '@/common/kyrn/types';
 import { completeSettings, dirtySections, isStale, newDraft, toSave, type Draft, type SectionId } from './draft';
 import { toMuError, type MuError } from './fields/muError';
+import { recheckMu } from './recheck';
 
 export type MuSettings = {
   /** What is on disk, as of the last load or save. */
@@ -87,6 +88,7 @@ export function useMuSettings(): MuSettings {
       const saved = completeSettings(unwrap(await kyrnBridge.save.invoke(toSave(draft, base))));
       setBase(saved);
       setDraft(newDraft(saved));
+      void recheckMu();
       return true;
     } catch (cause) {
       const failure = toMuError(cause);

@@ -87,7 +87,9 @@ vi.mock('react-i18next', () => ({
           ? '默认'
           : key === 'agentMode.bypassPermissions'
             ? '全自动'
-            : (options?.defaultValue ?? key),
+            : key === 'agentMode.descriptions.jev'
+              ? 'Jev genehmigt Befehle für dich.'
+              : (options?.defaultValue ?? key),
   }),
 }));
 
@@ -332,6 +334,33 @@ describe('AgentModeSelector', () => {
       expect(screen.getByTestId('mode-selector')).toHaveAttribute('data-current-mode', 'agent-full-access')
     );
     expect(screen.getByTestId('agent-mode-selector-codex')).toHaveTextContent('权限 · agent-full-access');
+  });
+
+  // QA on macOS, 2026-09-25: mu writes its modes' descriptions in Chinese or English only, fixed when it starts.
+  it("describes mu's modes in the app's language, and keeps the backend's words where the app has none", () => {
+    useAcpConfigOptionsMock.mockImplementation(() => ({
+      setStatus: { state: 'idle' },
+      isLoading: false,
+      mode: {
+        id: 'mode',
+        category: 'mode',
+        currentValue: 'jev',
+        options: [
+          { value: 'jev', label: 'Jev 审批', description: '项目里的读和改直接做；命令由 Jev 替你审批。' },
+          { value: 'custom', label: 'Custom', description: 'A mode of another agent' },
+        ],
+      },
+      model: null,
+      thoughtLevel: null,
+      reload: vi.fn(),
+      setConfigOption: vi.fn(),
+    }));
+    render(<AgentModeSelector backend='mu' conversation_id='conv-1' />);
+
+    const tooltips = [...document.querySelectorAll('[data-tooltip-content]')].map((element) =>
+      element.getAttribute('data-tooltip-content')
+    );
+    expect(tooltips).toEqual(['Jev genehmigt Befehle für dich.', 'A mode of another agent']);
   });
 
   it('shows runtime mode descriptions in option tooltips', () => {

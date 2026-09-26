@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Slider } from '@arco-design/web-react';
 import { useTranslation } from 'react-i18next';
 import { useThemeContext } from '@renderer/hooks/context/ThemeContext';
@@ -50,6 +50,14 @@ const ScaleControl: React.FC = () => {
 
   // 格式化显示值为百分比 / Format display value as percentage
   const formattedValue = useMemo(() => formatScalePercent(displayValue, i18n.language), [displayValue, i18n.language]);
+
+  // Arco draws the slider's handle (role=slider) with no name of its own and takes none from its props: it is given
+  // the row's word, so a screen reader says "Scale, slider, 95%" rather than "slider, 0.95".
+  const sliderRef = useRef<HTMLDivElement>(null);
+  const scaleLabel = t('settings.scale');
+  useEffect(() => {
+    sliderRef.current?.querySelector('[role="slider"]')?.setAttribute('aria-label', scaleLabel);
+  }, [scaleLabel]);
 
   // 默认标记（100%位置）/ Default mark (100% position)
   const defaultMarks = useMemo(
@@ -121,6 +129,7 @@ const ScaleControl: React.FC = () => {
           </Button>
           {/* 滑杆覆盖 80%-150% 区间，随值写入配置 / Slider covers 80%-150% range and persists value */}
           <Slider
+            ref={sliderRef}
             className='flex-1 min-w-180px font-scale-slider p-0 m-0'
             showTicks
             min={FONT_SCALE_MIN}
@@ -130,6 +139,8 @@ const ScaleControl: React.FC = () => {
             onChange={handleSliderChange}
             onAfterChange={handleSliderAfterChange}
             marks={defaultMarks}
+            // The handle's tooltip and its value for a screen reader (aria-valuetext) as the percentage shown beside it.
+            formatTooltip={(value) => formatScalePercent(value, i18n.language)}
           />
           <Button
             size='mini'

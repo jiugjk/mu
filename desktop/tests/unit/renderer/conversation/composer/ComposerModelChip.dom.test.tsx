@@ -234,6 +234,19 @@ describe('ComposerModelChip', () => {
     expect(modelLevelsInvokeMock).toHaveBeenCalledWith({ conversationId });
   });
 
+  // mu without a model reports none; conversations from before that report pi's placeholder.
+  it.each(['', 'unknown/unknown'])(
+    'asks to choose a model, with no thinking level, when mu runs on "%s"',
+    async (value) => {
+      server = optionsFor(value, 'off');
+      renderChip();
+      await waitFor(() => expect(chipLabel()).toBe('mu.noModel.chip'));
+      expect(screen.getByTestId('composer-model-chip').getAttribute('data-model')).toBe('');
+      // Every model is still there to pick.
+      expect(screen.getAllByTestId('composer-model-option')).toHaveLength(3);
+    }
+  );
+
   it('is not there when the session offers no model', async () => {
     server = [];
     renderChip();

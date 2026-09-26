@@ -2,6 +2,15 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { chmod, copyFile, lstat, mkdir, readdir, readFile, readlink, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import {
+	type GitProbe,
+	type GitUnusable,
+	type GitUnusableReason,
+	heldByLicense,
+	hostProbe,
+	stubProblem,
+	UNUSABLE_TEXT,
+} from "../checkpoint/git.ts";
 
 /**
  * An isolated checkout for one sub-agent that edits files.
@@ -24,8 +33,10 @@ export interface GitResult {
 	code: number;
 	stdout: Buffer;
 	stderr: string;
-	/** The `git` executable was not found. */
+	/** The `git` executable was not found, or cannot run (`unusable`). */
 	missing?: boolean;
+	/** git is there and cannot run on this Mac: it was never started, or the Xcode license held it back. */
+	unusable?: GitUnusableReason;
 }
 
 export interface GitRunOptions {
@@ -64,7 +75,7 @@ export function gitArgs(args: readonly string[], platform: NodeJS.Platform = pro
 /** Variables that would point git at another repository or index than the one in `cwd`. */
 const INHERITED = ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_PREFIX"];
 
-export const runGit: GitRun = (args, options) =>
+const spawnGit: GitRun = (args, options) =>
 	new Promise((resolve) => {
 		const env: Record<string, string | undefined> = { ...process.env };
 		for (const name of INHERITED) delete env[name];
@@ -99,6 +110,26 @@ export const runGit: GitRun = (args, options) =>
 		child.stdin?.end(options.input);
 	});
 
+/**
+ * Runs git without a shell. On a Mac whose git is the system's stub with no developer tools behind it, git is never
+ * started, since each start opens their install dialog; that answer, and one held back by the Xcode license, say so.
+ */
+export function gitRunner(probe: GitProbe = hostProbe): GitRun {
+	let stub: Promise<GitUnusable | undefined> | undefined;
+	return async (args, options) => {
+		stub ??= stubProblem("git", options.env?.PATH ?? process.env.PATH, probe);
+		const problem = await stub;
+		if (problem)
+			return { code: -1, stdout: Buffer.alloc(0), stderr: problem.message, missing: true, unusable: problem.reason };
+		const result = await spawnGit(args, options);
+		return heldByLicense(result.code, () => `${result.stderr}\n${result.stdout.toString("utf8")}`)
+			? { ...result, missing: true, unusable: "xcode_license" }
+			: result;
+	};
+}
+
+export const runGit: GitRun = gitRunner();
+
 const text = (result: GitResult): string => result.stdout.toString("utf8");
 const lastLine = (stderr: string): string => stderr.trim().split("\n").pop()?.trim() ?? "";
 
@@ -129,6 +160,7 @@ const BUSY: readonly (readonly [string, string])[] = [
 /** Whether `cwd` is somewhere a worktree can be made from, and if not, why, in words for the model. */
 export async function checkRepo(run: GitRun, cwd: string): Promise<RepoCheck> {
 	const probe = await run(["rev-parse", "--is-bare-repository", "--is-inside-work-tree"], { cwd });
+	if (probe.unusable) return { ok: false, problem: "no-git", message: UNUSABLE_TEXT[probe.unusable] };
 	if (probe.missing) return { ok: false, problem: "no-git", message: "git is not installed or not on PATH" };
 	if (probe.code !== 0)
 		return { ok: false, problem: "not-a-repo", message: "this directory is not in a git repository" };

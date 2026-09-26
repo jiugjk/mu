@@ -28,7 +28,7 @@
   "resumeSuccess": "Task resumed",
   "message.badge": "Scheduled",
   "allScheduledTasks": "All Scheduled Tasks",
-  "noTasks": "No scheduled tasks",
+  "noTasks": "No scheduled tasks yet.",
   "runNowSuccess": "Task execution triggered",
   "detail": {
     "backToAll": "All scheduled tasks",
@@ -61,6 +61,7 @@
     "keepAwakeTooltip": "When enabled, mu will prevent your computer from going to sleep",
     "searchPlaceholder": "Search tasks...",
     "noSearchResults": "No matching scheduled tasks.",
+    "emptyHint": "Use “{{button}}” above to make one.",
     "createTask": "Create Scheduled Task",
     "editTask": "Edit Scheduled Task",
     "createSuccess": "Task created successfully",

@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { Theme } from '@/common/theme/types';
+import type { Theme, WindowAppearance } from '@/common/theme/types';
 import { buildStorage } from '@/common/platform/storage';
 
 // 系统配置存储
@@ -34,6 +34,8 @@ export interface IConfigStorageRefer {
   'ui.fontWeight.code'?: string;
   /** Last-known main window size and position, restored on next launch */
   'window.bounds'?: { x?: number; y?: number; width: number; height: number };
+  /** The theme in effect when the window last painted: the next start's window background, before the page runs */
+  'window.appearance'?: WindowAppearance;
   /** Active unified theme ID */
   'theme.activeId': string;
   /** User-created themes */

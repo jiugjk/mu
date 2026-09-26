@@ -67,6 +67,7 @@
   "noOptionsAvailable": "Seçenek yok",
   "processing": "İşleniyor...",
   "responseSentSuccessfully": "Yanıt başarıyla gönderildi",
+  "permissionAnswered": "Yanıtlandı: {{option}}",
   "permissionResponseFailed": "Yanıt gönderilemedi. Lütfen tekrar deneyin.",
   "permissionNoLongerPending": "Bu istek artık yanıt beklemiyor.",
   "confirmation": {

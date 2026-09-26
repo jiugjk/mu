@@ -223,6 +223,21 @@ describe('TaskDetailPage', () => {
     expect(navigateMock).toHaveBeenCalledWith('/conversation/conv-run');
   });
 
+  it('names its switches by their headings, the schedule switch also by the schedule it turns on', async () => {
+    render(
+      <MemoryRouter initialEntries={['/scheduled/job-1']}>
+        <Routes>
+          <Route path='/scheduled/:job_id' element={<TaskDetailPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const repeats = await screen.findByRole('switch', { name: /^cron\.detail\.repeats \S/ });
+    expect(repeats).not.toBeChecked();
+    const queue = screen.getByRole('switch', { name: 'cron.page.form.queue' });
+    expect(queue).toHaveAccessibleDescription('cron.page.form.queueHint');
+  });
+
   it('names the saved reasoning effort as a thinking level, not the raw id', async () => {
     getJobInvokeMock.mockResolvedValue(
       job({ metadata: { agent_config: { config_options: { reasoning_effort: 'xhigh' } } } } as Partial<ICronJob>)

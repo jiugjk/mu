@@ -4,8 +4,11 @@ import { newDraft } from '@/renderer/pages/settings/KyrnSettings/draft';
 import {
   choiceOf,
   choose,
+  clmKeyVariable,
   defaultModelOf,
+  GUIDE_CHOICES,
   JEV_SERVICES,
+  JUDGE_CHOICES,
   jevKeyVariable,
   kindOf,
   profileFor,
@@ -90,6 +93,26 @@ describe('the judge choice', () => {
       tiers: ['luna'],
     });
     expect(choiceOf(modelFirst)).toBeUndefined();
+  });
+
+  it('offers CLM as a third choice in the settings, and leaves it out of the first-run guide', () => {
+    const clm = {
+      type: 'clm' as const,
+      model: 'clm-latest',
+      baseUrl: '',
+      apiKeyEnv: 'MU_JUDGE_CLM_API_KEY',
+      timeoutMs: 10000,
+    };
+    const withClm = settings({ judges: { ...settings().judges, clm } });
+    expect(JUDGE_CHOICES).toEqual(['jev', 'local', 'clm']);
+    expect(GUIDE_CHOICES).toEqual(['jev', 'local']);
+    expect(kindOf(clm)).toBe('clm');
+    expect(serviceOf(clm)).toBeUndefined();
+    expect(choose(withClm, 'clm').tiers).toEqual(['clm']);
+    expect(choiceOf(choose(withClm, 'clm'))).toBe('clm');
+    expect(profileFor(settings({ judges: { ...settings().judges, gpu: clm } }), 'clm')).toBe('gpu');
+    expect(clmKeyVariable(clm)).toBe('MU_JUDGE_CLM_API_KEY');
+    expect(clmKeyVariable({ ...clm, apiKeyEnv: '' })).toBe('MU_JUDGE_CLM_API_KEY');
   });
 
   it('stands for the profile of a kind the order already asks, so the key asked for is the one its service needs', () => {

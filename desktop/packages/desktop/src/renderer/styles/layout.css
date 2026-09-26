@@ -184,13 +184,15 @@
 
 /* Mobile sidebar positioning */
 /* Use dvh for better mobile browser support (iOS Chrome/Safari) */
+/* Only in the phone layout (html[data-phone-layout], set by Layout): a narrow desktop window keeps the desktop sidebar,
+   its rail tooltips and its sizes, and its sidebar must not grow to the full window height under the titlebar. */
 @media (max-width: 767px) {
-  .sider-tooltip-popup {
+  html[data-phone-layout] .sider-tooltip-popup {
     display: none !important;
     pointer-events: none !important;
   }
 
-  .layout-sider {
+  html[data-phone-layout] .layout-sider {
     /* Fixed positioning from top */
     top: 0 !important;
     /* dvh automatically accounts for browser chrome on mobile */
@@ -205,7 +207,7 @@
     box-sizing: border-box !important;
   }
 
-  .layout-sider-header--mobile {
+  html[data-phone-layout] .layout-sider-header--mobile {
     min-height: 56px !important;
     padding-top: 10px !important;
     padding-bottom: 8px !important;
@@ -213,12 +215,12 @@
   }
 
   /* Mobile-only: clip overflow instead of allowing scroll */
-  .layout-sider-content {
+  html[data-phone-layout] .layout-sider-content {
     overflow: hidden !important;
   }
 
   /* Footer stays at bottom with extra padding as fallback */
-  .sider-footer {
+  html[data-phone-layout] .sider-footer {
     flex-shrink: 0 !important;
     /* Extra padding as fallback for iOS Chrome */
     padding-bottom: 20px;
@@ -226,37 +228,37 @@
 
   /* Match the mobile sider top buttons to the conversation row height (34px)
      so the new-chat / search / footer rows form one consistent vertical rhythm. */
-  .sider-action-btn-mobile {
+  html[data-phone-layout] .sider-action-btn-mobile {
     height: 34px !important;
     gap: 8px !important;
     padding-inline: 10px !important;
     border-radius: 8px !important;
   }
 
-  .sider-action-icon-btn-mobile {
+  html[data-phone-layout] .sider-action-icon-btn-mobile {
     width: 34px !important;
     height: 34px !important;
     border-radius: 8px !important;
   }
 
-  .sider-footer-btn-mobile {
+  html[data-phone-layout] .sider-footer-btn-mobile {
     min-height: 34px !important;
     padding: 6px 10px !important;
     border-radius: 8px !important;
   }
 
   /* Mobile: remove left padding for message wrapper */
-  .arco-message-wrapper {
+  html[data-phone-layout] .arco-message-wrapper {
     padding-inline-start: 0;
   }
 
   /* Sidebar conversation title + secondary timeline text */
-  .chat-history__item-name {
+  html[data-phone-layout] .chat-history__item-name {
     font-size: 15px !important;
     line-height: 24px !important;
   }
 
-  .chat-history__section {
+  html[data-phone-layout] .chat-history__section {
     font-size: 14px !important;
     line-height: 20px !important;
   }

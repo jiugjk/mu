@@ -79,7 +79,10 @@ const CDP_CONFIG_FILE = 'cdp.config.json';
 
 /** CDP configuration stored in userData directory */
 export interface CdpConfig {
-  /** Whether CDP is enabled (default: true in dev mode, false in production) */
+  /**
+   * Whether the agent may drive the in-app browser through the bridge. Unset means on, in every build, packaged
+   * included (see shouldEnableCdp). The one switch for it is on the in-app browser settings page.
+   */
   enabled?: boolean;
   /**
    * 历史字段：以前用来挑保留端口。通道改用 listen(0) 之后不再读它，

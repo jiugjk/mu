@@ -158,9 +158,10 @@ export function buildJudge(config: KyrnConfig, host: JudgeHost = {}): BuiltJudge
 	return { judge: new CascadeJudge(tiers), problems };
 }
 
+/** No judge at all fails as a judge without a key does: nothing answers until the user sets one up. */
 class UnavailableJudgeProvider implements JudgeProvider {
 	readonly id = "none";
 	async evaluate(): Promise<never> {
-		throw new JudgeError("unreachable", "No judge is configured");
+		throw new JudgeError("auth", "No judge is configured");
 	}
 }

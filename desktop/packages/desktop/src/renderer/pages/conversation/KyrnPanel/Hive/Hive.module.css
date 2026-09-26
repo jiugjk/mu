@@ -437,42 +437,37 @@
   min-width: 0;
 }
 
-.rowTop {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-  line-height: 20px;
-}
-
+/* The sub-agent's task: the one part of a row that is cut to fit. */
 .rowName {
-  flex: none;
-  max-width: 40%;
+  min-width: 0;
   overflow: hidden;
   font-weight: 500;
+  line-height: 20px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.rowRole {
-  flex: 0 1 auto;
+/*
+ * What it is doing, and at the end of the same line who it is (role, model, thinking level). When both do not fit,
+ * who it is goes on the next line, from the start, and is never cut.
+ */
+.rowStatus {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  column-gap: 10px;
   min-width: 0;
-  overflow: hidden;
-  color: var(--text-secondary);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.rowModel {
-  flex: 1 1 auto;
+/* A row is a button, which keeps its text on one line: who the bee is wraps instead of running out of the row. */
+.rowWho {
   min-width: 0;
-  overflow: hidden;
   color: var(--bg-6);
   font-size: 11px;
-  text-align: end;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 18px;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .rowDoing,

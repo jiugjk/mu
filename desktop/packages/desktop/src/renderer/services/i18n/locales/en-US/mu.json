@@ -149,7 +149,8 @@
     "customTier": "A judge you added yourself. Change it in mu's settings file.",
     "endpointDefault": "Default address of the service",
     "types": {
-      "localHelp": "Runs on this computer."
+      "localHelp": "Runs on this computer.",
+      "clmHelp": "Runs on a CLM server of your own."
     },
     "intro": "While it works, mu makes many small calls: how to handle this message, whether this step breaks a rule you set. The judge answers them. Pick one.",
     "choose": "Choose a judge",
@@ -165,6 +166,11 @@
         "title": "Local Laya",
         "tag": "Free · offline",
         "description": "Runs on this computer, no network, no cost. Good at classifying; relating and scoring are less reliable."
+      },
+      "clm": {
+        "title": "CLM",
+        "tag": "Self-hosted",
+        "description": "Answers the questions Jev does, on a server of your own (clm-serve). Its encoder needs a GPU; nothing is billed per call."
       }
     },
     "localAddress": "Address: {{address}}",
@@ -211,6 +217,26 @@
           "foreign": "A Laya that mu did not start is running here. Stop it where it was started."
         }
       }
+    },
+    "clm": {
+      "address": "Server address",
+      "addressHelp": "Where clm-serve listens, such as http://192.168.1.20:8700. Empty is this computer ({{address}}).",
+      "key": "Server key",
+      "keyPlaceholder": "Only if the server asks for one",
+      "keyHelp": "Only a server started with CLM_API_KEY asks for a key: enter the same value. Once saved it is never shown again.",
+      "check": "Check the server",
+      "unmeasured": "How well CLM makes mu's decisions has not been measured yet.",
+      "status": {
+        "checking": "Asking the server…",
+        "ready": "Answering · {{models}} · {{ms}} ms",
+        "down": "Nothing answers at {{address}}. Start clm-serve there, or correct the address.",
+        "encoderDown": "The server answers, but its encoder does not: every question fails until its embedding server (vLLM) runs.",
+        "model": "The server does not serve {{model}}. It serves {{models}}.",
+        "keyNeeded": "The server asks for a key: enter the one it was started with (CLM_API_KEY).",
+        "keySaved": "The server asks for a key, and one is saved.",
+        "mock": "This server runs CLM's mock encoder: its answers are noise, not CLM's.",
+        "failed": "The server could not be asked."
+      }
     }
   },
   "keyState": {
@@ -256,7 +282,9 @@
       "unsure": "Jev is not sure this step is what you want.",
       "beyond": "Jev thinks this goes beyond what you asked for.",
       "unrelated": "Jev thinks this is not part of the task.",
-      "protected": "This touches mu’s own settings; only you can allow it."
+      "protected": "This touches mu’s own settings; only you can allow it.",
+      "nojudge": "No judge is available yet, so mu asks you about each step.",
+      "judgedown": "The judge did not answer this time, so mu asks you."
     },
     "flagged": "Risky: {{flag}}.",
     "flag": {
@@ -275,6 +303,11 @@
       "session": "Allow for this conversation",
       "sessionFor": "Allow for this conversation ({{grant}})",
       "deny": "Don’t allow"
+    },
+    "decided": {
+      "once": "You allowed this once: {{summary}}",
+      "session": "Allowed for this conversation: {{summary}}",
+      "deny": "You did not allow: {{summary}}"
     }
   },
   "providers": {
@@ -438,7 +471,7 @@
     "update": "This version of mu cannot be told here which model writes the board. Update mu first."
   },
   "levels": {
-    "off": "Off",
+    "off": "Thinking off",
     "minimal": "Minimal",
     "low": "Low",
     "medium": "Medium",
@@ -473,7 +506,7 @@
       "signedIn": {
         "title": "Sign in with a subscription",
         "tag": "No API key",
-        "description": "A ChatGPT, Claude or Grok plan"
+        "description": "A ChatGPT, Claude, Grok or other plan"
       },
       "openai": {
         "title": "OpenAI-compatible API",
@@ -673,9 +706,28 @@
     "notPersisted": "mu could not save this conversation.",
     "startFailed": "mu could not start.",
     "timeout": "mu did not answer in time.",
-    "processClosed": "mu has stopped. Send the message again to restart it."
+    "processClosed": "mu has stopped. Send the message again to restart it.",
+    "noModel": "mu has no model to answer with."
+  },
+  "noModel": {
+    "title": "No model to answer with",
+    "body": "mu needs a model it can use. Sign in or add a key under {{place}}, then send your message again.",
+    "open": "Open {{page}}",
+    "chip": "Choose a model"
   },
   "notices": {
+    "checkpointOff": "Checkpoints are off in this conversation.",
+    "checkpointOffWhy": {
+      "gitMissing": "Checkpoints are off in this conversation: Git was not found on this computer. Install Git, then start a new conversation to get them.",
+      "xcodeLicense": "Checkpoints are off in this conversation: Git cannot run on this Mac until the Xcode license is accepted. Accept it with sudo xcodebuild -license in Terminal, then start a new conversation to get them.",
+      "developerToolsMissing": "Checkpoints are off in this conversation: this Mac has no command line developer tools, which Git needs. Install them with xcode-select --install in Terminal, then start a new conversation to get them.",
+      "homeFolder": "Checkpoints are off in this conversation: its folder is your home folder or holds it. Start a conversation in a project folder to get them.",
+      "muFolder": "Checkpoints are off in this conversation: its folder is inside mu’s own folder. Start a conversation in a project folder to get them.",
+      "tooManyFiles": "Checkpoints are off in this conversation: its folder has more than {{limit}} files. Start a conversation in a project folder to get them.",
+      "tooManyBytes": "Checkpoints are off in this conversation: its folder holds more than {{limitMb}} MB of files. Start a conversation in a project folder to get them.",
+      "tooSlow": "Checkpoints are off in this conversation: listing its folder’s files took longer than {{seconds}} seconds. Start a conversation in a project folder to get them."
+    },
+    "stopped": "You stopped this reply.",
     "answerLost": "mu did not get your answer, so it went on as if you had declined.",
     "bashMissing": "mu needs Git for Windows to run commands. Once it is installed, send your message again. Download it here:"
   },
@@ -783,5 +835,34 @@
       "earlier_other": "{{count}} earlier steps are not shown.",
       "empty": "There is nothing to show."
     }
+  },
+  "commands": {
+    "frame": "The task frame: goal, your hard constraints and where you said them, subgoal, acceptance items",
+    "remember": "Store a lesson for future sessions in this project: /remember <what to do>",
+    "lessons": "This project's lessons: /lessons lists id · kind · recalled/followed · lesson, /lessons all adds the ones for everywhere and the retired ones",
+    "forget": "Retire a lesson so it is no longer recalled: /forget <id prefix> (the ids are in /lessons)",
+    "capabilities": "What is installed and what is open: /capabilities, /capabilities open <id>",
+    "permissions": "How much mu may do without asking: /permissions full | jev | ask, or a picker. /permissions reset forgets what you allowed for this conversation",
+    "lsp": "Language servers: which are installed, which are running, and the last error",
+    "goal": "Goal mode: keep the agent working until a condition holds. /goal <condition>, /goal (show, or ask for one), /goal clear",
+    "board": "The plain-language board: /board (show it), /board on, /board off (for this project), /board model (who writes it)",
+    "checkpoints": "The checkpoints of this conversation: turn, time, files changed since",
+    "rewind": "Go back to a checkpoint: /rewind [#] [both|files|conversation], /rewind undo",
+    "swarm": "Sub-agents at work: /swarm (what each one is doing), /swarm stop [name] (report now), /swarm kill [name]",
+    "agents": "List the sub-agent roles the delegate tool can use, and where to add your own",
+    "hive": "Put several investigators on one question at once: /hive <question>. Without one, the same as /swarm",
+    "browse": "Drive the built-in browser yourself: /browse <url> [goal]",
+    "inherit": "What mu took over from Claude Code, Cursor and Codex, and from where",
+    "mcp": "MCP servers: /mcp, /mcp open <id>, /mcp restart <id>",
+    "jobs": "Background jobs: /jobs, /jobs stop <id|all>",
+    "commit": "Split the uncommitted change into commits: shows the plan, commits only when you say yes, never pushes",
+    "review": "Review the uncommitted change, or what you name, with the reviewer sub-agent; findings sorted P0 to P3",
+    "mu": "mu status. Also: /mu judge <tiers> | /mu route <decision> <tiers|default> | /mu mode <decision|default> <off|shadow|active>",
+    "status": "Model, judge, decision modes, context savings and the latest verdicts",
+    "help": "What mu can do and every command worth knowing",
+    "ledger": "The last verdicts of the judge with timing: /ledger [n]",
+    "doctor": "Check that the judge, the model, the browser and the sub-agents are wired up",
+    "import-chat": "Bring a Claude Code or Codex conversation of this project into mu and continue it: /import-chat [file]",
+    "llama": "Manage llama.cpp router models"
   }
 }

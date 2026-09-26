@@ -18,6 +18,7 @@ import {
   type PaletteSources,
 } from '@/renderer/components/layout/Sider/CommandPalette/paletteGroups';
 import { SETTINGS_HOME, SETTINGS_PAGES } from '@/renderer/pages/settings/settingsNav';
+import { MU_COMMAND_WORDS } from '@/renderer/utils/chat/muCommands';
 
 const NOW = Date.UTC(2026, 8, 23, 12, 0, 0);
 const MINUTE = 60_000;
@@ -205,6 +206,13 @@ describe('buildPaletteGroups', () => {
     const groups = buildPaletteGroups(sources({ query: 'board', commandTarget: 'c7', commands: [command('board')] }));
 
     expect(group(groups, 'commands')?.items[0]).toMatchObject({ conversationId: 'c7', detail: 'board help' });
+  });
+
+  it("describes one of mu's own commands in the reader's language", () => {
+    const board = { ...command('board'), description: MU_COMMAND_WORDS.get('board')![0] };
+    const groups = buildPaletteGroups(sources({ query: 'board', commands: [board] }));
+
+    expect(group(groups, 'commands')?.items[0]).toMatchObject({ detail: 'mu.commands.board' });
   });
 
   it('names a conversation that has no title the way the sidebar does', () => {

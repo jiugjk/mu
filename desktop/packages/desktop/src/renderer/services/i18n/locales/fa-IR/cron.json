@@ -28,7 +28,7 @@
   "resumeSuccess": "کار از سر گرفته شد",
   "message.badge": "زمان‌بندی‌شده",
   "allScheduledTasks": "همه کارهای زمان‌بندی‌شده",
-  "noTasks": "کار زمان‌بندی‌شده‌ای وجود ندارد",
+  "noTasks": "هنوز کار زمان‌بندی‌شده‌ای وجود ندارد.",
   "runNowSuccess": "اجرای کار فعال شد",
   "detail": {
     "backToAll": "همه کارهای زمان‌بندی‌شده",
@@ -158,7 +158,8 @@
     "createFailed": "ایجاد کار ناموفق بود: {{error}}",
     "updateFailed": "ذخیرهٔ کار ناموفق بود: {{error}}",
     "searchPlaceholder": "جستجوی وظایف...",
-    "noSearchResults": "هیچ وظیفه زمان‌بندی‌شده منطبقی وجود ندارد."
+    "noSearchResults": "هیچ وظیفه زمان‌بندی‌شده منطبقی وجود ندارد.",
+    "emptyHint": "با «{{button}}» در بالا یکی بسازید."
   },
   "trigger": {
     "runScheduledTask": "اجرای کار زمان‌بندی‌شده: {{name}}"

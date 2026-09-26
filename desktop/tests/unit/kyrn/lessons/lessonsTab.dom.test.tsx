@@ -236,6 +236,45 @@ describe('the lessons tab', () => {
     ]);
   });
 
+  it('shows a lesson’s code spans as inline code, never its backticks', async () => {
+    const snapshot = lesson('snapshot', {
+      kind: 'fact',
+      lesson: '当前根工作树没有 `desktop/`；调查桌面源码应使用 `.claude/worktrees/mu-sync/desktop/` 的已记录快照。',
+      trigger: 'Reading the desktop sources from the root checkout with `rg`',
+    });
+    read.mockResolvedValue(answer([snapshot]));
+    render(<Tab events={[event('memory.retired', { id: 'snapshot', reason: 'forgotten' })]} />);
+    await settle();
+    const text = within(row('snapshot')).getByTestId('mu-lesson-text');
+    expect([...text.querySelectorAll('code')].map((code) => code.textContent)).toEqual([
+      'desktop/',
+      '.claude/worktrees/mu-sync/desktop/',
+    ]);
+    expect(row('snapshot').textContent).not.toContain('`');
+    expect(within(row('snapshot')).getByTestId('mu-lesson-trigger').querySelector('code')).toHaveTextContent(/^rg$/);
+    // A note names the lesson by its words, code and all; its whole on hover reads without backticks.
+    const note = within(screen.getByTestId('mu-lessons-notes')).getAllByRole('listitem')[0];
+    expect(note.querySelectorAll('code')).toHaveLength(2);
+    expect(note.textContent).not.toContain('`');
+    expect(note.lastElementChild?.getAttribute('title')).not.toContain('`');
+  });
+
+  it('leaves out a trigger that only says the lesson again, and keeps one in its own words', async () => {
+    const same = lesson('same', {
+      lesson: '当前根工作树没有 `desktop/`；调查桌面源码应使用 `.claude/worktrees/mu-sync/desktop/` 的快照。',
+      trigger: '当前根工作树没有 `desktop/`；调查桌面源码应使用 `.claude/worktrees/mu-sync/desktop/` 的快照。',
+      uses: { recalled: 2, applied: 1 },
+    });
+    const cut = lesson('cut', { lesson: 'Rerun these tests from the parent session.', trigger: 'Rerun these tests…' });
+    read.mockResolvedValue(answer([same, cut, pitfall]));
+    render(<Tab />);
+    await settle();
+    for (const id of ['same', 'cut']) expect(within(row(id)).queryByTestId('mu-lesson-trigger')).toBeNull();
+    // What it counted still shows on the line.
+    expect(within(row('same')).getByTestId('mu-lesson-uses')).toHaveTextContent('Recalled 2 · Followed 1');
+    expect(within(row('pitfall')).getByTestId('mu-lesson-trigger')).toHaveTextContent('Running the desktop tests');
+  });
+
   it('says so when there are no lessons, none in use, or no project folder', async () => {
     read.mockResolvedValue(answer([], ''));
     const { unmount } = render(<Tab />);

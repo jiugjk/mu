@@ -6,6 +6,13 @@
 
 export type ThemeAppearance = 'light' | 'dark';
 
+/**
+ * What the window needs of the theme in effect: its appearance, and whether it follows the system's (the choice
+ * 跟随系统, or no choice made yet). The main process paints the window's own background from it and keeps it for the
+ * next start, when the window is created before the page can say.
+ */
+export type WindowAppearance = { appearance: ThemeAppearance; followsSystem: boolean };
+
 /** A flat map of CSS custom property name → value (e.g. `{ '--primary': '#165dff' }`). */
 export type TokenMap = Record<string, string>;
 

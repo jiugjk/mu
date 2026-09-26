@@ -12,6 +12,7 @@ import type {
   IMessageToolGroup,
   TMessage,
 } from '@/common/chat/chatLib';
+import { hasRunningToolMessages } from '@/common/chat/normalizeToolCall';
 import { useConversationContextSafe } from '@/renderer/hooks/context/ConversationContext';
 import { useConversationRuntimeView } from '@/renderer/pages/conversation/runtime/useConversationRuntimeView';
 import { getChatSurfaceWidthClass } from '@/renderer/pages/conversation/utils/chatSurfaceWidth';
@@ -29,6 +30,7 @@ import MessageJevLine from '@renderer/pages/conversation/Messages/acp/MessageJev
 import { jevLine } from '@renderer/pages/conversation/Messages/acp/jevLine';
 import MessageMuNotice from '@renderer/pages/conversation/Messages/acp/MessageMuNotice';
 import { muNotice } from '@renderer/pages/conversation/Messages/acp/muNotice';
+import { questionsBeforeCalls } from './permissionOrder';
 import classNames from 'classnames';
 import React, { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -210,6 +212,9 @@ const getProcessedItemCreatedAt = (item: IProcessedItem): number => {
   }
   return item.created_at ?? 0;
 };
+
+const isToolMessage = (message: TMessage): message is IMessageToolGroup | IMessageAcpToolCall | IMessageToolCall =>
+  message.type === 'tool_group' || message.type === 'acp_tool_call' || message.type === 'tool_call';
 
 /** Rows that never render, so they cannot stand between a thought and the end of the list. */
 const isUnrenderedRow = (message: TMessage): boolean =>
@@ -507,6 +512,15 @@ const MessageList: React.FC<{
       }
     }
   }, [hydrated, isProcessing, list]);
+  // Calls still marked running while the conversation was known to be idle: their turn ended without their end (mu's
+  // process closed mid-call). Like those thoughts, they read as over, and the next turn does not revive them.
+  const staleCallIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!hydrated || isProcessing) return;
+    for (const message of list) {
+      if (isToolMessage(message) && hasRunningToolMessages([message])) staleCallIdsRef.current.add(message.id);
+    }
+  }, [hydrated, isProcessing, list]);
 
   // Pre-process message list to group tool outputs into summary cards
   const { items: processedList, activeThinkingId } = useMemo(() => {
@@ -596,9 +610,13 @@ const MessageList: React.FC<{
       diffsSourceMessageIds = [];
       diffsSources = [];
     };
+    // A conversation without a judge says so once, not under every message.
+    let saidNoJudge = false;
+    // mu's questions read before what came of the calls they ask about.
+    const ordered = questionsBeforeCalls(list);
 
-    for (let i = 0, len = list.length; i < len; i++) {
-      const message = list[i];
+    for (let i = 0, len = ordered.length; i < len; i++) {
+      const message = ordered[i];
       // Skip hidden and available_commands messages
       if (message.hidden) continue;
       if (message.type === 'available_commands') continue;
@@ -644,8 +662,12 @@ const MessageList: React.FC<{
         continue;
       }
       if (message.type === 'acp_tool_call') {
+        const jev = jevLine(message);
+        // A classification switched off or skipped says nothing; a missing judge is said at its first message only.
+        if (jev?.stage === 'quiet' || (jev?.stage === 'noJudge' && saidNoJudge)) continue;
+        if (jev?.stage === 'noJudge') saidNoJudge = true;
         // Jev's class for the message and the bridge's notices are lines of their own, not calls in the tool box.
-        if (hasRenderableAcpDiff(message) || jevLine(message) || muNotice(message)) {
+        if (hasRenderableAcpDiff(message) || jev || muNotice(message)) {
           pushStandaloneMessage(message);
           continue;
         }
@@ -943,7 +965,13 @@ const MessageList: React.FC<{
           style={highlighted ? highlightStyle : undefined}
         >
           {item.type === 'file_summary' && <FileChangesRow diffsChanges={item.diffs} />}
-          {item.type === 'tool_summary' && <MessageToolGroupSummary messages={item.messages} />}
+          {item.type === 'tool_summary' && (
+            <MessageToolGroupSummary
+              messages={item.messages}
+              live={!hydrated || isProcessing}
+              stale={staleCallIdsRef.current}
+            />
+          )}
         </div>
       );
     }

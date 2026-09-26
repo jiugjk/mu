@@ -1,4 +1,5 @@
 import { bridge } from '../platform/bridge';
+import type { ClmServerState } from './clm';
 import { KyrnError, type KyrnResult } from './errors';
 import type { ImportedHistory, ImportList, ImportOutcome } from './importChats';
 import type { LessonChange, LessonsView } from './lessons';
@@ -21,6 +22,8 @@ export const kyrnBridge = {
   savePersonality: bridge.buildProvider<KyrnResult<PersonalityState>, PersonalityAction>('kyrn.personality.save'),
   /** Models the running mu last reported as usable: a snapshot kept by the backend, not a live query. */
   availableModels: bridge.buildProvider<KyrnResult<AvailableModels>, void>('kyrn.availableModels'),
+  /** The backend checks mu again and keeps that snapshot anew; answers once it has. */
+  recheck: bridge.buildProvider<KyrnResult<void>, void>('kyrn.recheck'),
   /** One minimal request to a provider's endpoint, made by the main process. */
   testProvider: bridge.buildProvider<KyrnResult<ProviderTestResult>, ProviderTestInput>('kyrn.testProvider'),
   /** A page of a conversation's activity; with `kinds`, only events of those kinds (the cursor still covers all). */
@@ -59,6 +62,8 @@ export const kyrnBridge = {
   localJudgeRun: bridge.buildProvider<KyrnResult<LocalJudgeState>, { action: LocalJudgeAction; consent?: boolean }>(
     'kyrn.localJudge.run'
   ),
+  /** How the CLM server behind a judge's address is (common/kyrn/clm.ts), asked by the main process. */
+  clmCheck: bridge.buildProvider<KyrnResult<ClmServerState>, { baseUrl: string }>('kyrn.clm.check'),
 };
 
 /** The data of a bridge answer; a failure is thrown as a `KyrnError` that keeps its code for the screen to translate. */

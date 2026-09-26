@@ -6,16 +6,17 @@
 
 import type { IMessageTips } from '@/common/chat/chatLib';
 import { showAsMu } from '@/common/kyrn/displayName';
-import { Collapse, Tag } from '@arco-design/web-react';
+import { Button, Collapse, Tag } from '@arco-design/web-react';
 import { Attention, CheckOne, Info } from '@icon-park/react';
 import classNames from 'classnames';
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import MarkdownView from '@renderer/components/Markdown';
 import ButlerDiagnoseButton from '@renderer/components/base/ButlerDiagnoseButton';
 import CollapsibleContent from '@renderer/components/chat/CollapsibleContent';
 import { iconColors } from '@/renderer/styles/colors';
-import { findMuTurnError, muTurnErrorKey } from '@/renderer/utils/chat/muTurnErrors';
+import { findMuTurnError, muTurnErrorKey, noModelDetail } from '@/renderer/utils/chat/muTurnErrors';
 
 // One entry per `IMessageTips['type']`. `info` was missing, and the render
 // falls back to `warning`, so every informational tip was drawn with the alarm
@@ -63,6 +64,46 @@ const resolveAgentTipBody = (
   });
 };
 
+/**
+ * mu has no model to answer with (none set up, or none with a key): what to do about it, and the way to the providers'
+ * settings where it is done. pi's own text tells a terminal user to run `/login` and names a harness doc; neither is
+ * shown, only the provider it names, if any, as a detail.
+ */
+const NoModelCard: React.FC<{ detail: string }> = ({ detail }) => {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const page = t('mu.sections.providers');
+  const place = `${t('common.settings')} › ${page}`;
+  return (
+    <div className='w-full' data-testid='mu-no-model'>
+      <div className='bg-message-tips rd-8px p-x-12px p-y-10px flex flex-col gap-8px'>
+        <div className='flex items-start gap-6px'>
+          {icon.warning}
+          <div className='flex-1 min-w-0 flex flex-col gap-6px'>
+            <div className='font-500 text-t-primary [word-break:break-word]'>{t('mu.noModel.title')}</div>
+            <div className='text-t-secondary whitespace-break-spaces [word-break:break-word]'>
+              {t('mu.noModel.body', { place })}
+            </div>
+            {detail && (
+              <div className='text-t-tertiary text-12px whitespace-break-spaces [word-break:break-word]'>{detail}</div>
+            )}
+          </div>
+        </div>
+        <div className='flex justify-end'>
+          <Button
+            type='primary'
+            size='small'
+            data-testid='mu-no-model-open'
+            onClick={() => void navigate('/settings/providers')}
+          >
+            {t('mu.noModel.open', { page })}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const MessageTips: React.FC<{ message: IMessageTips }> = ({ message }) => {
   const { t } = useTranslation();
   const { content, type, code, params } = message.content;
@@ -75,6 +116,8 @@ const MessageTips: React.FC<{ message: IMessageTips }> = ({ message }) => {
   const muError =
     type === 'error' ? findMuTurnError([structuredError?.detail, structuredError?.message, content]) : undefined;
   const muErrorHeadline = muError ? t(muTurnErrorKey(muError)) : undefined;
+  if (muError === 'noModel')
+    return <NoModelCard detail={noModelDetail(structuredError?.detail || structuredError?.message || content || '')} />;
   // The Butler chip shows on every error — environment issues are exactly
   // what the Butler diagnoses best.
   const shouldShowButler = type === 'error';

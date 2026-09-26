@@ -14,6 +14,10 @@ import React, { useEffect, useRef } from 'react';
 import styles from '../index.module.css';
 import GuidWorkspaceFootnote from './GuidWorkspaceFootnote';
 
+// One object each for every render: the text area measures its height whenever this prop changes.
+const DESKTOP_AUTO_SIZE = { minRows: 2, maxRows: 20 };
+const MOBILE_AUTO_SIZE = { minRows: 2, maxRows: 8 };
+
 type GuidInputCardProps = {
   focusRequestKey?: string;
   // Input state
@@ -68,7 +72,7 @@ const GuidInputCard: React.FC<GuidInputCardProps> = ({
   const isMobile = layout?.isMobile ?? false;
   const { compositionHandlers, isComposing } = useCompositionInput();
   const inputRef = useRef<RefTextAreaType | null>(null);
-  const textareaAutoSize = isMobile ? { minRows: 2, maxRows: 8 } : { minRows: 2, maxRows: 20 };
+  const textareaAutoSize = isMobile ? MOBILE_AUTO_SIZE : DESKTOP_AUTO_SIZE;
 
   useEffect(() => {
     if (!focusRequestKey || isMobile) return;

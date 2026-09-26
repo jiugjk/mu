@@ -86,6 +86,8 @@ export function planLaunch(input: {
 	execPath: string;
 	canExec?: boolean;
 	wsl?: boolean;
+	/** Whether the Node that runs mu strips TypeScript types itself (process.features.typescript). Default true. */
+	stripsTypes?: boolean;
 	fs: { exists(path: string): boolean; isDir(path: string): boolean; readFile(path: string): string };
 }): LaunchPlan | { error: string };
 
@@ -101,6 +103,15 @@ export function planQqbot(input: {
 	wsl?: boolean;
 	fs: { exists(path: string): boolean; isDir(path: string): boolean; readFile(path: string): string };
 }): LaunchPlan | { error: string };
+
+/** Node's arguments for running a checkout's TypeScript, up to the entry file. */
+export function sourceRuntime(input: {
+	root: string;
+	platform: Platform;
+	stripsTypes: boolean;
+	exists(path: string): boolean;
+	readFile(path: string): string;
+}): { error?: undefined; args: string[] } | { error: string };
 
 export const AUTH_COMMANDS: readonly string[];
 export interface AuthPlan {
@@ -119,6 +130,8 @@ export function planAuth(input: {
 	home: string;
 	execPath: string;
 	canExec?: boolean;
+	/** Whether the Node that runs mu strips TypeScript types itself (process.features.typescript). Default true. */
+	stripsTypes?: boolean;
 	fs: { exists(path: string): boolean; isDir(path: string): boolean; readFile(path: string): string };
 }): AuthPlan | { error: string };
 

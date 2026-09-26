@@ -11,12 +11,13 @@ import { availableModels } from '../agent/kyrn/config/available';
 import { LoginManager, openable, spawnAuth } from '../agent/kyrn/login';
 import { testProvider } from '../agent/kyrn/config/connection';
 import { envFileOf, expectedHarness, findHarness, launcherOf, manifestOf } from '../agent/kyrn/harness';
+import { checkClmServer } from '../agent/kyrn/clmServer';
 import { LocalJudge } from '../agent/kyrn/localJudge';
 import { OnnxLocalJudge, openFolder, usesOnnxJudge } from '../agent/kyrn/localJudgeOnnx';
 import { importCli, importService } from '../agent/kyrn/importChats';
 import { LessonsStore, lessonsProject, type LessonsProject } from '../agent/kyrn/lessons';
 import { activityPage, modelLevels } from '../agent/kyrn/telemetry';
-import { findRegistration, initializeKyrn } from '../agent/kyrn/product';
+import { findRegistration, initializeKyrn, recheckKyrn } from '../agent/kyrn/product';
 import { muEnv, muHome } from '../agent/kyrn/naming';
 import { asRecord, text } from '../agent/kyrn/piRpc';
 import { sessionBinding } from '../agent/kyrn/sessionBinding';
@@ -106,6 +107,17 @@ export function initKyrnBridge(): void {
       return availableModels(findRegistration(agents, command));
     })
   );
+  // After the start's own check, and one at a time: a change saved while a check runs is checked after it, so the
+  // last check sees the last change.
+  const recheck = async (): Promise<void> => {
+    await catalog().catch((): undefined => undefined);
+    await recheckKyrn(httpRequest, command);
+  };
+  let rechecked = Promise.resolve();
+  kyrnBridge.recheck.provider(() => {
+    rechecked = rechecked.catch((): undefined => undefined).then(recheck);
+    return result(() => rechecked);
+  });
   kyrnBridge.testProvider.provider((input) => result(() => testProvider(input, settings.storedKey(input.id))));
   const login = new LoginManager(spawnAuth(launcherOf(harness, process.platform), agentDir), (url) => {
     if (openable(url)) void shell.openExternal(url);
@@ -116,6 +128,8 @@ export function initKyrnBridge(): void {
   kyrnBridge.loginCancel.provider(() => result(() => login.cancel()));
   kyrnBridge.loginStatus.provider(() => result(() => login.status()));
   kyrnBridge.loginLogout.provider(({ provider }) => result(() => login.logout(provider)));
+  // A sign-in, or a look at who is signed in, still running when the app quits is ended with it.
+  app.once('will-quit', () => login.dispose());
   // Core ML on Apple Silicon Macs, the app's own ONNX judge on Windows and Linux: the same state and actions.
   const localJudge = usesOnnxJudge(process.platform, process.arch, process.env)
     ? new OnnxLocalJudge({
@@ -131,6 +145,9 @@ export function initKyrnBridge(): void {
     void localJudge.autoStart(agentDir).catch((error: unknown) => console.warn('[mu] local judge autostart:', error));
   kyrnBridge.localJudgeState.provider(() => result(() => localJudge.state()));
   kyrnBridge.localJudgeRun.provider(({ action, consent }) => result(() => localJudge.run(action, consent === true)));
+  kyrnBridge.clmCheck.provider(({ baseUrl }) =>
+    result(() => checkClmServer(typeof baseUrl === 'string' ? baseUrl : ''))
+  );
   kyrnBridge.activity.provider((input) =>
     result(async () => {
       const kinds = activityKinds(input.kinds);

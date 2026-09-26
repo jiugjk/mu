@@ -1,25 +1,25 @@
 /**
  * DevSettings E2E Tests
  *
- * Covers: DevTools toggle, CDP switch, CDP URL display, MCP config collapse.
+ * Covers: DevTools toggle, the way to the in-app browser page's switch (the one switch of the browser connection),
+ * CDP URL display, MCP config collapse.
  * Only visible in dev mode — gracefully skips when hidden.
  * All operations via UI — zero invokeBridge, zero mock.
  */
 
 import { test, expect } from '../../../fixtures';
-import { goToSettings, waitForSettle, waitForClassChange } from '../../../helpers/navigation';
+import { goToSettings, waitForSettle } from '../../../helpers/navigation';
 import { takeScreenshot } from '../../../helpers/screenshots';
 import { ARCO_SWITCH } from '../../../helpers/selectors';
 
-async function scrollToDevSettings(page: import('@playwright/test').Page): Promise<boolean> {
-  const btn = page.locator('button:has-text("DevTools")').first();
-  await btn.scrollIntoViewIfNeeded().catch(() => {});
-  return btn.isVisible({ timeout: 3_000 }).catch(() => false);
+function devSection(page: import('@playwright/test').Page) {
+  return page.getByTestId('dev-settings');
 }
 
-function devSection(page: import('@playwright/test').Page) {
-  const btn = page.locator('button:has-text("DevTools")').first();
-  return btn.locator('xpath=ancestor::div[contains(@class,"space-y-12px")]').first();
+async function scrollToDevSettings(page: import('@playwright/test').Page): Promise<boolean> {
+  const section = devSection(page);
+  await section.scrollIntoViewIfNeeded().catch(() => {});
+  return section.isVisible({ timeout: 3_000 }).catch(() => false);
 }
 
 test.describe('DevSettings', () => {
@@ -35,7 +35,7 @@ test.describe('DevSettings', () => {
       return;
     }
 
-    const btn = page.locator('button:has-text("DevTools")').first();
+    const btn = devSection(page).locator('button:has-text("DevTools")').first();
     await expect(btn).toBeVisible();
     const text = await btn.textContent();
     expect(text).toBeTruthy();
@@ -43,7 +43,7 @@ test.describe('DevSettings', () => {
     await takeScreenshot(page, 'dev-settings/tc-dev-01/01-visible.png');
   });
 
-  test('TC-DEV-02: should toggle CDP switch', async ({ page }) => {
+  test("TC-DEV-02: has no browser switch of its own and leads to the in-app browser page's", async ({ page }) => {
     const visible = await scrollToDevSettings(page);
     if (!visible) {
       test.skip(true, 'DevSettings not visible — not in dev mode');
@@ -51,20 +51,13 @@ test.describe('DevSettings', () => {
     }
 
     const section = devSection(page);
-    const cdpSwitch = section.locator(ARCO_SWITCH).first();
-    await expect(cdpSwitch).toBeVisible();
-    const wasChecked = await cdpSwitch.evaluate((el) => el.classList.contains('arco-switch-checked'));
-    await takeScreenshot(page, 'dev-settings/tc-dev-02/01-before.png');
+    await expect(section.locator(ARCO_SWITCH)).toHaveCount(0);
+    await takeScreenshot(page, 'dev-settings/tc-dev-02/01-no-switch.png');
 
-    await cdpSwitch.click();
-    await waitForClassChange(cdpSwitch);
-    expect(await cdpSwitch.evaluate((el) => el.classList.contains('arco-switch-checked'))).toBe(!wasChecked);
-    await takeScreenshot(page, 'dev-settings/tc-dev-02/02-toggled.png');
-
-    await cdpSwitch.click();
-    await waitForClassChange(cdpSwitch);
-    expect(await cdpSwitch.evaluate((el) => el.classList.contains('arco-switch-checked'))).toBe(wasChecked);
-    await takeScreenshot(page, 'dev-settings/tc-dev-02/03-restored.png');
+    await section.getByRole('button', { name: /in-app browser settings/i }).click();
+    await page.waitForURL(/#\/settings\/browser/);
+    await expect(page.locator(ARCO_SWITCH).first()).toBeVisible();
+    await takeScreenshot(page, 'dev-settings/tc-dev-02/02-browser-page.png');
   });
 
   test('TC-DEV-03: should display CDP URL with port, Link and Copy buttons', async ({ page }) => {
@@ -75,34 +68,18 @@ test.describe('DevSettings', () => {
     }
 
     const section = devSection(page);
-    const cdpSwitch = section.locator(ARCO_SWITCH).first();
-    const wasChecked = await cdpSwitch.evaluate((el) => el.classList.contains('arco-switch-checked'));
-    if (!wasChecked) {
-      await cdpSwitch.click();
-      await waitForClassChange(cdpSwitch);
-    }
-
     const portText = section.locator('text=/127\\.0\\.0\\.1:\\d+/').first();
     const portVisible = await portText.isVisible({ timeout: 3_000 }).catch(() => false);
     if (!portVisible) {
-      if (!wasChecked) {
-        await cdpSwitch.click();
-        await waitForClassChange(cdpSwitch);
-      }
-      test.skip(true, 'CDP port not available');
+      test.skip(true, 'CDP port not available — the agent may not use the in-app browser');
       return;
     }
 
     await expect(portText).toBeVisible();
-    const urlRow = portText.locator('xpath=ancestor::div[contains(@class,"flex")]').first();
+    const urlRow = portText.locator('xpath=ancestor::div[contains(@class,"flex")][1]');
     const btnCount = await urlRow.locator('button').count();
     expect(btnCount).toBe(2);
     await takeScreenshot(page, 'dev-settings/tc-dev-03/01-url-and-buttons.png');
-
-    if (!wasChecked) {
-      await cdpSwitch.click();
-      await waitForClassChange(cdpSwitch);
-    }
   });
 
   test('TC-DEV-04: should expand MCP config and show code block with Copy', async ({ page }) => {
@@ -113,20 +90,9 @@ test.describe('DevSettings', () => {
     }
 
     const section = devSection(page);
-    const cdpSwitch = section.locator(ARCO_SWITCH).first();
-    const wasChecked = await cdpSwitch.evaluate((el) => el.classList.contains('arco-switch-checked'));
-    if (!wasChecked) {
-      await cdpSwitch.click();
-      await waitForClassChange(cdpSwitch);
-    }
-
     const collapseHeaders = section.locator('.arco-collapse-item-header');
     const headerCount = await collapseHeaders.count().catch(() => 0);
     if (headerCount === 0) {
-      if (!wasChecked) {
-        await cdpSwitch.click();
-        await waitForClassChange(cdpSwitch);
-      }
       test.skip(true, 'MCP Collapse not available — CDP port may not be active');
       return;
     }
@@ -149,10 +115,5 @@ test.describe('DevSettings', () => {
         timeout: 3_000,
       })
       .catch(() => {});
-
-    if (!wasChecked) {
-      await cdpSwitch.click();
-      await waitForClassChange(cdpSwitch);
-    }
   });
 });

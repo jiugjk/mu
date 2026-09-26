@@ -16,7 +16,7 @@ import { openExternalUrl } from '@/renderer/utils/platform';
 import { parseHttpUrl } from '@/renderer/utils/url';
 import { useOptionalPreviewContext } from '@/renderer/pages/conversation/Preview/context/PreviewContext';
 import classNames from 'classnames';
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { convertLatexDelimiters } from '@renderer/utils/chat/latexDelimiters';
 import LocalImageView from '@renderer/components/media/LocalImageView';
@@ -38,6 +38,8 @@ const isLocalFilePath = (src: string): boolean => {
   return true;
 };
 
+const transformUrl = (url: string) => (resolveLocalFileLinkPath(url) ? url : defaultUrlTransform(url));
+
 type MarkdownViewProps = {
   children: string;
   hiddenCodeCopyButton?: boolean;
@@ -52,7 +54,12 @@ type MarkdownViewProps = {
 const MarkdownView: React.FC<MarkdownViewProps> = React.memo(
   ({ hiddenCodeCopyButton, codeStyle, className, onRef, onLocalFileLink, allowHtml, children: childrenProp }) => {
     const { t } = useTranslation();
+    // The preview panel changes whenever a tab opens, loads or updates, and every message in the conversation reads
+    // this context. A link only needs the panel at the moment it is clicked, so the handler reads the latest one from
+    // a ref: the markdown below is not parsed and its code highlighted again for a change in the panel.
     const preview = useOptionalPreviewContext();
+    const previewRef = useRef(preview);
+    previewRef.current = preview;
 
     const normalizedChildren = useMemo(() => {
       if (typeof childrenProp === 'string') {
@@ -75,15 +82,16 @@ const MarkdownView: React.FC<MarkdownViewProps> = React.memo(
         // Prefer the built-in browser tab for http(s) links; fall back to the
         // system browser for other schemes or when no Preview panel is available.
         const httpUrl = parseHttpUrl(href);
-        if (httpUrl && preview) {
-          preview.openBrowserTab(httpUrl);
+        const panel = previewRef.current;
+        if (httpUrl && panel) {
+          panel.openBrowserTab(httpUrl);
           return;
         }
         openExternalUrl(href).catch((error: unknown) => {
           console.error(t('messages.openLinkFailed'), error);
         });
       },
-      [t, preview]
+      [t]
     );
 
     // Memoize components so React preserves component identity across re-renders.
@@ -143,18 +151,27 @@ const MarkdownView: React.FC<MarkdownViewProps> = React.memo(
 
     const rehypePlugins = useMemo(() => (allowHtml ? [rehypeRaw, rehypeKatex] : [rehypeKatex]), [allowHtml]);
 
+    // The same element while the text and the components are the same, so React skips the markdown when this view
+    // renders for anything else (the preview panel above, a new translation function).
+    const rendered = useMemo(
+      () => (
+        <ReactMarkdown
+          remarkPlugins={MARKDOWN_REMARK_PLUGINS}
+          rehypePlugins={rehypePlugins}
+          components={components}
+          urlTransform={transformUrl}
+        >
+          {normalizedChildren}
+        </ReactMarkdown>
+      ),
+      [components, normalizedChildren, rehypePlugins]
+    );
+
     return (
       <div className={classNames('relative w-full', className)}>
         <ShadowView>
           <div ref={onRef} className='markdown-shadow-body'>
-            <ReactMarkdown
-              remarkPlugins={MARKDOWN_REMARK_PLUGINS}
-              rehypePlugins={rehypePlugins}
-              components={components}
-              urlTransform={(url) => (resolveLocalFileLinkPath(url) ? url : defaultUrlTransform(url))}
-            >
-              {normalizedChildren}
-            </ReactMarkdown>
+            {rendered}
           </div>
         </ShadowView>
       </div>

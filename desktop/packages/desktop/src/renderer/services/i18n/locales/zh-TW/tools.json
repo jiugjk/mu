@@ -31,7 +31,8 @@
     "executing": "執行中",
     "success": "成功",
     "error": "錯誤",
-    "canceled": "已取消"
+    "canceled": "已取消",
+    "denied": "未允許"
   },
   "titles": {
     "web_search_started": "網頁搜尋已開始",
@@ -75,6 +76,7 @@
     "loadError": "無法載入完整輸出。",
     "retry": "重試",
     "callAria": "{{name}} · {{status}}",
+    "denied": "沒有執行：你沒有允許。",
     "showMore": "展開全部",
     "showLess": "收合"
   },

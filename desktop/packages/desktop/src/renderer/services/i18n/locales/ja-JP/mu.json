@@ -148,7 +148,8 @@
     "customTier": "自分で追加した判定器です。変更するには mu の設定ファイルを編集してください。",
     "endpointDefault": "サービスの既定のアドレス",
     "types": {
-      "localHelp": "このコンピューターで動きます。"
+      "localHelp": "このコンピューターで動きます。",
+      "clmHelp": "あなた自身の CLM サーバーで動きます。"
     },
     "intro": "mu は作業中に、このメッセージをどう扱うか、このステップが設定したルールに反していないか、といった小さな判断を何度も迫られます。それに答えるのが判定器です。1 つ選んでください。",
     "choose": "判定器を選択",
@@ -164,6 +165,11 @@
         "title": "ローカル Laya",
         "tag": "無料・オフライン",
         "description": "このコンピューター上で動作し、ネットワーク不要・無料です。分類は得意ですが、関連付けやスコアリングの信頼性は劣ります。"
+      },
+      "clm": {
+        "title": "CLM",
+        "tag": "セルフホスト",
+        "description": "Jev と同じ質問に、あなた自身のサーバー（clm-serve）で答えます。エンコーダーには GPU が必要で、呼び出しごとの課金はありません。"
       }
     },
     "localAddress": "アドレス: {{address}}",
@@ -210,6 +216,26 @@
           "foreign": "mu が起動したのではない Laya が実行中です。起動した場所で停止してください。"
         }
       }
+    },
+    "clm": {
+      "address": "サーバーのアドレス",
+      "addressHelp": "clm-serve が待ち受けるアドレスです（例: http://192.168.1.20:8700）。空欄ならこのコンピューター（{{address}}）です。",
+      "key": "サーバーのキー",
+      "keyPlaceholder": "サーバーが求める場合のみ",
+      "keyHelp": "キーを求めるのは CLM_API_KEY を付けて起動したサーバーだけです。同じ値を入力してください。保存後は二度と表示されません。",
+      "check": "サーバーを確認",
+      "unmeasured": "CLM が mu の判定をどれだけうまく行えるかは、まだ測定していません。",
+      "status": {
+        "checking": "サーバーに問い合わせ中…",
+        "ready": "応答中 · {{models}} · {{ms}} ミリ秒",
+        "down": "{{address}} から応答がありません。そこで clm-serve を起動するか、アドレスを直してください。",
+        "encoderDown": "サーバーは応答していますが、エンコーダーが応答しません。埋め込みサーバー（vLLM）が動くまで、すべての質問が失敗します。",
+        "model": "サーバーは {{model}} を提供していません。提供しているのは {{models}} です。",
+        "keyNeeded": "サーバーがキーを求めています。起動時に使ったキー（CLM_API_KEY）を入力してください。",
+        "keySaved": "サーバーはキーを求めており、キーは保存済みです。",
+        "mock": "このサーバーは CLM のモックエンコーダーで動いています。回答はノイズで、CLM のものではありません。",
+        "failed": "サーバーに問い合わせできませんでした。"
+      }
     }
   },
   "keyState": {
@@ -255,13 +281,20 @@
       "unsure": "Jev は、この操作があなたの意図どおりか確信が持てません。",
       "beyond": "Jev の判定では、この操作はあなたの依頼の範囲を超えています。",
       "unrelated": "Jev の判定では、この操作はタスクと関係ありません。",
-      "protected": "mu 自身の設定に触れる操作のため、許可できるのはあなただけです。"
+      "protected": "mu 自身の設定に触れる操作のため、許可できるのはあなただけです。",
+      "nojudge": "まだ使える判定器がないため、mu はステップごとにあなたに確認します。",
+      "judgedown": "今回は判定器から応答がなかったため、mu があなたに確認します。"
     },
     "answer": {
       "once": "今回のみ許可",
       "session": "この会話中は許可",
       "sessionFor": "この会話中は許可（{{grant}}）",
       "deny": "許可しない"
+    },
+    "decided": {
+      "once": "今回のみ許可しました：{{summary}}",
+      "session": "この会話中は許可済み：{{summary}}",
+      "deny": "許可しませんでした：{{summary}}"
     },
     "flag": {
       "recursive_or_forced_delete": "再帰削除または強制削除",
@@ -325,16 +358,16 @@
     "removeDefault": "新しいセッションはこれを使って始まるため、既定のモデルもクリアされます。"
   },
   "defaults": {
-    "summary": "What a new session starts with. You can still switch inside a conversation.",
+    "summary": "新しいセッションの開始時の設定です。会話の中でも切り替えられます。",
     "provider": "プロバイダー",
     "model": "モデル",
     "level": "思考レベル",
     "levelUnset": "指定しない",
-    "levelHelp": "Levels this model does not take are disabled.",
-    "levelClamped": "Not set means medium. A level the model does not take becomes the nearest one it does.",
-    "noReasoning": "This model does not think, so a session with it always starts with thinking off.",
+    "levelHelp": "このモデルが対応していないレベルは選べません。",
+    "levelClamped": "「指定しない」は「中」になります。モデルが対応していないレベルは、対応している最も近いレベルになります。",
+    "noReasoning": "このモデルは思考しないため、このモデルのセッションは常に思考オフで始まります。",
     "notSet": "未指定",
-    "pickProvider": "Choose a provider first."
+    "pickProvider": "先にプロバイダーを選んでください。"
   },
   "accounts": {
     "signIn": "ログイン",
@@ -437,7 +470,7 @@
     "update": "このバージョンの mu では、ボードを書くモデルをここで指定できません。先に mu を更新してください。"
   },
   "levels": {
-    "off": "オフ",
+    "off": "思考オフ",
     "minimal": "最小",
     "low": "低",
     "medium": "中",
@@ -469,7 +502,7 @@
       "signedIn": {
         "title": "サブスクリプションでログイン",
         "tag": "API キー不要",
-        "description": "ChatGPT、Claude または Grok のプラン"
+        "description": "ChatGPT、Claude、Grok などのプラン"
       },
       "openai": {
         "title": "OpenAI 互換 API",
@@ -590,9 +623,28 @@
     "timeout": "mu から時間内に応答がありませんでした。",
     "processClosed": "mu が停止しました。再起動するには、メッセージをもう一度送信してください。",
     "modelFailed": "モデルへのリクエストが失敗しました。",
-    "turnRunning": "mu はまだ前のメッセージを処理中です。完了を待つか、先に停止してください。"
+    "turnRunning": "mu はまだ前のメッセージを処理中です。完了を待つか、先に停止してください。",
+    "noModel": "mu が回答に使えるモデルがありません。"
+  },
+  "noModel": {
+    "title": "回答に使えるモデルがありません",
+    "body": "mu には使えるモデルが必要です。{{place}} でログインするかキーを追加してから、メッセージをもう一度送信してください。",
+    "open": "{{page}} を開く",
+    "chip": "モデルを選択"
   },
   "notices": {
+    "checkpointOff": "この会話ではチェックポイントがオフです。",
+    "checkpointOffWhy": {
+      "gitMissing": "この会話ではチェックポイントがオフです：このコンピューターに Git が見つかりませんでした。Git をインストールしてから新しい会話を始めると、チェックポイントが使えます。",
+      "xcodeLicense": "この会話ではチェックポイントがオフです：Xcode のライセンスに同意するまで、この Mac では Git を実行できません。ターミナルで sudo xcodebuild -license を実行して同意してから新しい会話を始めると、チェックポイントが使えます。",
+      "developerToolsMissing": "この会話ではチェックポイントがオフです：この Mac には、Git に必要なコマンドライン・デベロッパツールがありません。ターミナルで xcode-select --install を実行してインストールしてから新しい会話を始めると、チェックポイントが使えます。",
+      "homeFolder": "この会話ではチェックポイントがオフです：会話のフォルダーがホームフォルダーか、ホームフォルダーを含むフォルダーです。プロジェクトフォルダーで会話を始めると、チェックポイントが使えます。",
+      "muFolder": "この会話ではチェックポイントがオフです：会話のフォルダーが mu 自身のフォルダーの中にあります。プロジェクトフォルダーで会話を始めると、チェックポイントが使えます。",
+      "tooManyFiles": "この会話ではチェックポイントがオフです：会話のフォルダーに {{limit}} 個を超えるファイルがあります。プロジェクトフォルダーで会話を始めると、チェックポイントが使えます。",
+      "tooManyBytes": "この会話ではチェックポイントがオフです：会話のフォルダーのファイルが合計 {{limitMb}} MB を超えています。プロジェクトフォルダーで会話を始めると、チェックポイントが使えます。",
+      "tooSlow": "この会話ではチェックポイントがオフです：会話のフォルダーのファイル一覧の取得に {{seconds}} 秒以上かかりました。プロジェクトフォルダーで会話を始めると、チェックポイントが使えます。"
+    },
+    "stopped": "この返信を停止しました。",
     "answerLost": "mu は回答を受け取れなかったため、同意しなかったものとして続けました。",
     "bashMissing": "mu がコマンドを実行するには Git for Windows が必要です。インストールしたら、メッセージをもう一度送信してください。ダウンロード先："
   },
@@ -673,5 +725,34 @@
       "earlier_other": "それ以前の {{count}} 件は表示していません。",
       "empty": "表示できる内容はありません。"
     }
+  },
+  "commands": {
+    "frame": "タスクフレーム：目標、あなたが定めた厳守事項とその発言箇所、現在のサブ目標、受け入れ条件",
+    "remember": "このプロジェクトの教訓を記録し、今後の会話で使います：/remember <どうするか>",
+    "lessons": "このプロジェクトの教訓：/lessons で id · 種類 · 参照/守られた回数 · 教訓 を一覧表示、/lessons all でどこでも使う教訓と廃止した教訓も表示します",
+    "forget": "教訓を廃止し、今後は参照しないようにします：/forget <id の先頭部分>（id は /lessons で確認）",
+    "capabilities": "インストール済みのケイパビリティと、今開いているもの：/capabilities で表示、/capabilities open <ID> で開く",
+    "permissions": "mu が確認なしでどこまで行えるか：/permissions full（フルアクセス）| jev（Jev が承認）| ask（最小権限）、引数なしで選択肢を表示。/permissions reset でこの会話で許可した操作を忘れます",
+    "lsp": "言語サーバー：インストール済みのもの、実行中のもの、直近のエラー",
+    "goal": "目標モード：条件が満たされるまでエージェントに作業を続けさせます。/goal <条件> で設定、/goal で表示（未設定なら尋ねます）、/goal clear で終了",
+    "board": "わかりやすいボード：/board で表示、/board on・/board off でこのプロジェクトのオン/オフ、/board model で書くモデルを変更",
+    "checkpoints": "この会話のチェックポイント：ターン、時刻、その後に変更されたファイル",
+    "rewind": "チェックポイントに戻ります：/rewind [番号] [both|files|conversation]、/rewind undo で取り消し。both はファイルと会話、files はファイルのみ、conversation は会話のみ",
+    "swarm": "作業中のサブエージェント：/swarm でそれぞれの作業を表示、/swarm stop [名前] で今すぐ報告させ、/swarm kill [名前] で即座に終了",
+    "agents": "delegate ツールが使えるサブエージェントの役割と、独自の役割を追加する場所を表示します",
+    "hive": "複数の調査員に一つの問いを同時に調べさせます：/hive <問い>。問いがなければ /swarm と同じです",
+    "browse": "内蔵ブラウザで URL を開き、指示どおりに操作させます：/browse <URL> [やること]",
+    "inherit": "mu が Claude Code、Cursor、Codex から引き継いだ設定と、その出どころ",
+    "mcp": "MCP サーバー：/mcp で表示、/mcp open <ID> で開く、/mcp restart <ID> で再起動",
+    "jobs": "バックグラウンドジョブ：/jobs で表示、/jobs stop <ID|all> で停止",
+    "commit": "未コミットの変更を複数のコミットに分けます：まず計画を示し、同意したときだけコミットし、プッシュはしません",
+    "review": "レビュー担当のサブエージェントが未コミットの変更（または指定した内容）をレビューし、指摘を P0〜P3 の重さ順に並べます",
+    "mu": "mu の状態。ほかに：/mu judge <判定器> | /mu route <判定ポイント> <判定器|default> | /mu mode <判定ポイント|default> <off|shadow|active>",
+    "status": "モデル、判定器、各判定ポイントのモード、節約したコンテキスト、最近の判定",
+    "help": "mu にできることと、知っておきたいコマンドの一覧",
+    "ledger": "判定器の最近の判定と所要時間：/ledger [件数]",
+    "doctor": "判定器、モデル、ブラウザ、サブエージェントが正しくつながっているか確認します",
+    "import-chat": "このプロジェクトの Claude Code または Codex の会話を mu に取り込み、続きをここで話せます：/import-chat [ファイル]",
+    "llama": "llama.cpp ルーターのモデルを管理します"
   }
 }

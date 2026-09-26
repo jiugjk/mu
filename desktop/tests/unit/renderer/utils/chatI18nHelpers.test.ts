@@ -13,7 +13,7 @@ import zhMu from '@/renderer/services/i18n/locales/zh-CN/mu.json';
 import twMu from '@/renderer/services/i18n/locales/zh-TW/mu.json';
 import { MU_TURN_ERRORS } from '@/process/agent/kyrn/KyrnAgent';
 import { readJevPreflightRow } from '@/renderer/utils/chat/jevPreflight';
-import { findMuTurnError, muTurnErrorKey } from '@/renderer/utils/chat/muTurnErrors';
+import { findMuTurnError, muTurnErrorKey, noModelDetail } from '@/renderer/utils/chat/muTurnErrors';
 import { isDefaultConversationName } from '@/renderer/utils/chat/defaultConversationName';
 import { buildConversationExportText } from '@/renderer/utils/chat/conversationExport';
 import type { TMessage } from '@/common/chat/chatLib';
@@ -79,6 +79,28 @@ describe('mu bridge errors', () => {
   it('translates a mu error headline', () => {
     const zh = translator('zh-CN', { mu: zhMu });
     expect(zh(muTurnErrorKey('turnRunning'))).toBe('mu 还在处理上一条消息，请等待或先停止。');
+  });
+
+  it('reads a missing model as such, in the bridge’s words and in pi’s, and never as a failed request', () => {
+    expect(findMuTurnError(['mu has no model to answer with: No API key found for anthropic.'])).toBe('noModel');
+    // Conversations from before the bridge named it stored pi's own words, some under the request's headline.
+    expect(findMuTurnError(['Model request failed: No API key found for openai.'])).toBe('noModel');
+    expect(findMuTurnError(['No models available. Use /login to log into a provider'])).toBe('noModel');
+    expect(findMuTurnError(['No model selected'])).toBe('noModel');
+  });
+
+  it('keeps of pi’s words about a missing model only what a desktop user can use', () => {
+    expect(
+      noModelDetail(
+        'Agent internal error (code -32603): mu has no model to answer with: No API key found for anthropic.\n\n' +
+          'Use /login to log into a provider via OAuth or API key. See:\n  /opt/mu/docs/providers.md'
+      )
+    ).toBe('No API key found for anthropic.');
+    expect(noModelDetail('No API key found for openai. Use /login or set an API key environment variable.')).toBe(
+      'No API key found for openai.'
+    );
+    expect(noModelDetail('No models available. See: /opt/mu/docs/models.md')).toBe('No models available.');
+    expect(noModelDetail('mu has no model to answer with')).toBe('');
   });
 });
 

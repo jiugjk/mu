@@ -10,8 +10,8 @@ import SystemModalContent from '@/renderer/components/settings/SettingsModal/con
 import { SettingsPage } from '../components/SettingsPageHeader';
 
 /**
- * The machine underneath: starting with the computer, closing to the tray, graphics acceleration, notifications, and
- * the folders mu works and logs in.
+ * The machine underneath: starting with the computer, running on after the window closes (in the tray, or the menu bar
+ * on a Mac), graphics acceleration, notifications, and the folders mu works and logs in.
  */
 const SystemSettings: React.FC = () => {
   const { t } = useTranslation();

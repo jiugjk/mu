@@ -148,7 +148,8 @@
     "customTier": "Un juge que vous avez ajouté vous-même. Modifiez-le dans le fichier de réglages de mu.",
     "endpointDefault": "Adresse par défaut du service",
     "types": {
-      "localHelp": "Fonctionne sur cet ordinateur."
+      "localHelp": "Fonctionne sur cet ordinateur.",
+      "clmHelp": "Fonctionne sur votre propre serveur CLM."
     },
     "intro": "Pendant qu’il travaille, mu se pose beaucoup de petites questions : comment traiter ce message, si cette étape enfreint une règle que vous avez fixée. Le juge y répond. Choisissez-en un.",
     "choose": "Choisir un juge",
@@ -164,6 +165,11 @@
         "title": "Laya local",
         "tag": "Gratuit · hors ligne",
         "description": "S’exécute sur cet ordinateur, sans réseau ni coût. Bon pour classer ; moins fiable pour mettre en relation et noter."
+      },
+      "clm": {
+        "title": "CLM",
+        "tag": "Auto-hébergé",
+        "description": "Répond aux mêmes questions que Jev, sur un serveur à vous (clm-serve). Son encodeur a besoin d’un GPU ; rien n’est facturé à l’appel."
       }
     },
     "localAddress": "Adresse : {{address}}",
@@ -210,6 +216,26 @@
           "foreign": "Un Laya que mu n’a pas démarré tourne ici. Arrêtez-le là où il a été démarré."
         }
       }
+    },
+    "clm": {
+      "address": "Adresse du serveur",
+      "addressHelp": "L’adresse où écoute clm-serve, par exemple http://192.168.1.20:8700. Vide : cet ordinateur ({{address}}).",
+      "key": "Clé du serveur",
+      "keyPlaceholder": "Seulement si le serveur en demande une",
+      "keyHelp": "Seul un serveur démarré avec CLM_API_KEY demande une clé : saisissez la même valeur. Une fois enregistrée, elle n’est plus jamais affichée.",
+      "check": "Vérifier le serveur",
+      "unmeasured": "La qualité des décisions que CLM prend pour mu n’a pas encore été mesurée.",
+      "status": {
+        "checking": "Interrogation du serveur…",
+        "ready": "Répond · {{models}} · {{ms}} ms",
+        "down": "Rien ne répond à {{address}}. Démarrez clm-serve à cette adresse, ou corrigez-la.",
+        "encoderDown": "Le serveur répond, mais pas son encodeur : chaque question échoue tant que son serveur d’embeddings (vLLM) ne tourne pas.",
+        "model": "Le serveur ne propose pas {{model}}. Il propose {{models}}.",
+        "keyNeeded": "Le serveur demande une clé : saisissez celle avec laquelle il a été démarré (CLM_API_KEY).",
+        "keySaved": "Le serveur demande une clé, et une clé est enregistrée.",
+        "mock": "Ce serveur utilise l’encodeur factice de CLM : ses réponses sont du bruit, pas celles de CLM.",
+        "failed": "Impossible d’interroger le serveur."
+      }
     }
   },
   "keyState": {
@@ -255,13 +281,20 @@
       "unsure": "Jev n’est pas sûr que cette étape corresponde à ce que vous voulez.",
       "beyond": "Jev estime que cela dépasse ce que vous avez demandé.",
       "unrelated": "Jev estime que cela ne fait pas partie de la tâche.",
-      "protected": "Cela touche aux paramètres de mu ; l’autorisation ne peut venir que de vous."
+      "protected": "Cela touche aux paramètres de mu ; l’autorisation ne peut venir que de vous.",
+      "nojudge": "Aucun juge n’est encore disponible, donc mu vous demande à chaque étape.",
+      "judgedown": "Le juge n’a pas répondu cette fois, donc mu vous demande."
     },
     "answer": {
       "once": "Autoriser une fois",
       "session": "Autoriser pour cette conversation",
       "sessionFor": "Autoriser pour cette conversation ({{grant}})",
       "deny": "Ne pas autoriser"
+    },
+    "decided": {
+      "once": "Vous avez autorisé une fois : {{summary}}",
+      "session": "Autorisé pour cette conversation : {{summary}}",
+      "deny": "Vous n’avez pas autorisé : {{summary}}"
     },
     "flag": {
       "recursive_or_forced_delete": "suppression récursive ou forcée",
@@ -325,16 +358,16 @@
     "removeDefault": "Les nouvelles sessions démarrent avec lui : le modèle par défaut est donc aussi effacé."
   },
   "defaults": {
-    "summary": "What a new session starts with. You can still switch inside a conversation.",
+    "summary": "Les réglages avec lesquels démarre une nouvelle session. Vous pouvez toujours en changer dans une conversation.",
     "provider": "Fournisseur",
     "model": "Modèle",
     "level": "Niveau de réflexion",
     "levelUnset": "Ne pas préciser",
-    "levelHelp": "Levels this model does not take are disabled.",
-    "levelClamped": "Not set means medium. A level the model does not take becomes the nearest one it does.",
-    "noReasoning": "This model does not think, so a session with it always starts with thinking off.",
+    "levelHelp": "Les niveaux que ce modèle ne prend pas en charge sont désactivés.",
+    "levelClamped": "« Ne pas préciser » vaut Moyen. Un niveau que le modèle ne prend pas en charge devient le plus proche qu’il accepte.",
+    "noReasoning": "Ce modèle ne réfléchit pas : une session avec lui démarre donc toujours sans réflexion.",
     "notSet": "Non précisé",
-    "pickProvider": "Choose a provider first."
+    "pickProvider": "Choisissez d’abord un fournisseur."
   },
   "accounts": {
     "signIn": "Se connecter",
@@ -437,7 +470,7 @@
     "update": "Cette version de mu ne permet pas de choisir ici le modèle qui rédige le tableau. Mettez d’abord mu à jour."
   },
   "levels": {
-    "off": "Désactivé",
+    "off": "Sans réflexion",
     "minimal": "Minimal",
     "low": "Faible",
     "medium": "Moyen",
@@ -469,7 +502,7 @@
       "signedIn": {
         "title": "Se connecter avec un abonnement",
         "tag": "Sans clé API",
-        "description": "Une formule ChatGPT, Claude ou Grok"
+        "description": "Une formule ChatGPT, Claude, Grok ou autre"
       },
       "openai": {
         "title": "API compatible OpenAI",
@@ -590,9 +623,28 @@
     "timeout": "mu n’a pas répondu à temps.",
     "processClosed": "mu s’est arrêté. Renvoyez le message pour le redémarrer.",
     "modelFailed": "La requête au modèle a échoué.",
-    "turnRunning": "mu traite encore le message précédent. Attendez qu’il ait fini, ou arrêtez-le d’abord."
+    "turnRunning": "mu traite encore le message précédent. Attendez qu’il ait fini, ou arrêtez-le d’abord.",
+    "noModel": "mu n’a aucun modèle pour répondre."
+  },
+  "noModel": {
+    "title": "Aucun modèle pour répondre",
+    "body": "mu a besoin d’un modèle qu’il peut utiliser. Connectez-vous ou ajoutez une clé dans {{place}}, puis renvoyez votre message.",
+    "open": "Ouvrir {{page}}",
+    "chip": "Choisir un modèle"
   },
   "notices": {
+    "checkpointOff": "Les points de restauration sont désactivés dans cette conversation.",
+    "checkpointOffWhy": {
+      "gitMissing": "Les points de restauration sont désactivés dans cette conversation : Git est introuvable sur cet ordinateur. Installez Git, puis ouvrez une nouvelle conversation pour les avoir.",
+      "xcodeLicense": "Les points de restauration sont désactivés dans cette conversation : Git ne peut pas s’exécuter sur ce Mac tant que la licence Xcode n’est pas acceptée. Acceptez-la avec sudo xcodebuild -license dans le Terminal, puis ouvrez une nouvelle conversation pour les avoir.",
+      "developerToolsMissing": "Les points de restauration sont désactivés dans cette conversation : ce Mac n’a pas les outils de développement en ligne de commande dont Git a besoin. Installez-les avec xcode-select --install dans le Terminal, puis ouvrez une nouvelle conversation pour les avoir.",
+      "homeFolder": "Les points de restauration sont désactivés dans cette conversation : son dossier est votre dossier personnel ou le contient. Ouvrez une conversation dans un dossier de projet pour les avoir.",
+      "muFolder": "Les points de restauration sont désactivés dans cette conversation : son dossier se trouve dans le dossier de mu lui-même. Ouvrez une conversation dans un dossier de projet pour les avoir.",
+      "tooManyFiles": "Les points de restauration sont désactivés dans cette conversation : son dossier contient plus de {{limit}} fichiers. Ouvrez une conversation dans un dossier de projet pour les avoir.",
+      "tooManyBytes": "Les points de restauration sont désactivés dans cette conversation : son dossier contient plus de {{limitMb}} Mo de fichiers. Ouvrez une conversation dans un dossier de projet pour les avoir.",
+      "tooSlow": "Les points de restauration sont désactivés dans cette conversation : lister les fichiers de son dossier a pris plus de {{seconds}} secondes. Ouvrez une conversation dans un dossier de projet pour les avoir."
+    },
+    "stopped": "Vous avez arrêté cette réponse.",
     "answerLost": "mu n’a pas reçu votre réponse et a continué comme si vous aviez refusé.",
     "bashMissing": "mu a besoin de Git for Windows pour exécuter des commandes. Une fois qu’il est installé, renvoyez votre message. Téléchargez-le ici :"
   },
@@ -673,5 +725,34 @@
       "earlier_other": "{{count}} étapes antérieures ne sont pas affichées.",
       "empty": "Rien à afficher."
     }
+  },
+  "commands": {
+    "frame": "Le cadre de la tâche : objectif, vos contraintes strictes et où vous les avez posées, sous-objectif, critères d’acceptation",
+    "remember": "Enregistrer une leçon pour les prochaines conversations de ce projet : /remember <ce qu’il faut faire>",
+    "lessons": "Les leçons de ce projet : /lessons liste id · type · rappelée/suivie · leçon, /lessons all ajoute celles valables partout et celles retirées",
+    "forget": "Retirer une leçon pour qu’elle ne soit plus rappelée : /forget <début de l’id> (les id sont dans /lessons)",
+    "capabilities": "Les capacités installées et celles ouvertes : /capabilities, /capabilities open <id>",
+    "permissions": "Ce que mu peut faire sans demander : /permissions full (Accès complet) | jev (Jev approuve) | ask (Autorisations minimales), ou un sélecteur sans argument. /permissions reset oublie ce que vous avez autorisé dans cette conversation",
+    "lsp": "Serveurs de langage : lesquels sont installés, lesquels tournent, et la dernière erreur",
+    "goal": "Mode objectif : l’agent continue jusqu’à ce qu’une condition soit remplie. /goal <condition>, /goal (afficher, ou en demander un), /goal clear",
+    "board": "Le tableau en clair : /board (l’afficher), /board on, /board off (pour ce projet), /board model (qui le rédige)",
+    "checkpoints": "Les points de restauration de cette conversation : tour, heure, fichiers modifiés depuis",
+    "rewind": "Revenir à un point de restauration : /rewind [n°] [both|files|conversation], /rewind undo pour annuler ; both : fichiers et conversation, files : fichiers seuls, conversation : conversation seule",
+    "swarm": "Sous-agents au travail : /swarm (ce que fait chacun), /swarm stop [nom] (rendre compte maintenant), /swarm kill [nom] (arrêter aussitôt)",
+    "agents": "Les rôles de sous-agents que l’outil delegate peut utiliser, et où ajouter les vôtres",
+    "hive": "Mettre plusieurs enquêteurs sur une même question : /hive <question>. Sans question, comme /swarm",
+    "browse": "Faire ouvrir une adresse au navigateur intégré et lui faire faire ce que vous dites : /browse <url> [objectif]",
+    "inherit": "Ce que mu a repris de Claude Code, Cursor et Codex, et d’où",
+    "mcp": "Serveurs MCP : /mcp, /mcp open <id>, /mcp restart <id>",
+    "jobs": "Processus en arrière-plan : /jobs, /jobs stop <id|all>",
+    "commit": "Découper la modification non validée en commits : montre le plan, ne valide qu’avec votre accord, ne pousse jamais",
+    "review": "Faire relire la modification non validée, ou ce que vous désignez, par le sous-agent relecteur ; constats classés de P0 à P3",
+    "mu": "État de mu. Aussi : /mu judge <paliers> | /mu route <point de décision> <paliers|default> | /mu mode <point de décision|default> <off|shadow|active>",
+    "status": "Modèle, juge, modes des points de décision, contexte économisé et derniers verdicts",
+    "help": "Ce que mu sait faire et toutes les commandes utiles",
+    "ledger": "Les derniers verdicts du juge avec leur durée : /ledger [n]",
+    "doctor": "Vérifier que le juge, le modèle, le navigateur et les sous-agents sont bien branchés",
+    "import-chat": "Importer dans mu une conversation Claude Code ou Codex de ce projet et la poursuivre : /import-chat [fichier]",
+    "llama": "Gérer les modèles du routeur llama.cpp"
   }
 }

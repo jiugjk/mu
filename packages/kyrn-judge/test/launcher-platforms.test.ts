@@ -43,6 +43,7 @@ import {
 	platformName,
 	resolveTsx,
 	shimContent,
+	sourceRuntime,
 	usage,
 } from "../../../kyrn/bin/mu.mjs";
 import { isWsl } from "../src/platform.ts";
@@ -86,12 +87,23 @@ const WIN_TSX = `${WIN_ROOT}\\node_modules\\tsx`;
 const winInstalled = {
 	[`${WIN_TSX}\\package.json`]: JSON.stringify({ bin: "./dist/cli.mjs" }),
 	[`${WIN_TSX}\\dist\\cli.mjs`]: "",
+	[`${WIN_ROOT}\\packages\\coding-agent\\src\\experimental\\source-resolver.ts`]: "",
 };
 const POSIX_ROOT = "/home/bai/KYRN";
 const posixInstalled = {
 	[`${POSIX_ROOT}/node_modules/tsx/package.json`]: JSON.stringify({ bin: { tsx: "./dist/cli.mjs" } }),
 	[`${POSIX_ROOT}/node_modules/tsx/dist/cli.mjs`]: "",
+	[`${POSIX_ROOT}/packages/coding-agent/src/experimental/source-resolver.ts`]: "",
 };
+/** How Node runs a checkout's TypeScript itself: pi's source resolver and Node's compile cache (sourceRuntime). */
+const POSIX_NATIVE = [
+	"--disable-warning=ExperimentalWarning",
+	"--import",
+	`file://${POSIX_ROOT}/kyrn/bin/compile-cache.mjs`,
+	"--import",
+	`file://${POSIX_ROOT}/packages/coding-agent/src/experimental/source-resolver.ts`,
+];
+const POSIX_TSX = [`${POSIX_ROOT}/node_modules/tsx/dist/cli.mjs`, "--tsconfig", `${POSIX_ROOT}/tsconfig.json`];
 
 function launch(overrides: Partial<Parameters<typeof planLaunch>[0]>): LaunchPlan {
 	const plan = planLaunch({
@@ -359,9 +371,12 @@ describe("starting pi", () => {
 
 		expect(plan.command).toBe("C:\\Program Files\\nodejs\\node.exe");
 		expect(plan.args).toEqual([
-			`${WIN_TSX}\\dist\\cli.mjs`,
-			"--tsconfig",
-			`${WIN_ROOT}\\tsconfig.json`,
+			"--disable-warning=ExperimentalWarning",
+			// As URLs: `--import` reads C:\... as a URL whose scheme is c:.
+			"--import",
+			"file:///C:/Users/bai/code/KYRN/kyrn/bin/compile-cache.mjs",
+			"--import",
+			"file:///C:/Users/bai/code/KYRN/packages/coding-agent/src/experimental/source-resolver.ts",
 			`${WIN_ROOT}\\packages\\coding-agent\\src\\experimental\\cli.ts`,
 			"-e",
 			`${WIN_ROOT}\\packages\\kyrn-judge\\src\\extension\\kyrn-judge.ts`,
@@ -377,6 +392,42 @@ describe("starting pi", () => {
 			PI_CODING_AGENT_DIR: "C:\\Users\\bai\\.mu\\agent",
 			PI_SKIP_VERSION_CHECK: "1",
 		});
+	});
+
+	it("runs a checkout's TypeScript with Node itself, and through tsx where Node cannot or the checkout is older", () => {
+		expect(launch({ argv: ["--mode", "rpc"] }).args).toEqual([
+			...POSIX_NATIVE,
+			`${POSIX_ROOT}/packages/coding-agent/src/experimental/cli.ts`,
+			"-e",
+			`${POSIX_ROOT}/packages/kyrn-judge/src/extension/kyrn-judge.ts`,
+			"--mode",
+			"rpc",
+		]);
+		// A runtime that does not strip types: an Electron that runs mu as Node may not.
+		expect(launch({ stripsTypes: false }).args.slice(0, 3)).toEqual(POSIX_TSX);
+		// A checkout from before pi's source resolver.
+		const older = Object.entries(posixInstalled).filter(([file]) => !file.endsWith("source-resolver.ts"));
+		expect(launch({ fs: disk(Object.fromEntries(older)) }).args.slice(0, 3)).toEqual(POSIX_TSX);
+		// Node strips types, but the dependencies are not installed: that is still said, not left to a failed import.
+		expect(sourceRuntime({ root: POSIX_ROOT, platform: "linux", stripsTypes: true, ...disk({}) }).error).toContain(
+			"npm ci --ignore-scripts",
+		);
+		// A user name with a space or beyond ASCII is escaped in the URL, and the file is still found.
+		const root = "C:\\Users\\白鹤 Li\\KYRN";
+		const tsx = `${root}\\node_modules\\tsx`;
+		const named = sourceRuntime({
+			root,
+			platform: "win32",
+			stripsTypes: true,
+			...disk({
+				[`${tsx}\\package.json`]: JSON.stringify({ bin: "./dist/cli.mjs" }),
+				[`${tsx}\\dist\\cli.mjs`]: "",
+				[`${root}\\packages\\coding-agent\\src\\experimental\\source-resolver.ts`]: "",
+			}),
+		});
+		expect(named.error === undefined && named.args[4]).toBe(
+			"file:///C:/Users/%E7%99%BD%E9%B9%A4%20Li/KYRN/packages/coding-agent/src/experimental/source-resolver.ts",
+		);
 	});
 
 	it("replaces itself where the system can (as the bash launcher did), and starts a child where it cannot", () => {
@@ -539,7 +590,7 @@ describe("the npm package (mu-agent)", () => {
 });
 
 describe("mu auth in a checkout", () => {
-	it("runs the sign-in's sources through tsx, in the agent folder mu uses everywhere else", () => {
+	it("runs the sign-in's sources the way pi runs, in the agent folder mu uses everywhere else", () => {
 		const plan = planAuth({
 			platform: "linux",
 			env: { MU_AGENT_DIR: "/srv/mu-agent" },
@@ -551,13 +602,7 @@ describe("mu auth in a checkout", () => {
 			fs: disk(posixInstalled),
 		});
 		if (plan.error !== undefined) throw new Error(plan.error);
-		expect(plan.args).toEqual([
-			`${POSIX_ROOT}/node_modules/tsx/dist/cli.mjs`,
-			"--tsconfig",
-			`${POSIX_ROOT}/tsconfig.json`,
-			`${POSIX_ROOT}/packages/kyrn-judge/src/auth/main.ts`,
-			"status",
-		]);
+		expect(plan.args).toEqual([...POSIX_NATIVE, `${POSIX_ROOT}/packages/kyrn-judge/src/auth/main.ts`, "status"]);
 		expect(plan.strategy).toBe("exec");
 		expect(plan.env.MU_AGENT_DIR).toBe("/srv/mu-agent");
 		// Before the rename the home was ~/.kyrn; a machine that still has only that one keeps it.
@@ -1128,7 +1173,7 @@ describe("the launcher, run for real on this machine", () => {
 		expect(reached.out).toContain("reached help");
 	});
 
-	// Three starts of pi, through tsx: on GitHub's Windows runners each takes over ten seconds.
+	// Three starts of pi from its sources: on GitHub's Windows runners each took over ten seconds through tsx.
 	it.skipIf(!installed)(
 		"starts pi as a child too, the way Windows has to, and passes its exit code on",
 		() => {

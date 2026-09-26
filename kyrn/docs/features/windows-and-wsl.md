@@ -1,12 +1,12 @@
 # Windows 与 WSL：跨平台启动器、浏览器发现、POSIX 假设清单
 
-更新日期：2026-09-25。状态：**代码和单元测试完成，macOS 上实跑通过；Windows 上由 CI（`windows-tests.yml`，windows-2022）跑通全部单元测试，并经 cmd.exe 实跑了 `mu.cmd`；交互控制台、`mu.ps1` 和 WSL 仍没有在真机上运行过。** 正文里“未在真机验证”的标记写于 CI 之前，以第 7 节的两张清单为准；第 8 节是还要查的。
+更新日期：2026-09-25。状态：**代码和单元测试完成，macOS 上实跑通过；Windows 上由 CI（`windows-tests.yml`，windows-2022）跑通全部单元测试，经 cmd.exe 实跑了 `mu.cmd`，经 Windows PowerShell 5.1 和 PowerShell 7 实跑了 `mu.ps1`；交互控制台和 WSL 仍没有在真机上运行过。** 正文里“未在真机验证”的标记写于 CI 之前，以第 7 节的两张清单为准；第 8 节是还要查的。
 
 ## 1. 做了什么
 
 | 部分 | 文件 | 说明 |
 | --- | --- | --- |
-| 启动器 | `kyrn/bin/mu.mjs`（新）、`mu.d.mts`（类型，给测试用） | 原 bash 启动器的全部分支搬到纯 Node（ESM、无依赖、不用 TypeScript：它在找到 tsx 之前就要跑）。每个决定都是导出的纯函数，平台、环境变量、文件系统都是参数 |
+| 启动器 | `kyrn/bin/mu.mjs`（新）、`mu.d.mts`（类型，给测试用） | 原 bash 启动器的全部分支搬到纯 Node（ESM、无依赖、不用 TypeScript：它在找到能跑 TypeScript 的东西之前就要跑）。每个决定都是导出的纯函数，平台、环境变量、文件系统都是参数 |
 | 转发器 | `kyrn/bin/mu`（bash，重写）、`mu.cmd`、`mu.ps1`（新） | 只剩一件事：确认有 Node >= 22.19，然后交给 `mu.mjs`。`kyrn`、`kyrn-dev` 照旧转发到 `mu` |
 | 平台判断 | `packages/kyrn-judge/src/platform.ts`（新） | WSL 识别、`wslpath` 式路径互转、`/etc/wsl.conf` 的挂载根、进程树终止方案 |
 | 浏览器 | `src/browser/chrome.ts`（重写发现部分） | Windows、Linux（含 snap / flatpak）、WSL 的发现与启动命令行 |
@@ -16,14 +16,17 @@
 ## 2. 启动器
 
 ```
-macOS / Linux / WSL：  kyrn/bin/mu（bash：选 Node）→ exec node mu.mjs → execve 成 tsx 的 cli.mjs → pi
-Windows：             kyrn\bin\mu.cmd（查 Node 版本）→ node mu.mjs → spawn node tsx\dist\cli.mjs → pi
+macOS / Linux / WSL：  kyrn/bin/mu（bash：选 Node）→ exec node mu.mjs → execve 成 node（自带类型擦除）→ pi
+Windows：             kyrn\bin\mu.cmd（查 Node 版本）→ node mu.mjs → spawn node（自带类型擦除）→ pi
 ```
+
+- **检出直接用 Node 自带的类型擦除跑源码（2026-09-26）。** Node 22.18 起默认能擦除 TypeScript 类型，`mu.mjs` 的 `sourceRuntime` 就用 `node --import compile-cache.mjs --import <pi 的 source-resolver.ts> cli.ts` 启动：pi 自己的 `packages/coding-agent/src/experimental/source-resolver.ts` 按根 `tsconfig.json` 的 paths 把各工作区包解析到源码，`compile-cache.mjs` 打开 Node 的编译缓存（npm 包的 bundle 入口也这么做）。原来经 tsx：tsx 的加载器在单独线程上，每个文件都要从那边转一手。M 系列 Mac 上 pi 加判断层从 2.0 s 降到约 0.85 s（有负载时 2.1–2.6 s 对 1.0–1.35 s），`mu auth status` 从 1.65 s 降到 0.85 s；桌面端每开一个对话都要启动一次 mu，开发版的第一条回复因此快一秒多。`--import` 给的是 file URL：Windows 路径 `C:\...` 会被当成协议为 `c:` 的 URL。Node 不擦除类型（`process.features.typescript` 为假，比如把 mu 当 Node 跑的 Electron）或检出里还没有这个解析器时，照旧走 tsx。能这么跑的前提是源码只用可擦除语法、类型导入都写了 `type`：根配置加 `--verbatimModuleSyntax` 跑 tsgo，1908 个文件 0 错。
 
 - **选 Node 留在 bash 里。** 默认 Node 比 22.19 旧的机器（本机默认就是 20）不能指望它跑得动启动器本身，所以在任何 JavaScript 运行之前先从 PATH、再从 nvm 里挑。现在精确到 22.19（原来只看主版本 >= 22）。用 `node --version`（约 15 ms）代替 `node -p`（约 29 ms）。`mu.mjs` 自己还会再查一次，给出同样清楚的提示。
 - **不经过 `.cmd` 垫片。** Windows 上 `node_modules/.bin/tsx` 是 `.cmd`，只能经 shell 启动，带引号或 `&` 的 prompt 会被二次解析。所有平台都改成：读 `node_modules/tsx/package.json` 的 `bin`，拿到真正的 `dist/cli.mjs`，用 `process.execPath` 加参数数组启动，从不拼命令行字符串。`node_modules/tsx` 按 Node 解析 import 的规则找：先看仓库根，再逐级往上看父目录。放在主检出下面的 git worktree（本仓库的代理 worktree 都是）自己没有 `node_modules`，靠主检出的跑，和它里面的 import 一样（合并时补的，两个平台都有用例）。
 - **POSIX 用 `process.execve` 顶替自身，Windows 用 spawn。** 启动耗时两者一样（见下表），选 execve 不是为了快，而是为了进程树和 bash 的 `exec` 完全一致：桌面端按进程组发 SIGTERM，中间多一层常驻 Node 就会出现信号重复投递，还多占一个进程。`process.execve` 在 Node 22.15+ 才有，文档标为实验性；不可用或抛错时自动退回 spawn。`MU_LAUNCH=spawn` 可强制走 Windows 那条路，测试用它在 macOS 上实跑了这条路径（含非零退出码透传）。spawn 路径在 POSIX 上转发 SIGINT / SIGTERM / SIGHUP；Windows 上 `kill` 不是信号而是直接结束进程，控制台的 Ctrl+C 本来就会送到子进程，所以父进程只是活着等子进程退出。
 - **`mu.ps1` 不进 PATH。** 它的价值是 PowerShell 用户不经 cmd.exe，参数原样传递。但 PowerShell 在同一目录里优先选 `.ps1`，而 Windows 客户端默认执行策略是 Restricted：`.ps1` 一旦和 `mu.cmd` 一起放进 PATH 目录，`mu` 在 PowerShell 里会直接报错而不是退回 `.cmd`（npm 的老问题）。所以 `mu link` 只写 `mu.cmd`，`mu.ps1` 留在仓库里按路径调用。
+- **`mu.ps1` 自己转义引号。** Windows PowerShell 5.1（以及 7.3 之前的 PowerShell 7，或手动设成 `Legacy` 的传参方式）把参数交给程序时不转义里面的引号：`mu.ps1 'fix the "login" bug'` 到了 node 那里成了 `fix the login bug`。它还会丢掉空参数；参数里有空格时它会加引号，却不把末尾的反斜杠加倍，这些反斜杠会把收尾的引号转义掉。所以在这种传参方式下，`mu.ps1` 按 node 读回参数的规则自己转义：引号写成 `\"`，引号前的反斜杠加倍，空参数写成 `""`，有空格的参数末尾的反斜杠加倍。PowerShell 7.3 以后默认的传参方式本来就原样，不再动。
 
 macOS 实测（Node 24.16，临时 HOME，9 次取中位数）：
 
@@ -116,10 +119,14 @@ sidecar 是 Core ML，只能在 Apple Silicon 的 macOS 上跑。非 macOS 上�
 - NTFS 上应用视图的 junction 与复制、过期后重建；真实的 `tasklist` + `Get-CimInstance` 找到正在运行的会话。
 - 由此发现并修掉两个产品问题：Windows 上 bash 工具的命令被按 PowerShell 的规则读，`rg 'useState\(' src` 这样的只读搜索也要批准（pi 在 Windows 上用 Git Bash 跑 bash 工具）；子代理从仓库的子目录启动时，路径没有搬进它的工作树（git 给的前缀用 `/`，会话目录用 `\`）。
 
+已验证（`mu.ps1`，同一台 windows-2022，2026-09-25，公开仓库 main 的 run 36124913954）：
+
+- `test/launcher.test.ts` 像人在 PowerShell 提示符里那样调用 `mu.ps1`（`& mu.ps1 '…'`，参数放在变量里传，不经 `-File` 的命令行），分别用 Windows PowerShell 5.1、PowerShell 7，以及把 PowerShell 7 设成 `Legacy`（7.3 之前的传参方式）。三个参数：`--say "hi" & 100% done`、`--dir=C:\my dir\`、`--quote=a\"b`。`mu import` 会把不认识的选项原样说出来，所以测试逐字比对 node 收到的内容，并检查退出码 2 原样传出。
+- 修复前，这个测试在 5.1 上失败（临时分支 `ci/ps1-before`，run 36115360299）：传入 `--say "hi" & 100% done`，mu 说出来的只有 `--say`。由此修了 `mu.ps1`（见第 2 节）；修复后 5.1 的三个参数都原样通过，剩下的失败出在测试自己用 `-File` 传参（PowerShell 7 会先把 `--dir=C:\my dir\` 当成 `-名字:值` 拆开），测试随后改成经变量传参。
+
 **没有验证**（没有 Windows / WSL 真机）：
 
-- `mu.ps1` 从未被 PowerShell 执行过。
-- Windows 控制台里交互运行 pi、Ctrl+C。
+- Windows 控制台里交互运行 pi、Ctrl+C（经 `mu.cmd` 或 `mu.ps1` 都没有；CI 只跑了一次性的命令）。
 - 非英文 Windows 上 `tasklist` 的输出（CI 是英文系统；因为表头不同，用了 `/NH` 不读表头）。
 - Windows、Linux、WSL 上真实的浏览器发现与启动；snap / flatpak 的 profile 位置；mirrored 模式下经回环连接 Windows 侧 Chrome；`\\wsl.localhost` 上的 profile。
 - Git Bash 里运行 `kyrn/bin/mu`。
@@ -127,11 +134,11 @@ sidecar 是 Core ML，只能在 Apple Silicon 的 macOS 上跑。非 macOS 上�
 
 ## 8. 拿到 Windows 机器后先查什么
 
-第 1、2、5 项已由 CI 验证（见第 7 节），第 6 项验证了 doctor 能跑、退出码对，找到的是哪个浏览器还没看过。
+第 1、2、5 项已由 CI 验证（见第 7 节）；第 3 项里 `mu.ps1` 那一半也已验证，剩下的是 cmd 这一层；第 6 项验证了 doctor 能跑、退出码对，找到的是哪个浏览器还没看过。
 
 1. `kyrn\bin\mu.cmd help`、`version`：能跑、退出码为 0；把 PATH 里的 node 换成旧版，看到“needs Node.js 22.19 or newer”而不是语法错误。
 2. `mu.cmd --version`：`%USERPROFILE%\.mu\app` 下 `src`、`docs`、`examples` 是 junction（`dir /AL`），两个 `.md` 是文件，`package.json` 里 `piConfig.name` 是 `mu`；再跑一次不应重建任何东西。
-3. `mu.cmd -p "say ""hi"" & echo %USERNAME%"`：prompt 原样到达模型（cmd 这一层的引号规则是 npm 垫片同级的已知限制；`mu.ps1` 应完全原样）。
+3. `mu.cmd -p "say ""hi"" & echo %USERNAME%"`：prompt 原样到达模型（cmd 这一层的引号规则是 npm 垫片同级的已知限制；`mu.ps1` 经 CI 验证是完全原样的）。
 4. 交互模式下 Ctrl+C、`/quit`，以及关掉控制台窗口后 `tasklist` 里没有残留的 node。
 5. `mu.cmd link`：垫片内容、`where mu`、PATH 提示那条 PowerShell 命令确实只改用户 PATH；用户名含中文的账户下再试一次。
 6. `mu.cmd doctor`：platform 行是 Windows，browser 行找到 Edge 或 Chrome，local judge 是说明行。

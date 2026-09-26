@@ -205,7 +205,10 @@ const DefaultsSection: React.FC<DefaultsSectionProps> = ({
             {permissionOptions.map((option) => (
               <Select.Option key={`${localeKey}-${option.value}`} value={option.value}>
                 {option.description ? (
-                  <Tooltip content={option.description} position='right'>
+                  <Tooltip
+                    content={t(`agentMode.descriptions.${option.value}`, { defaultValue: option.description })}
+                    position='right'
+                  >
                     <span className='block min-w-0 truncate'>
                       {t(`agentMode.${option.value}`, { defaultValue: option.label })}
                     </span>

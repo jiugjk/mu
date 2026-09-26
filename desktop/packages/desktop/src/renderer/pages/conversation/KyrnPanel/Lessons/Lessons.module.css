@@ -177,9 +177,24 @@
   overflow-wrap: anywhere;
 }
 
+/* At the end of the line, with or without the trigger before it. */
 .uses {
   flex: none;
+  margin-inline-start: auto;
   font-variant-numeric: tabular-nums;
+}
+
+/* A `code` span of a lesson, as the chat shows inline code (the Markdown view's `code:not(pre code)`). */
+.code {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg-3);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  font-weight: bold;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .detail {

@@ -11,6 +11,7 @@ import {
   clipOutput,
   shouldFoldActivity,
   summarizeToolActivity,
+  toolActivityDenied,
   toolActivityErrors,
   toolErrorLine,
   toolLabel,
@@ -104,16 +105,42 @@ describe('a failed step keeps its own words', () => {
   });
 });
 
+describe('a step the person did not allow', () => {
+  const refused = {
+    ...call('bash', 'error', { command: 'rm -rf build' }, 'The user did not allow this (rm -rf build).'),
+    denied: true as const,
+  };
+
+  it('never ran, which is no failure: the run is done, and its line is not an error line', () => {
+    const tools = [call('read', 'completed', { file_path: 'src/a.ts' }), refused];
+    expect(summarizeToolActivity(tools)).toMatchObject({ steps: 2, status: 'done', failed: 0 });
+    expect(toolActivityErrors(tools)).toEqual([]);
+  });
+
+  it('is listed on its own, by what it would have run', () => {
+    const tools = [call('bash', 'error', { command: 'npm test' }, 'FAIL'), refused];
+    expect(summarizeToolActivity(tools)).toMatchObject({ status: 'error', failed: 1 });
+    expect(toolActivityDenied(tools)).toEqual([{ key: refused.key, label: { verb: 'bash', target: 'rm -rf build' } }]);
+  });
+});
+
 describe('what a call line is made of', () => {
   it('reads as a verb and what it was run on', () => {
     expect(toolLabel(call('read', 'completed', { file_path: 'src/a.ts' }))).toEqual({
       verb: 'read',
       target: 'src/a.ts',
+      path: true,
     });
     expect(toolLabel(call('bash', 'completed', { command: 'npm test' }))).toEqual({
       verb: 'bash',
       target: 'npm test',
     });
+  });
+
+  it('says when the target is a path, which a narrow row cuts in its middle', () => {
+    expect(toolLabel(call('edit', 'completed', { path: 'src/b.ts', old_text: 'x' })).path).toBe(true);
+    expect(toolLabel(call('grep', 'completed', { pattern: 'useState' })).path).toBeUndefined();
+    expect(toolLabel(call('bash', 'completed', { command: 'cat src/a.ts' })).path).toBeUndefined();
   });
 
   it('keeps the verb alone when the input names nothing worth showing', () => {

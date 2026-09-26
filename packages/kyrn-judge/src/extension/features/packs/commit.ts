@@ -1,4 +1,5 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type { GitUnusableReason } from "../../../checkpoint/git.ts";
 import { say } from "../../../language.ts";
 import {
 	type ApplyOutcome,
@@ -21,6 +22,18 @@ import type { PackShared } from "./pack.ts";
 
 const TITLE = "mu /commit";
 
+/** What /commit tells the user when git cannot run on this Mac: only they can change that. */
+const CANNOT_RUN: Readonly<Record<GitUnusableReason, { zh: string; en: string }>> = {
+	developer_tools_missing: {
+		zh: "/commit 用不了：这台 Mac 没有安装 git 所需的命令行开发者工具。用 xcode-select --install 安装后再试。",
+		en: "/commit cannot run: this Mac has no command line developer tools, which git needs. Install them with xcode-select --install, then try again.",
+	},
+	xcode_license: {
+		zh: "/commit 用不了：这台 Mac 还没有同意 Xcode 许可协议，git 无法运行。在终端里用 sudo xcodebuild -license 同意后再试。",
+		en: "/commit cannot run: git cannot run on this Mac until the Xcode license is accepted. Accept it with sudo xcodebuild -license in Terminal, then try again.",
+	},
+};
+
 /**
  * `/commit [what to keep in mind]`: the uncommitted change, split into commits
  * a reviewer can read one at a time. A model proposes the groups and the
@@ -41,9 +54,14 @@ export function registerCommit(shared: PackShared, options: { maxPlanChars: numb
 			const repo = await repoState(git, ctx.cwd);
 			if (!repo.ok) {
 				const why =
-					repo.reason === "no-git"
-						? installHint("git", shared.platform)
-						: say({ zh: `这里不是 git 仓库：${repo.message}`, en: `Not a git repository here: ${repo.message}` });
+					repo.reason === "unusable"
+						? say(CANNOT_RUN[repo.unusable])
+						: repo.reason === "no-git"
+							? installHint("git", shared.platform)
+							: say({
+									zh: `这里不是 git 仓库：${repo.message}`,
+									en: `Not a git repository here: ${repo.message}`,
+								});
 				ctx.ui.notify(why, "warning");
 				return;
 			}

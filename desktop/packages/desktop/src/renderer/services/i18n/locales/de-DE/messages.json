@@ -67,6 +67,7 @@
   "noOptionsAvailable": "Keine Optionen verfügbar",
   "processing": "Wird verarbeitet...",
   "responseSentSuccessfully": "Antwort erfolgreich gesendet",
+  "permissionAnswered": "Beantwortet: {{option}}",
   "permissionResponseFailed": "Antwort konnte nicht gesendet werden. Bitte erneut versuchen.",
   "permissionNoLongerPending": "Diese Anfrage wartet nicht mehr auf eine Antwort.",
   "confirmation": {

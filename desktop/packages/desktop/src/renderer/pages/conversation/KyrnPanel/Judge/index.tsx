@@ -14,6 +14,7 @@ import { contextView } from './context';
 import JudgeCardView from './JudgeCardView';
 import {
   eventDetail,
+  foldRepeats,
   itemCode,
   itemSentence,
   logItems,
@@ -52,9 +53,14 @@ export default function JudgeLog({
   conversationId?: string;
   visible?: boolean;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const items = useMemo(() => logItems(events), [events]);
+  // The same line many times in a row reads once, with a count.
+  const rows = useMemo(
+    () => foldRepeats(items, (item) => itemSentence(t, item, i18n.language)),
+    [items, t, i18n.language]
+  );
   const lessonEvents = useMemo(() => memoryEvents(events), [events]);
   const needsLessons = Boolean(conversationId) && visible && items.some(namesLessons);
   const { view: lessonsView } = useLessons(
@@ -74,7 +80,7 @@ export default function JudgeLog({
   const [following, setFollowing] = useState(true);
   const followingRef = useRef(true);
   const scroller = useRef<HTMLDivElement>(null);
-  const shown = items.slice(-limit);
+  const shown = rows.slice(-limit);
   const newest = items.at(-1)?.id;
 
   // New lines keep the log at its bottom, unless the person has scrolled up to read.
@@ -130,18 +136,19 @@ export default function JudgeLog({
       ) : null}
       <div className={styles.scroller} ref={scroller} onScroll={onScroll} data-testid='judge-log'>
         {!items.length ? <p className={styles.empty}>{t('common.kyrn.judgeView.empty')}</p> : null}
-        {items.length > shown.length ? (
+        {rows.length > shown.length ? (
           <Button type='text' size='mini' className={styles.earlier} onClick={() => setLimit((old) => old + PAGE)}>
             {t('common.kyrn.judgeView.log.earlier')}
           </Button>
         ) : null}
         <ol className={styles.lines}>
-          {shown.map((item) => (
+          {shown.map((row) => (
             <Line
-              key={item.id}
-              item={item}
-              open={opened.has(item.id)}
-              onToggle={() => toggle(item.id)}
+              key={row.key}
+              item={row.item}
+              count={row.count}
+              open={opened.has(row.key)}
+              onToggle={() => toggle(row.key)}
               lessonText={lessonText}
             />
           ))}
@@ -178,8 +185,11 @@ function ContextSummary({ events, open, onToggle }: { events: Activity[]; open: 
   );
 }
 
-/** Time and sentence, then the hint chips of a verdict. The code waits in the opened line. */
-function LineText({ item }: { item: LogItem }) {
+/**
+ * Time and sentence, then the hint chips of a verdict, and how many times the line came in a row. The code waits in
+ * the opened line.
+ */
+function LineText({ item, count = 1 }: { item: LogItem; count?: number }) {
   const { t, i18n } = useTranslation();
   const clock = useLogClock();
   const chips = item.type === 'judgment' ? hintChips(t, item.card.hintIds) : [];
@@ -193,6 +203,11 @@ function LineText({ item }: { item: LogItem }) {
             {chip.label}
           </span>
         ))}
+        {count > 1 ? (
+          <span className={styles.chip} data-testid='judge-line-count'>
+            {t('common.kyrn.judgeView.log.times', { times: formatNumber(count, i18n.language) })}
+          </span>
+        ) : null}
       </span>
     </>
   );
@@ -200,11 +215,13 @@ function LineText({ item }: { item: LogItem }) {
 
 function Line({
   item,
+  count,
   open,
   onToggle,
   lessonText,
 }: {
   item: LogItem;
+  count: number;
   open: boolean;
   onToggle: () => void;
   lessonText: LessonText;
@@ -213,7 +230,7 @@ function Line({
   return (
     <li className={styles.line} data-testid='judge-line' data-code={code}>
       <Button type='text' long className={styles.lineButton} aria-expanded={open} onClick={onToggle}>
-        <LineText item={item} />
+        <LineText item={item} count={count} />
       </Button>
       {open ? (
         <div className={styles.detail}>
@@ -224,7 +241,7 @@ function Line({
           {item.type === 'judgment' ? (
             <JudgeCardView card={item.card} plain lessonText={lessonText} />
           ) : (
-            <EventDetail event={item.event} lessonText={lessonText} />
+            <EventDetail event={item.event} about={item.about} lessonText={lessonText} />
           )}
         </div>
       ) : null}
@@ -232,9 +249,11 @@ function Line({
   );
 }
 
-function EventDetail({ event, lessonText }: { event: Activity; lessonText: LessonText }) {
+function EventDetail({ event, about, lessonText }: { event: Activity; about?: string; lessonText: LessonText }) {
   const { t, i18n } = useTranslation();
   const payload = event.payload;
+  // An answer's words name the call its question named; the raw record below stays as it came.
+  const worded = about ? { ...event, payload: { ...payload, summary: about } } : event;
   if (event.kind === 'artifact.image' && IMAGE_TYPES.test(str(payload.mimeType))) {
     return (
       <img
@@ -246,7 +265,7 @@ function EventDetail({ event, lessonText }: { event: Activity; lessonText: Lesso
   }
   return (
     <>
-      {eventDetail(t, event, i18n.language, lessonText).map((line, index) => (
+      {eventDetail(t, worded, i18n.language, lessonText).map((line, index) => (
         // A line may be data (a command, a server's words) in any script.
         <p key={index} className={styles.detailLine} dir='auto'>
           {line}

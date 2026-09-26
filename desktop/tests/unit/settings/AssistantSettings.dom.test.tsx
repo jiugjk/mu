@@ -11,6 +11,7 @@ import { ConfigProvider } from '@arco-design/web-react';
 import { MemoryRouter } from 'react-router-dom';
 import AssistantSettings from '@/renderer/pages/settings/AssistantSettings';
 import EnabledAssistantsList from '@/renderer/pages/settings/AssistantSettings/home/EnabledAssistantsList';
+import OfficialAssistantsGrid from '@/renderer/pages/settings/AssistantSettings/home/OfficialAssistantsGrid';
 import type { AssistantListItem } from '@/renderer/pages/settings/AssistantSettings/types';
 
 const useAssistantListMock = vi.fn();
@@ -224,6 +225,31 @@ describe('AssistantSettings', () => {
     // Each enabled row exposes an enable switch so users can disable in place.
     expect(screen.getByTestId('switch-enabled-official')).toBeInTheDocument();
     expect(screen.getByTestId('switch-enabled-cli')).toBeInTheDocument();
+    // A screen reader hears whose switch it is: each is named after the assistant its row shows.
+    expect(screen.getByRole('switch', { name: 'Cowork' })).toBe(screen.getByTestId('switch-enabled-official'));
+    expect(screen.getByRole('switch', { name: 'My Writer' })).toBe(screen.getByTestId('switch-enabled-custom'));
+    expect(screen.getByRole('switch', { name: 'Codex' })).toBe(screen.getByTestId('switch-enabled-cli'));
+  });
+
+  it('names the switch on each official assistant card after the assistant it shows', () => {
+    const assistants = [
+      { id: 'writer', name: 'Writer', name_i18n: { 'en-US': 'Writer (en)' }, sort_order: 1, source: 'builtin' },
+      { id: 'coder', name: 'Coder', sort_order: 2, source: 'builtin', enabled: false },
+    ] as AssistantListItem[];
+    render(
+      <ConfigProvider>
+        <OfficialAssistantsGrid
+          assistants={assistants}
+          localeKey='en-US'
+          onOpenSettings={vi.fn()}
+          onDuplicate={vi.fn()}
+          onToggleEnabled={vi.fn()}
+          onStartChat={vi.fn()}
+        />
+      </ConfigProvider>
+    );
+    expect(screen.getByRole('switch', { name: 'Writer (en)' })).toBe(screen.getByTestId('switch-enabled-writer'));
+    expect(screen.getByRole('switch', { name: 'Coder' })).toBe(screen.getByTestId('switch-enabled-coder'));
   });
 
   it('disables enabled-assistant dragging while search is active', () => {

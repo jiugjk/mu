@@ -263,7 +263,9 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
       const modeOptions: MobileActionSheetOption[] = dynamicModes.map((mode) => ({
         key: mode.value,
         label: t(`agentMode.${mode.value}`, { defaultValue: mode.label }),
-        description: mode.description,
+        description: mode.description
+          ? t(`agentMode.descriptions.${mode.value}`, { defaultValue: mode.description })
+          : undefined,
         active: mode.value === selectedMode,
       }));
       entries.push({
@@ -493,7 +495,7 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
   );
 
   return (
-    <div className={styles.actionRow}>
+    <div className={styles.actionRow} data-mobile={isMobile ? 'true' : undefined}>
       <div className={styles.actionTools}>
         <div className={styles.actionEntry}>
           {isMobile ? (
@@ -504,6 +506,7 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
                 shape='circle'
                 icon={<Plus theme='outline' size='14' strokeWidth={2} fill={iconColors.primary} />}
                 data-testid='file-upload-btn'
+                aria-label={t('common.more')}
                 onClick={() => setIsSheetOpen(true)}
               />
               {files.length > 0 && (
@@ -526,6 +529,8 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
                   className={isPlusDropdownOpen ? styles.plusButtonRotate : ''}
                   icon={<Plus theme='outline' size='14' strokeWidth={2} fill={iconColors.primary} />}
                   data-testid='file-upload-btn'
+                  // Files, skills: what the menu under it adds.
+                  aria-label={t('common.add')}
                 />
                 {files.length > 0 && (
                   <Tooltip
@@ -583,6 +588,7 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
           icon={<SendArrowIcon size={16} />}
           onClick={onSend}
           data-testid='guid-send-btn'
+          aria-label={t('common.send')}
         />
       </div>
     </div>

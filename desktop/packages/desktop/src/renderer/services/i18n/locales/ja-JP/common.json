@@ -68,6 +68,7 @@
   "tray.showWindow": "mu を表示",
   "tray.newChat": "新しいチャット",
   "tray.closeToTray": "トレイに隠す",
+  "tray.hideToMenuBar": "メニューバーに隠す",
   "tray.about": "mu について",
   "tray.restart": "アプリを再起動",
   "tray.quit": "終了",
@@ -175,6 +176,8 @@
       "open": "Hive を開く",
       "inspect": "{{name}} を確認",
       "summary": "{{active}} 件がアクティブ · {{done}} 件完了 / 全 {{total}} 件",
+      "summaryEnded": "{{done}} 件完了 / 全 {{total}} 件",
+      "summaryUnfinished": "{{done}} 件完了 / 全 {{total}} 件 · {{unfinished}} 件は未完了",
       "counts": "実行中 {{running}} · 完了 {{done}} · 失敗 {{failed}}",
       "none": "この会話にはまだサブエージェントがいません。",
       "details": "情報の流れと記録",
@@ -890,7 +893,8 @@
       "log": {
         "thisTurn": "このターン",
         "earlier": "以前の行を表示",
-        "latest": "最新へ移動"
+        "latest": "最新へ移動",
+        "times": "{{times}} 回"
       }
     },
     "empty": "このセッションにはまだイベントが記録されていません。",
@@ -945,10 +949,14 @@
         "switched": "ボードのオン/オフを切り替えました"
       },
       "permissions": {
-        "mode": "権限モード"
+        "mode": "権限モード",
+        "request": "許可を求めました",
+        "resolved": "許可の回答",
+        "approved": "確認なしで実行"
       },
       "checkpoint": {
-        "taken": "チェックポイントを保存しました"
+        "taken": "チェックポイントを保存しました",
+        "off": "チェックポイントがオフ"
       },
       "rewind": {
         "proposed": "巻き戻しを提案",
@@ -1070,6 +1078,7 @@
       "empty": "エージェントが少し作業するまでお待ちください。ここに進み具合をやさしい言葉で表示します。",
       "checks": "チェック {{done}}/{{total}} 完了",
       "ended": "停止済み",
+      "done": "完了",
       "brief": "簡易版",
       "briefHelp": "今回はモデルの作成が間に合わず、決まった短い説明を表示しています。",
       "needsYou": "あなたの確認が必要",
@@ -1236,12 +1245,17 @@
     "compactionDropped_one": "{{count}} 件の呼び出しを削除",
     "compactionDropped_other": "{{count}} 件の呼び出しを削除",
     "jevLine": {
-      "classifying": "Jev がメッセージを分類中…",
-      "classified": "Jev の分類: {{type}}",
+      "classifying": "{{judge}} がメッセージを分類中…",
+      "classified": "{{judge}} の分類: {{type}}",
       "byRule": "ルールによる分類: {{type}}",
       "shadow": "{{line}}（観察のみ、適用なし）",
       "late": "{{line}}（このターンには間に合いませんでした）",
-      "fallback": "今回は Jev の分類がないため、通常どおり続けます"
+      "fallback": "今回は {{judge}} から明確な分類がなかったため、通常どおり続けます",
+      "unanswered": "今回は {{judge}} から応答がなかったため、通常どおり続けます",
+      "noJudge": "使える判定器がまだないため、メッセージは分類されません。",
+      "setUp": "判定器を設定",
+      "skipped": "分類をスキップしました",
+      "off": "分類はオフです"
     },
     "eventLine": {
       "detail": "詳細: {{detail}}",
@@ -1338,7 +1352,19 @@
         }
       },
       "permissions": {
-        "mode": "権限モード：{{mode}}"
+        "mode": "権限モード：{{mode}}",
+        "request": "あなたの許可を待っています：{{summary}}",
+        "waiting": "あなたの許可を待っています",
+        "answers": {
+          "once": "今回のみ許可しました",
+          "session": "この会話中は許可済み",
+          "deny": "許可しませんでした"
+        },
+        "about": "{{answer}}：{{summary}}",
+        "approved": {
+          "judge": "判定器が確認なしで実行を許可しました：{{summary}}",
+          "grant": "この会話中は許可済みのため、確認なしで実行しました：{{summary}}"
+        }
       },
       "board": {
         "on": "ボード：オン",
@@ -1355,11 +1381,15 @@
   },
   "menu": {
     "about": "{{name}} について",
+    "settings": "設定…",
     "services": "サービス",
     "hide": "{{name}} を非表示",
     "hideOthers": "ほかを非表示",
     "unhide": "すべてを表示",
     "quit": "{{name}} を終了",
+    "file": "ファイル",
+    "newChat": "新しいチャット",
+    "closeWindow": "ウィンドウを閉じる",
     "edit": "編集",
     "undo": "元に戻す",
     "redo": "やり直す",
@@ -1377,8 +1407,13 @@
     "zoomIn": "拡大",
     "zoomOut": "縮小",
     "toggleFullScreen": "フルスクリーンを切り替え",
+    "window": "ウィンドウ",
+    "minimize": "しまう",
+    "zoomWindow": "拡大/縮小",
+    "bringAllToFront": "すべてを手前に移動",
     "help": "ヘルプ",
-    "checkForUpdates": "更新を確認…"
+    "checkForUpdates": "更新を確認…",
+    "projectPage": "GitHub の {{name}}"
   },
   "trayMenu": {
     "runningTasks": "実行中のタスク: {{count}}"

@@ -68,6 +68,7 @@
   "tray.showWindow": "Afficher mu",
   "tray.newChat": "Nouveau chat",
   "tray.closeToTray": "Réduire dans la barre système",
+  "tray.hideToMenuBar": "Réduire dans la barre des menus",
   "tray.about": "À propos de mu",
   "tray.restart": "Redémarrer l'application",
   "tray.quit": "Quitter",
@@ -175,6 +176,8 @@
       "open": "Ouvrir la ruche",
       "inspect": "Inspecter {{name}}",
       "summary": "{{active}} actifs · {{done}} terminés / {{total}}",
+      "summaryEnded": "{{done}} terminés / {{total}}",
+      "summaryUnfinished": "{{done}} terminés / {{total}} · {{unfinished}} inachevés",
       "counts": "en cours : {{running}} · terminés : {{done}} · en échec : {{failed}}",
       "none": "Aucun sous-agent dans cette conversation pour l’instant.",
       "details": "Flux et enregistrements",
@@ -890,7 +893,8 @@
       "log": {
         "thisTurn": "Ce tour",
         "earlier": "Afficher les lignes précédentes",
-        "latest": "Aller au plus récent"
+        "latest": "Aller au plus récent",
+        "times": "×{{times}}"
       }
     },
     "empty": "Aucun événement enregistré dans cette session pour le moment.",
@@ -945,10 +949,14 @@
         "switched": "Tableau activé ou désactivé"
       },
       "permissions": {
-        "mode": "Mode d’autorisation"
+        "mode": "Mode d’autorisation",
+        "request": "Autorisation demandée",
+        "resolved": "Réponse à l’autorisation",
+        "approved": "Exécuté sans demander"
       },
       "checkpoint": {
-        "taken": "Point de restauration enregistré"
+        "taken": "Point de restauration enregistré",
+        "off": "Points de restauration désactivés"
       },
       "rewind": {
         "proposed": "Retour en arrière proposé",
@@ -1070,6 +1078,7 @@
       "empty": "Laissez un moment à l’agent ; ici s’affichera en mots simples où il en est.",
       "checks": "{{done}} sur {{total}} vérifications faites",
       "ended": "Arrêté",
+      "done": "Terminé",
       "brief": "Résumé",
       "briefHelp": "Le modèle n’a pas écrit celui-ci à temps ; c’est un court résumé fixe.",
       "needsYou": "Vous attend",
@@ -1236,12 +1245,17 @@
     "compactionDropped_one": "{{count}} appel retiré",
     "compactionDropped_other": "{{count}} appels retirés",
     "jevLine": {
-      "classifying": "Jev classe le message…",
-      "classified": "Classé par Jev : {{type}}",
+      "classifying": "{{judge}} classe le message…",
+      "classified": "Classé par {{judge}} : {{type}}",
       "byRule": "Classé par règle : {{type}}",
       "shadow": "{{line}} (observation seulement, non appliqué)",
       "late": "{{line}} (trop tard pour ce tour)",
-      "fallback": "Pas de classification de Jev cette fois ; on continue comme d’habitude"
+      "fallback": "Pas de classification claire de {{judge}} cette fois ; on continue comme d’habitude",
+      "unanswered": "{{judge}} n’a pas répondu cette fois ; on continue comme d’habitude",
+      "noJudge": "Aucun juge n’est encore disponible, donc les messages ne sont pas classés.",
+      "setUp": "Configurer un juge",
+      "skipped": "Classification ignorée",
+      "off": "La classification est désactivée"
     },
     "eventLine": {
       "detail": "Détails : {{detail}}",
@@ -1338,7 +1352,19 @@
         }
       },
       "permissions": {
-        "mode": "Mode d’autorisation : {{mode}}"
+        "mode": "Mode d’autorisation : {{mode}}",
+        "request": "En attente de votre autorisation : {{summary}}",
+        "waiting": "En attente de votre autorisation",
+        "answers": {
+          "once": "Vous l’avez autorisé une fois",
+          "session": "Autorisé pour cette conversation",
+          "deny": "Vous ne l’avez pas autorisé"
+        },
+        "about": "{{answer}} : {{summary}}",
+        "approved": {
+          "judge": "Le juge l’a laissé passer sans vous demander : {{summary}}",
+          "grant": "Exécuté sans demander, car autorisé pour cette conversation : {{summary}}"
+        }
       },
       "board": {
         "on": "Tableau : activé",
@@ -1355,11 +1381,15 @@
   },
   "menu": {
     "about": "À propos de {{name}}",
+    "settings": "Paramètres…",
     "services": "Services",
     "hide": "Masquer {{name}}",
     "hideOthers": "Masquer les autres",
     "unhide": "Tout afficher",
     "quit": "Quitter {{name}}",
+    "file": "Fichier",
+    "newChat": "Nouveau chat",
+    "closeWindow": "Fermer la fenêtre",
     "edit": "Édition",
     "undo": "Annuler",
     "redo": "Rétablir",
@@ -1377,8 +1407,13 @@
     "zoomIn": "Zoom avant",
     "zoomOut": "Zoom arrière",
     "toggleFullScreen": "Plein écran",
+    "window": "Fenêtre",
+    "minimize": "Placer dans le Dock",
+    "zoomWindow": "Réduire/agrandir",
+    "bringAllToFront": "Tout ramener au premier plan",
     "help": "Aide",
-    "checkForUpdates": "Vérifier les mises à jour…"
+    "checkForUpdates": "Vérifier les mises à jour…",
+    "projectPage": "{{name}} sur GitHub"
   },
   "trayMenu": {
     "runningTasks": "Tâches en cours : {{count}}"

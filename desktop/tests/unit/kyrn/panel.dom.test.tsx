@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import React from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -16,9 +18,9 @@ import {
 } from '@/renderer/pages/conversation/KyrnPanel';
 import type { HiveFocusRequest } from '@/renderer/pages/conversation/KyrnPanel/focus';
 
-const { activity } = vi.hoisted(() => ({ activity: vi.fn() }));
+const { activity, availableModels } = vi.hoisted(() => ({ activity: vi.fn(), availableModels: vi.fn() }));
 vi.mock('@/common/kyrn/bridge', () => ({
-  kyrnBridge: { activity: { invoke: activity } },
+  kyrnBridge: { activity: { invoke: activity }, availableModels: { invoke: availableModels } },
   unwrap: (result: Result<ActivityPage>) => {
     if (!result.ok) throw new Error(result.error);
     return result.data;
@@ -33,9 +35,17 @@ beforeAll(async () => {
     interpolation: { escapeValue: false },
   });
 });
-beforeEach(() =>
-  activity.mockResolvedValue({ ok: true, data: { sessionId: 'session', cursor: 0, more: false, events: [] } })
-);
+beforeEach(() => {
+  activity.mockResolvedValue({ ok: true, data: { sessionId: 'session', cursor: 0, more: false, events: [] } });
+  // The models mu last reported, as the send box's picker names them.
+  availableModels.mockResolvedValue({
+    ok: true,
+    data: {
+      providers: [{ id: 'openai-codex', models: [{ id: 'gpt-5.6-terra', name: 'GPT-5.6 Terra' }] }],
+      thinkingLevels: [],
+    },
+  });
+});
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
@@ -225,6 +235,68 @@ describe('the kernel tabs: entry and hive navigation', () => {
     expect(rows[1].match(/High/g)).toHaveLength(1);
     expect(rows[2]).toContain('The fix holds.');
     expect(rows[3]).toContain('ENOENT: no such file');
+  });
+
+  it('gives a row’s task its own line, and its role in full and its model by name after what it does', async () => {
+    activity.mockResolvedValue(
+      page([
+        {
+          id: 'run-1',
+          at: 1,
+          kind: 'swarm.snapshot',
+          run: 'run-1',
+          payload: {
+            kind: 'delegate',
+            title: '2 tasks',
+            bees: [
+              bee('Audit how the swarm isolates bees and recovers from failure', 'done', {
+                role: 'investigator',
+                model: 'openai-codex/gpt-5.6-terra',
+              }),
+              bee('Study when many agents beat one', 'tool', {
+                role: 'investigator',
+                model: 'relay/custom-7b',
+                thinking: '',
+                tool: { name: 'bash', summary: 'bash rg -n swarm packages' },
+              }),
+            ],
+          },
+        },
+      ])
+    );
+    const { container } = render(<Kernel tab='hive' />, { wrapper: Wrapper });
+    await waitFor(() => expect(container.querySelectorAll('[data-bee]')).toHaveLength(2));
+    const [audit, study] = [...container.querySelectorAll<HTMLElement>('[data-bee]')];
+
+    // The model by the name the send box gives it, once the names are read; never its raw provider/id.
+    expect(await within(audit).findByText('investigator · GPT-5.6 Terra · High')).toBeVisible();
+    expect(audit.textContent).not.toContain('openai-codex/');
+    // A model mu did not report goes by its id, without the provider.
+    expect(within(study).getByTestId('hive-row-who')).toHaveTextContent(/^investigator · custom-7b$/);
+
+    // The task alone on its line, whole on hover; who it is sits on the line of what it does.
+    const task = within(audit).getByTestId('hive-row-task');
+    expect(task).toHaveTextContent(/^Audit how the swarm isolates bees and recovers from failure$/);
+    expect(task).toHaveAttribute('title', 'Audit how the swarm isolates bees and recovers from failure');
+    const who = within(audit).getByTestId('hive-row-who');
+    expect(task.contains(who)).toBe(false);
+    expect(who.previousElementSibling).toHaveTextContent(new RegExp(`^${common.kyrn.beeStatus.done}$`));
+  });
+
+  it('cuts only the task to fit: who the sub-agent is wraps instead', () => {
+    const css = readFileSync(
+      join(__dirname, '../../../packages/desktop/src/renderer/pages/conversation/KyrnPanel/Hive/Hive.module.css'),
+      'utf8'
+    );
+    const rule = (selector: string) => {
+      const start = css.indexOf(`\n${selector} {`);
+      return start < 0 ? '' : css.slice(start, css.indexOf('\n}', start));
+    };
+    expect(rule('.rowName')).toContain('text-overflow: ellipsis');
+    // The row is a button, whose text does not wrap unless told to.
+    expect(rule('.rowWho')).toContain('white-space: normal');
+    expect(rule('.rowWho')).not.toContain('text-overflow');
+    expect(rule('.rowStatus')).toContain('flex-wrap: wrap');
   });
 
   it('words a bee in the app language: plural counts, thinking level, silence and error', async () => {

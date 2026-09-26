@@ -9,7 +9,7 @@
 // - npm's own `mu` command, in the npm package mu-agent (kyrn/npm/build.mjs). The package is laid out like the
 //   repository, so this file is at kyrn/bin/mu.mjs there too, and the root is two folders up in both.
 //
-// No dependency and no TypeScript here: this runs before tsx has been found.
+// No dependency and no TypeScript here: this runs before anything that could run TypeScript has been found.
 //
 // Every decision is an exported function that takes the platform, the environment and the file system as
 // parameters and returns what would be done. There is no Windows machine where this is developed, so the
@@ -46,7 +46,7 @@ import {
 } from "node:fs";
 import { homedir, constants as osConstants } from "node:os";
 import nodePath from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 /** pi's minimum. */
 export const MIN_NODE = [22, 19];
@@ -307,7 +307,7 @@ export function ensureAppView({ platform, app, upstream, fs = realFs }) {
 // ---------------------------------------------------------------------------------------------------------
 
 /**
- * Where this mu comes from: "repo", a checkout that runs the TypeScript sources through tsx, or "package", the
+ * Where this mu comes from: "repo", a checkout that runs the TypeScript sources (sourceRuntime), or "package", the
  * npm package mu-agent, which carries pi's bundle (dist/bundle/cli.js) and the judgment layer built to
  * JavaScript (judge/dist/kyrn-judge.js). A checkout without its dependencies is still a checkout.
  */
@@ -374,6 +374,35 @@ export function installHint({ root, platform }) {
 }
 
 /**
+ * Node's arguments for running a checkout's TypeScript, up to the entry file. A Node that strips types itself (on
+ * by default from 22.18) runs the sources as they are, with pi's own source resolver
+ * (packages/coding-agent/src/experimental/source-resolver.ts: each workspace package resolves to its sources, as
+ * tsconfig.json's paths say) and Node's compile cache (compile-cache.mjs). tsx runs its loader on a thread of its
+ * own and hands every file over from there: pi with the judgment layer took 2 s to start that way, about 0.85 s
+ * this way, and a checkout starts mu for every conversation the desktop app opens. A runtime that does not strip
+ * types (`stripsTypes` false; an Electron that runs mu as Node may not), or a checkout from before the resolver,
+ * still goes through tsx. tsx is one of the checkout's dependencies either way: without it they are not installed.
+ */
+export function sourceRuntime({ root, platform, stripsTypes, exists, readFile }) {
+	const path = pathFor(platform);
+	const tsx = resolveTsx({ root, platform, exists, readFile });
+	if (!tsx) return { error: installHint({ root, platform }) };
+	const resolver = path.join(root, "packages", "coding-agent", "src", "experimental", "source-resolver.ts");
+	if (!stripsTypes || !exists(resolver)) return { args: [tsx, "--tsconfig", path.join(root, "tsconfig.json")] };
+	// As URLs: `--import` reads a Windows path such as C:\... as a URL whose scheme is c:.
+	const url = (file) => pathToFileURL(file, { windows: platform === "win32" }).href;
+	return {
+		args: [
+			"--disable-warning=ExperimentalWarning",
+			"--import",
+			url(path.join(root, "kyrn", "bin", "compile-cache.mjs")),
+			"--import",
+			url(resolver),
+		],
+	};
+}
+
+/**
  * pi reads <APP NAME>_CODING_AGENT_DIR and nothing else, so with the app named mu that export decides the
  * home. The pi and KYRN spellings are exported too, for scripts that still read them.
  */
@@ -432,7 +461,18 @@ export function launchStrategy({ platform, env, canExec }) {
  *
  * `fs` is { exists, isDir, readFile }. Returns { error } when pi cannot be started.
  */
-export function planLaunch({ platform, env, argv, root, home, execPath, fs, canExec = false, wsl = false }) {
+export function planLaunch({
+	platform,
+	env,
+	argv,
+	root,
+	home,
+	execPath,
+	fs,
+	canExec = false,
+	wsl = false,
+	stripsTypes = true,
+}) {
 	const path = pathFor(platform);
 	const layout = layoutOf({ root, platform, exists: fs.exists });
 	let entry;
@@ -443,12 +483,10 @@ export function planLaunch({ platform, env, argv, root, home, execPath, fs, canE
 		}
 		entry = [files.cli, "-e", files.extension];
 	} else {
-		const tsx = resolveTsx({ root, platform, exists: fs.exists, readFile: fs.readFile });
-		if (!tsx) return { error: installHint({ root, platform }) };
+		const runtime = sourceRuntime({ root, platform, stripsTypes, exists: fs.exists, readFile: fs.readFile });
+		if (runtime.error) return { error: runtime.error };
 		entry = [
-			tsx,
-			"--tsconfig",
-			path.join(root, "tsconfig.json"),
+			...runtime.args,
 			path.join(root, "packages", "coding-agent", "src", "experimental", "cli.ts"),
 			"-e",
 			path.join(root, "packages", "kyrn-judge", "src", "extension", "kyrn-judge.ts"),
@@ -579,9 +617,9 @@ export const AUTH_COMMANDS = ["status", "login", "logout"];
 /**
  * `mu auth status | login <provider> | logout <provider>`: the sign-in the desktop app runs, with pi's own OAuth
  * flows and credential store (packages/kyrn-judge/src/auth). It is pi's code, so it runs the way pi does here:
- * through tsx in a checkout, built in the package. It reads no key, so no .env is read for it.
+ * from its sources in a checkout (sourceRuntime), built in the package. It reads no key, so no .env is read for it.
  */
-export function planAuth({ platform, env, argv, root, home, execPath, fs, canExec = false }) {
+export function planAuth({ platform, env, argv, root, home, execPath, fs, canExec = false, stripsTypes = true }) {
 	const path = pathFor(platform);
 	let entry;
 	if (layoutOf({ root, platform, exists: fs.exists }) === "package") {
@@ -591,10 +629,9 @@ export function planAuth({ platform, env, argv, root, home, execPath, fs, canExe
 		}
 		entry = [auth];
 	} else {
-		const tsx = resolveTsx({ root, platform, exists: fs.exists, readFile: fs.readFile });
-		if (!tsx) return { error: installHint({ root, platform }) };
-		const main = path.join(root, "packages", "kyrn-judge", "src", "auth", "main.ts");
-		entry = [tsx, "--tsconfig", path.join(root, "tsconfig.json"), main];
+		const runtime = sourceRuntime({ root, platform, stripsTypes, exists: fs.exists, readFile: fs.readFile });
+		if (runtime.error) return { error: runtime.error };
+		entry = [...runtime.args, path.join(root, "packages", "kyrn-judge", "src", "auth", "main.ts")];
 	}
 	const agentDir = agentDirFor({ env, muDir: muHome({ home, platform, isDir: fs.isDir }), platform });
 	const childEnv = {};
@@ -1106,6 +1143,7 @@ export async function main(argv = process.argv.slice(2)) {
 			home,
 			execPath: process.execPath,
 			canExec,
+			stripsTypes: Boolean(process.features.typescript),
 			fs: { exists: existsSync, isDir, readFile: readText },
 		});
 		if (plan.error) {
@@ -1279,6 +1317,7 @@ export async function main(argv = process.argv.slice(2)) {
 		execPath: process.execPath,
 		canExec,
 		wsl,
+		stripsTypes: Boolean(process.features.typescript),
 		fs: { exists: existsSync, isDir, readFile: readText },
 	});
 	if (plan.error) {

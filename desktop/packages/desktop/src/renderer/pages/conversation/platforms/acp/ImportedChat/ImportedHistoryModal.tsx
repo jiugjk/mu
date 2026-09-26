@@ -1,13 +1,15 @@
 /**
  * What an imported conversation said before it came to mu, read back from mu's session: the person's messages, the
  * answers with the tools they called, and the summaries compactions left (common/kyrn/importChats.ts). Plain text: the
- * words as they were written.
+ * words as they were written. The settings dialogs' frame (AionModal's standard variant, as the import dialog): the
+ * title at the start and a close button.
  */
-import { Modal, Spin } from '@arco-design/web-react';
+import { Spin } from '@arco-design/web-react';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { kyrnBridge, unwrap } from '@/common/kyrn/bridge';
 import { toolTally, type ImportedHistory, type ImportedHistoryItem } from '@/common/kyrn/importChats';
+import AionModal from '@/renderer/components/base/AionModal';
 import { formatNameList } from '@/renderer/services/i18n/list';
 import { muErrorText, toMuError, type MuErrorText } from '@/renderer/pages/settings/KyrnSettings/fields/muError';
 
@@ -74,14 +76,13 @@ const ImportedHistoryModal: React.FC<Props> = ({ conversationId, tool, visible, 
   }, [visible, conversationId, t, i18n.language]);
 
   return (
-    <Modal
-      title={t('mu.importChats.history.title', { tool })}
+    <AionModal
+      variant='standard'
+      header={{ title: t('mu.importChats.history.title', { tool }), showClose: true }}
       visible={visible}
       onCancel={onClose}
       footer={null}
-      alignCenter
-      style={{ width: 720, maxWidth: 'calc(100vw - 32px)', borderRadius: '12px' }}
-      getPopupContainer={() => document.body}
+      style={{ width: 720 }}
       unmountOnExit
     >
       <div className='max-h-[64vh] overflow-y-auto' data-testid='imported-history'>
@@ -112,7 +113,7 @@ const ImportedHistoryModal: React.FC<Props> = ({ conversationId, tool, visible, 
           </div>
         )}
       </div>
-    </Modal>
+    </AionModal>
   );
 };
 

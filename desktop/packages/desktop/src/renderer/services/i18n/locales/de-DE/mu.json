@@ -148,7 +148,8 @@
     "customTier": "Ein Judge, den du selbst hinzugefügt hast. Ändern kannst du ihn in der Einstellungsdatei von mu.",
     "endpointDefault": "Standardadresse des Dienstes",
     "types": {
-      "localHelp": "Läuft auf diesem Rechner."
+      "localHelp": "Läuft auf diesem Rechner.",
+      "clmHelp": "Läuft auf einem eigenen CLM-Server."
     },
     "intro": "Während mu arbeitet, fallen viele kleine Fragen an: wie es mit dieser Nachricht umgehen soll, ob dieser Schritt gegen eine deiner Vorgaben verstößt. Der Judge beantwortet sie. Wähle einen aus.",
     "choose": "Judge wählen",
@@ -164,6 +165,11 @@
         "title": "Laya (lokal)",
         "tag": "Kostenlos · offline",
         "description": "Läuft auf diesem Rechner, ohne Netzwerk und ohne Kosten. Gut beim Einordnen; beim Zuordnen und Bewerten weniger zuverlässig."
+      },
+      "clm": {
+        "title": "CLM",
+        "tag": "Selbst gehostet",
+        "description": "Beantwortet dieselben Fragen wie Jev, auf einem eigenen Server (clm-serve). Sein Encoder braucht eine GPU; pro Aufruf fallen keine Kosten an."
       }
     },
     "localAddress": "Adresse: {{address}}",
@@ -210,6 +216,26 @@
           "foreign": "Hier läuft ein Laya, das mu nicht gestartet hat. Beende es dort, wo es gestartet wurde."
         }
       }
+    },
+    "clm": {
+      "address": "Serveradresse",
+      "addressHelp": "Wo clm-serve lauscht, etwa http://192.168.1.20:8700. Leer bedeutet dieser Computer ({{address}}).",
+      "key": "Serverschlüssel",
+      "keyPlaceholder": "Nur wenn der Server einen verlangt",
+      "keyHelp": "Nur ein Server, der mit CLM_API_KEY gestartet wurde, verlangt einen Schlüssel: Gib denselben Wert ein. Nach dem Speichern wird er nie wieder angezeigt.",
+      "check": "Server prüfen",
+      "unmeasured": "Wie gut CLM die Entscheidungen von mu trifft, ist noch nicht gemessen.",
+      "status": {
+        "checking": "Server wird gefragt …",
+        "ready": "Antwortet · {{models}} · {{ms}} ms",
+        "down": "Unter {{address}} antwortet nichts. Starte clm-serve dort oder korrigiere die Adresse.",
+        "encoderDown": "Der Server antwortet, sein Encoder aber nicht: Jede Frage schlägt fehl, bis sein Embedding-Server (vLLM) läuft.",
+        "model": "Der Server bietet {{model}} nicht an. Er bietet {{models}}.",
+        "keyNeeded": "Der Server verlangt einen Schlüssel: Gib den ein, mit dem er gestartet wurde (CLM_API_KEY).",
+        "keySaved": "Der Server verlangt einen Schlüssel, und einer ist gespeichert.",
+        "mock": "Dieser Server läuft mit dem Mock-Encoder von CLM: Seine Antworten sind Rauschen, nicht die von CLM.",
+        "failed": "Der Server konnte nicht gefragt werden."
+      }
     }
   },
   "keyState": {
@@ -255,13 +281,20 @@
       "unsure": "Jev ist nicht sicher, ob du diesen Schritt willst.",
       "beyond": "Jev meint, das geht über das hinaus, worum du gebeten hast.",
       "unrelated": "Jev meint, das gehört nicht zur Aufgabe.",
-      "protected": "Das betrifft die Einstellungen von mu selbst; nur du kannst es erlauben."
+      "protected": "Das betrifft die Einstellungen von mu selbst; nur du kannst es erlauben.",
+      "nojudge": "Noch ist kein Judge verfügbar, daher fragt mu dich bei jedem Schritt.",
+      "judgedown": "Der Judge hat diesmal nicht geantwortet, daher fragt mu dich."
     },
     "answer": {
       "once": "Einmal erlauben",
       "session": "Für diese Unterhaltung erlauben",
       "sessionFor": "Für diese Unterhaltung erlauben ({{grant}})",
       "deny": "Nicht erlauben"
+    },
+    "decided": {
+      "once": "Du hast das einmal erlaubt: {{summary}}",
+      "session": "Für diese Unterhaltung erlaubt: {{summary}}",
+      "deny": "Du hast nicht erlaubt: {{summary}}"
     },
     "flag": {
       "recursive_or_forced_delete": "rekursives oder erzwungenes Löschen",
@@ -325,16 +358,16 @@
     "removeDefault": "Neue Sitzungen starten damit, daher wird auch das Standardmodell zurückgesetzt."
   },
   "defaults": {
-    "summary": "What a new session starts with. You can still switch inside a conversation.",
+    "summary": "Womit eine neue Sitzung startet. In einer Unterhaltung kannst du trotzdem wechseln.",
     "provider": "Anbieter",
     "model": "Modell",
     "level": "Denkstufe",
     "levelUnset": "Nicht festlegen",
-    "levelHelp": "Levels this model does not take are disabled.",
-    "levelClamped": "Not set means medium. A level the model does not take becomes the nearest one it does.",
-    "noReasoning": "This model does not think, so a session with it always starts with thinking off.",
+    "levelHelp": "Stufen, die dieses Modell nicht unterstützt, sind deaktiviert.",
+    "levelClamped": "„Nicht festlegen“ heißt Mittel. Eine Stufe, die das Modell nicht unterstützt, wird zur nächstgelegenen, die es unterstützt.",
+    "noReasoning": "Dieses Modell denkt nicht, daher startet eine Sitzung damit immer mit ausgeschaltetem Denken.",
     "notSet": "Nicht festgelegt",
-    "pickProvider": "Choose a provider first."
+    "pickProvider": "Wähle zuerst einen Anbieter."
   },
   "accounts": {
     "signIn": "Anmelden",
@@ -437,7 +470,7 @@
     "update": "In dieser Version von mu lässt sich hier nicht festlegen, welches Modell das Board schreibt. Aktualisiere zuerst mu."
   },
   "levels": {
-    "off": "Aus",
+    "off": "Denken aus",
     "minimal": "Minimal",
     "low": "Niedrig",
     "medium": "Mittel",
@@ -469,7 +502,7 @@
       "signedIn": {
         "title": "Mit Abo anmelden",
         "tag": "Kein API-Schlüssel",
-        "description": "Ein ChatGPT-, Claude- oder Grok-Abo"
+        "description": "Ein Abo von ChatGPT, Claude, Grok und anderen"
       },
       "openai": {
         "title": "OpenAI-kompatible API",
@@ -590,9 +623,28 @@
     "timeout": "mu hat nicht rechtzeitig geantwortet.",
     "processClosed": "mu wurde beendet. Sende die Nachricht erneut, um es neu zu starten.",
     "modelFailed": "Die Modellanfrage ist fehlgeschlagen.",
-    "turnRunning": "mu arbeitet noch an der vorherigen Nachricht. Warte, bis es fertig ist, oder stoppe es zuerst."
+    "turnRunning": "mu arbeitet noch an der vorherigen Nachricht. Warte, bis es fertig ist, oder stoppe es zuerst.",
+    "noModel": "mu hat kein Modell, mit dem es antworten kann."
+  },
+  "noModel": {
+    "title": "Kein Modell zum Antworten",
+    "body": "mu braucht ein Modell, das es nutzen kann. Melde dich unter {{place}} an oder hinterlege dort einen Schlüssel und sende deine Nachricht dann erneut.",
+    "open": "{{page}} öffnen",
+    "chip": "Modell wählen"
   },
   "notices": {
+    "checkpointOff": "Checkpoints sind in dieser Unterhaltung aus.",
+    "checkpointOffWhy": {
+      "gitMissing": "Checkpoints sind in dieser Unterhaltung aus: Git wurde auf diesem Computer nicht gefunden. Installiere Git und starte dann eine neue Unterhaltung, um sie zu bekommen.",
+      "xcodeLicense": "Checkpoints sind in dieser Unterhaltung aus: Git läuft auf diesem Mac erst, wenn die Xcode-Lizenz akzeptiert ist. Akzeptiere sie mit sudo xcodebuild -license im Terminal und starte dann eine neue Unterhaltung, um sie zu bekommen.",
+      "developerToolsMissing": "Checkpoints sind in dieser Unterhaltung aus: Diesem Mac fehlen die Befehlszeilen-Entwicklertools, die Git braucht. Installiere sie mit xcode-select --install im Terminal und starte dann eine neue Unterhaltung, um sie zu bekommen.",
+      "homeFolder": "Checkpoints sind in dieser Unterhaltung aus: Ihr Ordner ist dein Benutzerordner oder enthält ihn. Starte eine Unterhaltung in einem Projektordner, um sie zu bekommen.",
+      "muFolder": "Checkpoints sind in dieser Unterhaltung aus: Ihr Ordner liegt im eigenen Ordner von mu. Starte eine Unterhaltung in einem Projektordner, um sie zu bekommen.",
+      "tooManyFiles": "Checkpoints sind in dieser Unterhaltung aus: Ihr Ordner hat mehr als {{limit}} Dateien. Starte eine Unterhaltung in einem Projektordner, um sie zu bekommen.",
+      "tooManyBytes": "Checkpoints sind in dieser Unterhaltung aus: Ihr Ordner enthält mehr als {{limitMb}} MB an Dateien. Starte eine Unterhaltung in einem Projektordner, um sie zu bekommen.",
+      "tooSlow": "Checkpoints sind in dieser Unterhaltung aus: Die Dateien ihres Ordners aufzulisten hat länger als {{seconds}} Sekunden gedauert. Starte eine Unterhaltung in einem Projektordner, um sie zu bekommen."
+    },
+    "stopped": "Du hast diese Antwort gestoppt.",
     "answerLost": "mu hat deine Antwort nicht erhalten und so weitergemacht, als hättest du abgelehnt.",
     "bashMissing": "mu braucht Git for Windows, um Befehle auszuführen. Sobald es installiert ist, sende deine Nachricht erneut. Hier herunterladen:"
   },
@@ -673,5 +725,34 @@
       "earlier_other": "{{count}} frühere Schritte werden nicht angezeigt.",
       "empty": "Es gibt nichts anzuzeigen."
     }
+  },
+  "commands": {
+    "frame": "Der Aufgabenrahmen: Ziel, deine festen Vorgaben und wo du sie genannt hast, Teilziel, Abnahmekriterien",
+    "remember": "Eine Lektion für künftige Gespräche in diesem Projekt speichern: /remember <was zu tun ist>",
+    "lessons": "Die Lektionen dieses Projekts: /lessons listet ID · Art · abgerufen/befolgt · Lektion, /lessons all zeigt auch die überall geltenden und die ausgemusterten",
+    "forget": "Eine Lektion ausmustern, damit sie nicht mehr abgerufen wird: /forget <ID-Anfang> (die IDs stehen in /lessons)",
+    "capabilities": "Welche Fähigkeiten installiert und welche geöffnet sind: /capabilities, /capabilities open <ID>",
+    "permissions": "Wie viel mu ohne Nachfrage tun darf: /permissions full (Vollzugriff) | jev (Jev gibt frei) | ask (Minimale Berechtigungen), ohne Angabe eine Auswahl. /permissions reset vergisst, was du in diesem Gespräch erlaubt hast",
+    "lsp": "Sprachserver: welche installiert sind, welche laufen, und der letzte Fehler",
+    "goal": "Zielmodus: Der Agent arbeitet weiter, bis eine Bedingung erfüllt ist. /goal <Bedingung>, /goal (zeigen oder nach einem fragen), /goal clear",
+    "board": "Das Klartext-Board: /board (anzeigen), /board on, /board off (für dieses Projekt), /board model (wer es schreibt)",
+    "checkpoints": "Die Checkpoints dieses Gesprächs: Runde, Zeit, seither geänderte Dateien",
+    "rewind": "Zu einem Checkpoint zurückkehren: /rewind [Nr.] [both|files|conversation], /rewind undo macht es rückgängig; both: Dateien und Gespräch, files: nur Dateien, conversation: nur das Gespräch",
+    "swarm": "Unteragenten bei der Arbeit: /swarm (was jeder gerade tut), /swarm stop [Name] (jetzt berichten), /swarm kill [Name] (sofort beenden)",
+    "agents": "Die Rollen der Unteragenten, die das delegate-Tool nutzen kann, und wo du eigene hinzufügst",
+    "hive": "Mehrere Ermittler gleichzeitig auf eine Frage ansetzen: /hive <Frage>. Ohne Frage wie /swarm",
+    "browse": "Den eingebauten Browser eine Adresse öffnen und tun lassen, was du sagst: /browse <URL> [Ziel]",
+    "inherit": "Was mu von Claude Code, Cursor und Codex übernommen hat, und woher",
+    "mcp": "MCP-Server: /mcp, /mcp open <ID>, /mcp restart <ID>",
+    "jobs": "Hintergrundjobs: /jobs, /jobs stop <ID|all>",
+    "commit": "Die nicht committete Änderung in Commits aufteilen: zeigt den Plan, committet erst nach deinem Ja, pusht nie",
+    "review": "Die nicht committete Änderung oder was du nennst mit dem Reviewer-Unteragenten prüfen; Befunde nach P0 bis P3 sortiert",
+    "mu": "Status von mu. Außerdem: /mu judge <Stufen> | /mu route <Entscheidungspunkt> <Stufen|default> | /mu mode <Entscheidungspunkt|default> <off|shadow|active>",
+    "status": "Modell, Judge, Modi der Entscheidungspunkte, eingesparter Kontext und die letzten Urteile",
+    "help": "Was mu kann und alle wichtigen Befehle",
+    "ledger": "Die letzten Urteile des Judges mit Dauer: /ledger [Anzahl]",
+    "doctor": "Prüfen, ob Judge, Modell, Browser und Unteragenten richtig angebunden sind",
+    "import-chat": "Ein Gespräch dieses Projekts aus Claude Code oder Codex in mu holen und fortsetzen: /import-chat [Datei]",
+    "llama": "Modelle des llama.cpp-Routers verwalten"
   }
 }

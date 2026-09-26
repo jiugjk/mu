@@ -28,16 +28,22 @@ const FontFamilySelect: React.FC<FontFamilySelectProps> = ({ value, onChange }) 
   const { t } = useTranslation();
   const { fonts, status, load } = useSystemFonts();
 
+  const systemDefault = t('settings.fontFamilySystemDefault');
   const options = useMemo(() => {
-    const list: { label: React.ReactNode; value: string }[] = [
-      { label: t('settings.fontFamilySystemDefault'), value: SYSTEM_FONT_FAMILY },
-    ];
+    const list: { label: React.ReactNode; value: string }[] = [{ label: systemDefault, value: SYSTEM_FONT_FAMILY }];
     for (const family of fonts) {
-      // Render each option in its own face so the menu previews the font.
-      list.push({ label: <span style={{ fontFamily: `"${family}"` }}>{family}</span>, value: family });
+      // Render each option in its own face so the menu previews the font; a name cut in the menu is whole on hover.
+      list.push({
+        label: (
+          <span style={{ fontFamily: `"${family}"` }} title={family}>
+            {family}
+          </span>
+        ),
+        value: family,
+      });
     }
     return list;
-  }, [fonts, t]);
+  }, [fonts, systemDefault]);
 
   const notFoundContent =
     status === 'loading'
@@ -48,13 +54,41 @@ const FontFamilySelect: React.FC<FontFamilySelectProps> = ({ value, onChange }) 
 
   return (
     <AionSelect
-      className='w-240px'
+      // As wide as its label and the default's words ("システムのデフォルト" is not cut), at least 240px, whatever is
+      // chosen: the four rows line up, and a family name longer than that is cut, whole on hover and in the menu's
+      // tooltip.
+      className='w-max min-w-240px max-w-full'
       // Two selects side by side in a row: each says what it picks.
       prefix={<span className='text-t-secondary'>{t('settings.fontFamilyLabel')}</span>}
       aria-label={t('settings.fontFamilyLabel')}
       value={value}
       onChange={(next) => onChange(typeof next === 'string' ? next : SYSTEM_FONT_FAMILY)}
       options={options}
+      // The default's words hold the width, seen only when it is chosen. A chosen family, in its own face, fills the
+      // whole value area (the grid spans it) and adds no width of its own (w-0 min-w-full).
+      renderFormat={(_, chosen) => {
+        const family = typeof chosen === 'string' ? chosen : SYSTEM_FONT_FAMILY;
+        const own = family !== SYSTEM_FONT_FAMILY;
+        return (
+          <span className='inline-grid w-full'>
+            <span
+              className={own ? 'col-start-1 row-start-1 invisible' : 'col-start-1 row-start-1'}
+              aria-hidden={own || undefined}
+            >
+              {systemDefault}
+            </span>
+            {own ? (
+              <span
+                className='col-start-1 row-start-1 w-0 min-w-full truncate'
+                style={{ fontFamily: `"${family}"` }}
+                title={family}
+              >
+                {family}
+              </span>
+            ) : null}
+          </span>
+        );
+      }}
       loading={status === 'loading'}
       showSearch={fonts.length > DROPDOWN_SEARCH_THRESHOLD}
       // Options carry JSX labels (font previews), so match on the value (family name) instead.

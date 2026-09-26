@@ -77,13 +77,20 @@ export interface WelcomeView {
 /** The part of pi's Theme the welcome screen needs, so it can be rendered without one in tests. */
 export type Paint = Pick<Theme, "fg" | "bold">;
 
+/** Failures the user can act on, said as what to fix rather than as the error's name. */
+const HEALTH_ERROR: Readonly<Record<string, string>> = {
+	unreachable: "not reachable",
+	auth: "no usable key",
+	payment_required: "out of credit",
+};
+
 function healthText(view: WelcomeView, paint: Paint): string {
 	if (view.judge === "off") return paint.fg("muted", "off · pi's stock behaviour everywhere");
 	if (view.health === "checking") return `${view.judge} ${paint.fg("dim", "· checking…")}`;
 	if (view.health.ok) {
 		return `${view.judge} ${paint.fg("success", `· answering in ${view.health.latencyMs} ms`)} ${paint.fg("dim", `· decisions ${view.mode}`)}`;
 	}
-	const why = view.health.error === "unreachable" ? "not reachable" : `failing (${view.health.error ?? "error"})`;
+	const why = HEALTH_ERROR[view.health.error ?? ""] ?? `failing (${view.health.error ?? "error"})`;
 	return `${view.judge} ${paint.fg("warning", `· ${why}, falling back to stock behaviour`)}`;
 }
 

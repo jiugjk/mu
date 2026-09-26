@@ -8,6 +8,7 @@ import {
   type SubscriptionProvider,
 } from '@/common/kyrn/login';
 import { toMuError, type MuError } from '../fields/muError';
+import { recheckMu } from '../recheck';
 
 type Account = LoginStatus['signedIn'][number];
 
@@ -107,6 +108,7 @@ export function useSubscriptionLogin(
       signedIn: [...now.signedIn.filter((entry) => entry.provider !== provider), { provider, models }],
     }));
     heard.current?.(provider, models);
+    void recheckMu();
   }, [login]);
 
   const failed = (provider: SubscriptionProvider | undefined, action: LoginFailure['action'], cause: unknown) => {
@@ -138,12 +140,13 @@ export function useSubscriptionLogin(
       void call(provider, async () => unwrap(await kyrnBridge.loginStart.invoke({ provider })));
     },
     cancel: () => {
-      // Cancelled after the credential was stored (a slow model list): who is signed in is read again.
+      // Cancelled after the credential was stored (a slow model list): who is signed in is read again, and mu checked.
       void call(login?.provider, async () => unwrap(await kyrnBridge.loginCancel.invoke())).then(() =>
         kyrnBridge.loginStatus
           .invoke()
           .then(unwrap)
           .then(setStatus)
+          .then(() => recheckMu())
           .catch((): undefined => undefined)
       );
     },
@@ -158,6 +161,7 @@ export function useSubscriptionLogin(
       setProblem({});
       try {
         setStatus(unwrap(await kyrnBridge.loginLogout.invoke({ provider })));
+        void recheckMu();
       } catch (error) {
         failed(provider, 'signOut', error);
       }

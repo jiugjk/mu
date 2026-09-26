@@ -333,6 +333,8 @@ describe("permission modes in a session", () => {
 		agentDir?: string;
 		/** The decisions' own mode. Default: active. */
 		judging?: DecisionMode;
+		/** Judges named as in mu.json, in place of the responder. */
+		judges?: { tiers: string[]; judges?: Record<string, unknown> };
 	}
 
 	async function start(responder: MockResponder, setup: Setup = {}) {
@@ -354,9 +356,10 @@ describe("permission modes in a session", () => {
 			tools: [tool("edit"), tool("write"), tool("bash")],
 			extensionFactories: [
 				createKyrnJudgeExtension({
-					provider: new MockJudgeProvider(responder),
+					...(setup.judges ? {} : { provider: new MockJudgeProvider(responder) }),
 					mode: setup.judging ?? "active",
 					config: parseConfig({
+						...setup.judges,
 						features: { memory: false, ...(setup.mode ? { permissions: { mode: setup.mode } } : {}) },
 					}),
 					only: ["preflight", "frame", "permissions"],
@@ -408,7 +411,7 @@ describe("permission modes in a session", () => {
 		);
 		harness.setResponses([
 			call("edit", { path: "src/a.ts" }, "call-edit-a"),
-			call("edit", { path: "src/b.ts" }),
+			call("edit", { path: "src/b.ts" }, "call-edit-b"),
 			call("bash", { command: "ls" }),
 			fauxAssistantMessage("Edited both."),
 		]);
@@ -435,7 +438,9 @@ describe("permission modes in a session", () => {
 		expect(of("permissions.resolved")).toEqual([
 			{ id: "permission-1", toolCallId: "call-edit-a", answer: "session" },
 		]);
-		expect(of("permissions.approved")).toEqual([expect.objectContaining({ tool: "edit", by: "grant" })]);
+		expect(of("permissions.approved")).toEqual([
+			expect.objectContaining({ toolCallId: "call-edit-b", tool: "edit", by: "grant" }),
+		]);
 	});
 
 	it("a conversation grant for a program never covers that program flagged as risky", async () => {
@@ -486,7 +491,7 @@ describe("permission modes in a session", () => {
 		);
 		harness.setResponses([
 			call("edit", { path: "src/a.ts" }),
-			call("bash", { command: "npm test -- a" }),
+			call("bash", { command: "npm test -- a" }, "call-test"),
 			call("bash", { command: "npm publish" }),
 			fauxAssistantMessage("Done."),
 		]);
@@ -494,7 +499,9 @@ describe("permission modes in a session", () => {
 
 		expect(ran).toEqual(["edit src/a.ts", "bash npm test -- a", "bash npm publish"]);
 		expect(questions).toEqual(["bash: npm test -- a", "bash: npm publish"]);
-		expect(of("permissions.approved")).toEqual([expect.objectContaining({ summary: "npm test -- a", by: "jev" })]);
+		expect(of("permissions.approved")).toEqual([
+			expect.objectContaining({ toolCallId: "call-test", summary: "npm test -- a", by: "jev" }),
+		]);
 		expect(asked).toHaveLength(1);
 		expect(asked[0].title).toContain("npm publish");
 		expect(asked[0].title).toContain("Jev thinks this goes beyond what you asked for.");
@@ -545,10 +552,16 @@ describe("permission modes in a session", () => {
 	});
 
 	/** One command in Jev mode that reaches the user, who refuses it: what the question said, and the event's payload. */
-	async function refusedInJev(responder: MockResponder, command: string, judging?: DecisionMode) {
+	async function refusedInJev(
+		responder: MockResponder,
+		command: string,
+		judging?: DecisionMode,
+		judges?: Setup["judges"],
+	) {
 		const { harness, ran, asked, of } = await start(responder, {
 			mode: "jev",
 			judging,
+			judges,
 			pick: (options) => options.at(-1),
 		});
 		harness.setResponses([call("bash", { command }), fauxAssistantMessage("Left it.")]);
@@ -566,10 +579,15 @@ describe("permission modes in a session", () => {
 		);
 		expect(noKey.request).toMatchObject({ reason: "nojudge" });
 		expect(noKey.title).toContain("No judge is available yet, so mu asks about each step.");
+		// An account without credit will not answer the next step either.
+		const noCredit = await refusedInJev(
+			failing(new JudgeError("payment_required", "The judge answered 402")),
+			"npm publish",
+		);
+		expect(noCredit.request).toMatchObject({ reason: "nojudge" });
 		for (const error of [
 			new JudgeError("timeout", "Judge call exceeded 8000 ms"),
 			new JudgeError("server", "The judge answered 502"),
-			new JudgeError("payment_required", "The judge answered 402"),
 			new Error("socket hang up"),
 		]) {
 			const down = await refusedInJev(failing(error), "npm publish");
@@ -583,6 +601,18 @@ describe("permission modes in a session", () => {
 		expect((await refusedInJev(failing(new Error("socket hang up")), "npm publish")).title).toContain(
 			"判定器这次没有回答，所以先问你。",
 		);
+	});
+
+	// Found with the QA fixes, 2026-09-25: with a local judge alone, which is not trusted with approvals, each step said
+	// Jev was unsure of it; with no judge that could be built, that the judge did not answer this time.
+	it("Jev approves: judges not trusted with approvals, or none that could be built, are said to be missing", async () => {
+		const localOnly = await refusedInJev(() => ({}), "npm publish", undefined, {
+			tiers: ["local"],
+			judges: { local: { type: "mock", profile: { capabilities: { relate: false } } } },
+		});
+		expect(localOnly.request).toMatchObject({ reason: "nojudge" });
+		const none = await refusedInJev(() => ({}), "npm publish", undefined, { tiers: ["no-such-judge"] });
+		expect(none.request).toMatchObject({ reason: "nojudge" });
 	});
 
 	it("Jev approves: a flagged command keeps its flag when the judge fails, and judging switched off asks as before", async () => {

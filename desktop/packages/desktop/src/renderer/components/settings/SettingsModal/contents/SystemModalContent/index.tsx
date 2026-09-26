@@ -9,7 +9,7 @@ import type { IGpuStatus, IStartOnBootStatus } from '@/common/adapter/ipcBridge'
 import { configService } from '@/common/config/configService';
 import AionScrollArea from '@/renderer/components/base/AionScrollArea';
 import { notifyManualRestartRequired } from '@/renderer/utils/appRestart';
-import { isElectronDesktop } from '@/renderer/utils/platform';
+import { isElectronDesktop, isMacOS } from '@/renderer/utils/platform';
 import { Alert, Form, Message, Modal, Switch } from '@arco-design/web-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -225,7 +225,8 @@ const SystemModalContent: React.FC = () => {
     },
     {
       key: 'closeToTray',
-      label: t('settings.closeToTray'),
+      // On a Mac the closed app lives on in the menu bar, which is what people there call it.
+      label: isDesktop && isMacOS() ? t('settings.closeToMenuBar') : t('settings.closeToTray'),
       component: <Switch size='small' checked={closeToTray} onChange={handleCloseToTrayChange} />,
     },
     ...(isDesktop && gpuStatus

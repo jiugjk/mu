@@ -9,6 +9,7 @@ import type { TChatConversation } from '@/common/config/storage';
 import { getFuzzyMatchIndices } from '@/renderer/hooks/chat/useSlashCommandController';
 import { SETTINGS_GROUPS, SETTINGS_HOME, SETTINGS_PAGES } from '@/renderer/pages/settings/settingsNav';
 import { formatRelativeTime } from '@/renderer/utils/chat/relativeTime';
+import { commandDescription } from '@/renderer/utils/chat/muCommands';
 import { getActivityTime } from '@/renderer/utils/chat/timeline';
 
 /** Conversations an empty query lists: the most recent ones. */
@@ -139,7 +140,7 @@ const actionRows = ({ t }: PaletteSources, keyword: string): PaletteItem[] =>
   });
 
 /** `keyword` is the query without its leading slash; the label carries one, so every hit moves one place. */
-const commandRows = ({ commands, commandTarget }: PaletteSources, keyword: string): PaletteItem[] => {
+const commandRows = ({ commands, commandTarget, t }: PaletteSources, keyword: string): PaletteItem[] => {
   if (!commandTarget) return [];
   return commands.flatMap((command) => {
     const hits = getFuzzyMatchIndices(command.name, keyword);
@@ -151,7 +152,7 @@ const commandRows = ({ commands, commandTarget }: PaletteSources, keyword: strin
         label: `/${command.name}`,
         hits: hits.map((index) => index + 1),
         name: command.name,
-        detail: command.description,
+        detail: commandDescription(command, t),
         conversationId: commandTarget,
       },
     ];

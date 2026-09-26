@@ -5,35 +5,31 @@
  */
 
 import { ipcBridge } from '@/common';
-import { notifyManualRestartRequired } from '@/renderer/utils/appRestart';
-import { Alert, Button, Collapse, Message, Switch, Tooltip } from '@arco-design/web-react';
+import { globalNavigate } from '@/renderer/utils/navigation';
+import { Button, Collapse, Message, Tooltip } from '@arco-design/web-react';
 import { Copy, Down, Link } from '@icon-park/react';
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import useSWR, { mutate } from 'swr';
+import useSWR from 'swr';
 import PreferenceRow from './PreferenceRow';
 
 /**
- * Developer Settings Component
- * Groups DevTools toggle and CDP remote debugging config.
- * Only visible in development mode.
+ * The developer tools and the details of the agent's connection to the in-app browser (its address and the MCP
+ * configurations that reach it), in a build run from its sources only. Whether that connection runs at all is the
+ * in-app browser page's switch, the one switch for it, which every build shows.
  */
 const DevSettings: React.FC = () => {
   const { t } = useTranslation();
   const { data: cdpStatus, isLoading } = useSWR('cdp.status', () => ipcBridge.application.getCdpStatus.invoke());
-  const [switchLoading, setSwitchLoading] = useState(false);
   const [isDevToolsOpen, setIsDevToolsOpen] = useState(false);
   const [expandedMcpKeys, setExpandedMcpKeys] = useState<string[]>([]);
   const hasManualDevToolsToggleRef = useRef(false);
 
   const status = cdpStatus?.data;
 
-  // Pending change: config differs from runtime
-  const hasPendingChange = status?.configEnabled !== status?.enabled;
-
   // Initialize DevTools state from Main Process
   useEffect(() => {
-    if (isLoading || status?.isDevMode === false) return;
+    if (isLoading || status?.isDevMode !== true) return;
 
     ipcBridge.application.isDevToolsOpened
       .invoke()
@@ -58,33 +54,6 @@ const DevSettings: React.FC = () => {
       .invoke()
       .then((isOpen) => setIsDevToolsOpen(Boolean(isOpen)))
       .catch((error) => console.error('Failed to toggle dev tools:', error));
-  };
-
-  const handleToggle = async (checked: boolean) => {
-    setSwitchLoading(true);
-    try {
-      const result = await ipcBridge.application.updateCdpConfig.invoke({ enabled: checked });
-      if (result.success) {
-        Message.success(t('settings.cdp.configSaved'));
-        await mutate('cdp.status');
-      } else {
-        if (result.msg) console.warn('[DevSettings] CDP config not changed:', result.msg);
-        Message.error(t('settings.cdp.configFailed'));
-      }
-    } catch {
-      Message.error(t('settings.cdp.configFailed'));
-    } finally {
-      setSwitchLoading(false);
-    }
-  };
-
-  const handleRestart = async () => {
-    try {
-      const result = await ipcBridge.application.restart.invoke();
-      notifyManualRestartRequired(result, t);
-    } catch {
-      Message.error(t('common.error'));
-    }
   };
 
   const openCdpUrl = () => {
@@ -143,18 +112,15 @@ const DevSettings: React.FC = () => {
     }
   };
 
-  // Only show in development mode
-  if (!isLoading && status?.isDevMode === false) {
-    return null;
-  }
-
-  if (isLoading) {
+  // A build run from its sources only: while the status is loading, when it cannot be read, and in an installed app,
+  // nothing is shown.
+  if (status?.isDevMode !== true) {
     return null;
   }
 
   return (
     // The same quiet lists as the rest of the page: dev builds only, but no boxes there either.
-    <div className='flex flex-col gap-16px'>
+    <div className='flex flex-col gap-16px' data-testid='dev-settings'>
       {/* DevTools toggle */}
       <div className='settings-list'>
         <PreferenceRow label={t('settings.devTools')}>
@@ -164,21 +130,17 @@ const DevSettings: React.FC = () => {
         </PreferenceRow>
       </div>
 
-      {/* CDP section */}
+      {/* The agent's connection to the in-app browser: what it is, and its details while it runs. */}
       <section className='settings-group'>
         <h3 className='settings-group__title'>{t('settings.cdp.title')}</h3>
         <div className='settings-list'>
-          {/* CDP remote debugging toggle */}
-          <PreferenceRow label={t('settings.cdp.enable')} description={t('settings.cdp.enableDesc')}>
-            <Switch
-              size='small'
-              checked={status?.configEnabled ?? false}
-              loading={switchLoading}
-              onChange={handleToggle}
-            />
+          <PreferenceRow label={t('settings.cdp.connection')} description={t('settings.cdp.about')}>
+            <Button size='small' onClick={() => globalNavigate('/settings/browser')}>
+              {t('settings.cdp.openBrowserSettings')}
+            </Button>
           </PreferenceRow>
 
-          {status?.configEnabled && status?.port && (
+          {status.port ? (
             <div className='flex flex-col gap-8px py-12px'>
               <div className='flex items-center gap-8px'>
                 <div className='flex-1'>
@@ -302,26 +264,8 @@ const DevSettings: React.FC = () => {
                 </Collapse>
               </div>
             </div>
-          )}
-
-          {status && !status.port && !status.configEnabled && (
+          ) : (
             <div className='text-12px text-t-tertiary py-12px'>{t('settings.cdp.disabledHint')}</div>
-          )}
-
-          {hasPendingChange && (
-            <div className='py-12px'>
-              <Alert
-                type='warning'
-                content={
-                  <div className='flex items-center justify-between gap-12px'>
-                    <span>{t('settings.cdp.restartRequired')}</span>
-                    <Button size='small' type='primary' onClick={handleRestart}>
-                      {t('settings.restartNow')}
-                    </Button>
-                  </div>
-                }
-              />
-            </div>
           )}
         </div>
       </section>

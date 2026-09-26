@@ -92,6 +92,40 @@ describe("CascadeJudge", () => {
 		await expect(dead.evaluate({ state: "x", questions })).rejects.toMatchObject({ kind: "unreachable" });
 	});
 
+	// Found with the QA fixes, 2026-09-25: laya then a keyless Jev would say "no judge yet", Jev then laya "the judge
+	// did not answer": what failed last decided. A judge that may answer next time is what the next call can expect.
+	it("when every tier fails, reports the failure that may pass over one that lasts, in either order", async () => {
+		const tier = (id: string, error: JudgeError) => ({
+			judge: new Judge({
+				provider: {
+					id,
+					evaluate: async () => {
+						throw error;
+					},
+				},
+			}),
+		});
+		const noKey = tier("jev", new JudgeError("auth", "No API key is configured for Jev"));
+		const noCredit = tier("gateway", new JudgeError("payment_required", "The gateway answered 402"));
+		const down = tier("laya", new JudgeError("unreachable", "sidecar is not running"));
+		for (const tiers of [
+			[noKey, down],
+			[down, noKey],
+			[down, noCredit, noKey],
+		]) {
+			await expect(new CascadeJudge(tiers).evaluate({ state: "x", questions })).rejects.toMatchObject({
+				kind: "unreachable",
+			});
+		}
+		// Only lasting failures: the last one, as before.
+		await expect(new CascadeJudge([noKey, noCredit]).evaluate({ state: "x", questions })).rejects.toMatchObject({
+			kind: "payment_required",
+		});
+		// No judge that could be built at all fails as a judge without a key does.
+		const none = buildJudge(parseConfig({ tiers: ["no-such-judge"] }));
+		await expect(none.judge.evaluate({ state: "x", questions })).rejects.toMatchObject({ kind: "auth" });
+	});
+
 	it("answers neutrally when no tier is trusted with a question, instead of guessing", async () => {
 		const local = named("laya", { edit: { type: "boolean", probability: 0.95 } });
 		const cascade = new CascadeJudge([

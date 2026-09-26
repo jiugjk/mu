@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Form, Input, Select, Message, TimePicker, Radio, Button, Switch } from '@arco-design/web-react';
 import AionModal from '@renderer/components/base/AionModal';
@@ -256,6 +256,9 @@ const CreateTaskDialog: React.FC<CreateTaskDialogProps> = ({
   const isEditMode = !!editJob;
   const [execution_mode, setExecutionMode] = useState<ExecutionMode>('new_conversation');
   const [queueEnabled, setQueueEnabled] = useState(false);
+  // The queue switch is named by its title and described by the sentence under it.
+  const queueTitleId = useId();
+  const queueHintId = useId();
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [teamOwnershipStatus, setTeamOwnershipStatus] = useState<'checking' | 'team' | 'standalone'>('standalone');
 
@@ -749,10 +752,19 @@ const CreateTaskDialog: React.FC<CreateTaskDialogProps> = ({
 
           <div className='mb-20px flex items-start justify-between gap-16px rounded-12px border border-solid border-[var(--color-border-2)] px-14px py-12px'>
             <div className='min-w-0'>
-              <p className='m-0 text-14px font-medium text-t-primary'>{t('cron.page.form.queue')}</p>
-              <p className='mb-0 mt-4px text-12px leading-18px text-t-secondary'>{t('cron.page.form.queueHint')}</p>
+              <p id={queueTitleId} className='m-0 text-14px font-medium text-t-primary'>
+                {t('cron.page.form.queue')}
+              </p>
+              <p id={queueHintId} className='mb-0 mt-4px text-12px leading-18px text-t-secondary'>
+                {t('cron.page.form.queueHint')}
+              </p>
             </div>
-            <Switch checked={queueEnabled} onChange={setQueueEnabled} />
+            <Switch
+              checked={queueEnabled}
+              onChange={setQueueEnabled}
+              aria-labelledby={queueTitleId}
+              aria-describedby={queueHintId}
+            />
           </div>
 
           {/* Frequency */}

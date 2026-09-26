@@ -67,6 +67,9 @@ function getMessageIndexKey(message: TMessage): string | undefined {
   // update resolves to whatever frame was appended last and rewrites it.
   if (message.type === 'thinking') return `thinking:${message.msg_id}`;
   if (message.type === 'plan') return `plan:${message.msg_id}`;
+  // A permission card is keyed by the call it asks about: one card per question, whatever frame of the turn came last.
+  if (message.type === 'acp_permission')
+    return `acp_permission:${message.content?.tool_call?.tool_call_id ?? message.msg_id}`;
   return message.msg_id;
 }
 
@@ -384,11 +387,31 @@ export function composeMessageWithIndex(
     return list.concat(message);
   }
 
+  // acp_permission: a question sent again replaces its card in place (keeping the card's id, so an answer under way is
+  // not reset); another question is a card of its own. It never takes over the frame before it: the card shares the
+  // turn's msg_id with the tool call it asks about, and the generic arm below turned that call's row into the card, so
+  // the call's result came back to a row with no name (the conversation fell to the error screen after 允许).
+  if (message.type === 'acp_permission') {
+    const key = getMessageIndexKey(message);
+    const existingIdx = key ? index.msgIdIndex.get(key) : undefined;
+    if (existingIdx !== undefined && existingIdx < list.length) {
+      const existingMsg = list[existingIdx];
+      if (existingMsg.type === 'acp_permission') {
+        const newList = list.slice();
+        newList[existingIdx] = { ...existingMsg, ...message, id: existingMsg.id, content: message.content };
+        return newList;
+      }
+    }
+    if (key) index.msgIdIndex.set(key, list.length);
+    return list.concat(message);
+  }
+
   // agent_status / tips and other msg_id-based messages:
-  // replace the existing item in place instead of appending duplicates.
+  // replace the existing item of the same type in place instead of appending duplicates. Every frame of a turn shares
+  // its msg_id, so a frame of another type under the same key is a different message, never a duplicate.
   if (message.msg_id) {
     const existingIdx = index.msgIdIndex.get(message.msg_id);
-    if (existingIdx !== undefined && existingIdx < list.length) {
+    if (existingIdx !== undefined && existingIdx < list.length && list[existingIdx].type === message.type) {
       const existingMsg = list[existingIdx];
       const newList = list.slice();
       newList[existingIdx] = {

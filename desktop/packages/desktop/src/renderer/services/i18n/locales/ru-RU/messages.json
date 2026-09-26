@@ -65,6 +65,7 @@
   "noOptionsAvailable": "Нет доступных опций",
   "processing": "Обработка...",
   "responseSentSuccessfully": "Ответ успешно отправлен",
+  "permissionAnswered": "Ответ: {{option}}",
   "permissionResponseFailed": "Не удалось отправить ответ. Повторите попытку.",
   "permissionNoLongerPending": "Этот запрос больше не ждёт ответа.",
   "confirmation": {

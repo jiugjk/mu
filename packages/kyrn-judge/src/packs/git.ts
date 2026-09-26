@@ -1,3 +1,12 @@
+import {
+	type GitProbe,
+	type GitUnusable,
+	type GitUnusableReason,
+	heldByLicense,
+	hostProbe,
+	stubProblem,
+	UNUSABLE_TEXT,
+} from "../checkpoint/git.ts";
 import type { Runner } from "./exec.ts";
 
 /**
@@ -19,6 +28,8 @@ export interface GitOutput {
 	readonly stdout: Buffer;
 	readonly stderr: string;
 	readonly missing: boolean;
+	/** git is there and cannot run on this Mac: not started at all (`developer_tools_missing`), or held back. */
+	readonly unusable?: GitUnusableReason;
 }
 
 export type Git = (args: readonly string[], call: GitCall) => Promise<GitOutput>;
@@ -26,8 +37,23 @@ export type Git = (args: readonly string[], call: GitCall) => Promise<GitOutput>
 /** Variables that would point git at another repository or index than the one in `cwd`, as a hook sets them. */
 const INHERITED = ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_PREFIX"];
 
-export function gitOver(run: Runner, binary = "git"): Git {
+/**
+ * Before git first runs, the probe checks it is no macOS stub without the developer tools behind it
+ * (`stubProblem`): that git is never started, since each start opens the system's install dialog.
+ */
+export function gitOver(run: Runner, binary = "git", probe: GitProbe = hostProbe): Git {
+	let stub: Promise<GitUnusable | undefined> | undefined;
 	return async (args, call) => {
+		stub ??= stubProblem(binary, call.env?.PATH ?? process.env.PATH, probe);
+		const problem = await stub;
+		if (problem)
+			return {
+				code: 127,
+				stdout: Buffer.alloc(0),
+				stderr: problem.message,
+				missing: false,
+				unusable: problem.reason,
+			};
 		const env: Record<string, string | undefined> = {};
 		for (const name of INHERITED) env[name] = undefined;
 		// Messages are read by a model and compared in tests: never localized, never a prompt, never a pager.
@@ -40,12 +66,15 @@ export function gitOver(run: Runner, binary = "git"): Git {
 			timeoutMs: call.timeoutMs ?? 60_000,
 			encoding: "latin1",
 		});
-		return {
+		const output: GitOutput = {
 			code: result.code,
 			stdout: Buffer.from(result.stdout, "latin1"),
 			stderr: result.stderr,
 			missing: result.missing,
 		};
+		return heldByLicense(result.code, () => `${result.stderr}\n${result.stdout}`)
+			? { ...output, unusable: "xcode_license" }
+			: output;
 	};
 }
 
@@ -57,7 +86,9 @@ export const splitZ = (output: GitOutput): string[] => text(output).split("\0").
 
 export type RepoState =
 	| { ok: true; root: string; gitDir: string; head: string | undefined; inProgress: string | undefined }
-	| { ok: false; reason: "no-git" | "not-a-repo"; message: string };
+	| { ok: false; reason: "no-git" | "not-a-repo"; message: string }
+	/** `message` is for a model: only the user can make git run (`UNUSABLE_TEXT`). */
+	| { ok: false; reason: "unusable"; unusable: GitUnusableReason; message: string };
 
 const IN_PROGRESS = [
 	["MERGE_HEAD", "merge"],
@@ -73,6 +104,8 @@ const IN_PROGRESS = [
 export async function repoState(git: Git, cwd: string): Promise<RepoState> {
 	const top = await git(["rev-parse", "--show-toplevel", "--absolute-git-dir"], { cwd });
 	if (top.missing) return { ok: false, reason: "no-git", message: "git could not be started" };
+	if (top.unusable)
+		return { ok: false, reason: "unusable", unusable: top.unusable, message: UNUSABLE_TEXT[top.unusable] };
 	if (top.code !== 0)
 		return { ok: false, reason: "not-a-repo", message: lastLine(top.stderr) || "not a git repository" };
 	const [root, gitDir] = lines(top).map((line) => line.trim());

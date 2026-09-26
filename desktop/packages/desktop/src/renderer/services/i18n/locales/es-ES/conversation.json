@@ -91,7 +91,8 @@
     "batchArchiveSuccess_other": "{{count}} temas archivados",
     "archiveProjectConfirm_one": "¿Archivar el proyecto «{{name}}»? También se archivará su conversación ({{count}}). Puedes restaurarla o eliminarla desde Archivados en Configuración.",
     "archiveProjectConfirm_other": "¿Archivar el proyecto «{{name}}»? También se archivarán sus {{count}} conversaciones. Puedes restaurarlas o eliminarlas desde Archivados en Configuración.",
-    "projectActions": "Acciones del proyecto"
+    "projectActions": "Acciones del proyecto",
+    "conversationActions": "Acciones del chat"
   },
   "historySearch": {
     "tooltip": "Buscar mensajes",
@@ -457,7 +458,7 @@
   "chat": {
     "noModelSelected": "No hay modelo seleccionado para la sesión actual, no se puede enviar el mensaje",
     "sendMessageTo": "Enviar mensaje a {{model}}",
-    "processing": "Procesando...",
+    "processing": "Procesando…",
     "quotaExceededTitle": "Cuota del modelo alcanzada",
     "quotaExceededBody": "La cuota del modelo actual se agotó. ¿Cambiar a {{model}} para continuar?",
     "quotaExceededNoFallback": "Cuota del modelo alcanzada. Por favor cambia a otro modelo disponible.",
@@ -521,7 +522,6 @@
       "manual": "Envío manual"
     },
     "addToQueue": "Añadir al buzón de borradores",
-    "addToQueueShortcut": "⌘ + Enter / Ctrl + Enter",
     "midturnBlocked": "No se admite interrumpir mientras este agente está respondiendo. Usa Añadir al buzón de borradores en su lugar.",
     "enterShortcut": "Enter",
     "actionMode": "Elegir acción de envío",
@@ -592,7 +592,8 @@
   "sendbox": {
     "hint": "Escribe / para comandos, @ para referenciar archivos y ↑/↓ para el historial de mensajes",
     "mediaPathFallback": "Este agente no admite este tipo de archivo de forma nativa; se enviará como ruta de archivo.",
-    "hintWithSessions": "/ para comandos, @ para archivos, @@ para conversaciones, ↑/↓ para el historial"
+    "hintWithSessions": "/ para comandos, @ para archivos, @@ para conversaciones, ↑/↓ para el historial",
+    "stop": "Detener la respuesta"
   },
   "composer": {
     "goalLine": {

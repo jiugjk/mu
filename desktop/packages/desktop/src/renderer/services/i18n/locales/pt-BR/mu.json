@@ -148,7 +148,8 @@
     "customTier": "Um juiz que você mesmo adicionou. Para mudá-lo, edite o arquivo de configurações do mu.",
     "endpointDefault": "Endereço padrão do serviço",
     "types": {
-      "localHelp": "Roda neste computador."
+      "localHelp": "Roda neste computador.",
+      "clmHelp": "Roda no seu próprio servidor CLM."
     },
     "intro": "Enquanto trabalha, o mu faz muitas pequenas perguntas: como tratar esta mensagem, se este passo viola uma regra que você definiu. O juiz as responde. Escolha um.",
     "choose": "Escolha um juiz",
@@ -164,6 +165,11 @@
         "title": "Laya local",
         "tag": "Grátis · offline",
         "description": "Roda neste computador, sem rede e sem custo. Bom para classificar; relacionar e pontuar são menos confiáveis."
+      },
+      "clm": {
+        "title": "CLM",
+        "tag": "Auto-hospedado",
+        "description": "Responde às mesmas perguntas que o Jev, em um servidor seu (clm-serve). O codificador precisa de uma GPU; nada é cobrado por chamada."
       }
     },
     "localAddress": "Endereço: {{address}}",
@@ -210,6 +216,26 @@
           "foreign": "Há um Laya em execução que o mu não iniciou. Pare-o onde ele foi iniciado."
         }
       }
+    },
+    "clm": {
+      "address": "Endereço do servidor",
+      "addressHelp": "Onde o clm-serve escuta, por exemplo http://192.168.1.20:8700. Vazio é este computador ({{address}}).",
+      "key": "Chave do servidor",
+      "keyPlaceholder": "Só se o servidor pedir",
+      "keyHelp": "Só um servidor iniciado com CLM_API_KEY pede chave: digite o mesmo valor. Depois de salva, ela nunca mais é exibida.",
+      "check": "Verificar o servidor",
+      "unmeasured": "Ainda não foi medido quão bem o CLM toma as decisões do mu.",
+      "status": {
+        "checking": "Consultando o servidor…",
+        "ready": "Respondendo · {{models}} · {{ms}} ms",
+        "down": "Nada responde em {{address}}. Inicie o clm-serve lá ou corrija o endereço.",
+        "encoderDown": "O servidor responde, mas o codificador dele não: todas as perguntas falham até o servidor de embeddings (vLLM) estar rodando.",
+        "model": "O servidor não oferece {{model}}. Ele oferece {{models}}.",
+        "keyNeeded": "O servidor pede uma chave: digite a que foi usada ao iniciá-lo (CLM_API_KEY).",
+        "keySaved": "O servidor pede uma chave, e há uma salva.",
+        "mock": "Este servidor usa o codificador simulado do CLM: as respostas dele são ruído, não do CLM.",
+        "failed": "Não foi possível consultar o servidor."
+      }
     }
   },
   "keyState": {
@@ -255,13 +281,20 @@
       "unsure": "O Jev não tem certeza de que este passo é o que você quer.",
       "beyond": "O Jev acha que isto vai além do que você pediu.",
       "unrelated": "O Jev acha que isto não faz parte da tarefa.",
-      "protected": "Isto mexe nas configurações do próprio mu; só você pode permitir."
+      "protected": "Isto mexe nas configurações do próprio mu; só você pode permitir.",
+      "nojudge": "Ainda não há nenhum juiz disponível, então o mu pergunta a você a cada passo.",
+      "judgedown": "O juiz não respondeu desta vez, então o mu pergunta a você."
     },
     "answer": {
       "once": "Permitir uma vez",
       "session": "Permitir nesta conversa",
       "sessionFor": "Permitir nesta conversa ({{grant}})",
       "deny": "Não permitir"
+    },
+    "decided": {
+      "once": "Você permitiu uma vez: {{summary}}",
+      "session": "Permitido nesta conversa: {{summary}}",
+      "deny": "Você não permitiu: {{summary}}"
     },
     "flag": {
       "recursive_or_forced_delete": "exclusão recursiva ou forçada",
@@ -325,16 +358,16 @@
     "removeDefault": "Novas sessões começam com ele, então o modelo padrão também será limpo."
   },
   "defaults": {
-    "summary": "What a new session starts with. You can still switch inside a conversation.",
+    "summary": "Com o que uma nova sessão começa. Dentro de uma conversa, você ainda pode trocar.",
     "provider": "Provedor",
     "model": "Modelo",
     "level": "Nível de raciocínio",
     "levelUnset": "Não definir",
-    "levelHelp": "Levels this model does not take are disabled.",
-    "levelClamped": "Not set means medium. A level the model does not take becomes the nearest one it does.",
-    "noReasoning": "This model does not think, so a session with it always starts with thinking off.",
+    "levelHelp": "Os níveis que este modelo não aceita ficam desativados.",
+    "levelClamped": "“Não definir” equivale a Médio. Um nível que o modelo não aceita vira o mais próximo que ele aceita.",
+    "noReasoning": "Este modelo não raciocina, então uma sessão com ele sempre começa com o raciocínio desligado.",
     "notSet": "Não definido",
-    "pickProvider": "Choose a provider first."
+    "pickProvider": "Escolha um provedor primeiro."
   },
   "accounts": {
     "signIn": "Entrar",
@@ -437,7 +470,7 @@
     "update": "Esta versão do mu não permite escolher aqui qual modelo escreve o painel. Atualize o mu primeiro."
   },
   "levels": {
-    "off": "Desligado",
+    "off": "Sem raciocínio",
     "minimal": "Mínimo",
     "low": "Baixo",
     "medium": "Médio",
@@ -469,7 +502,7 @@
       "signedIn": {
         "title": "Entrar com uma assinatura",
         "tag": "Sem chave de API",
-        "description": "Um plano do ChatGPT, Claude ou Grok"
+        "description": "Um plano do ChatGPT, Claude, Grok ou outros"
       },
       "openai": {
         "title": "API compatível com OpenAI",
@@ -590,9 +623,28 @@
     "timeout": "O mu não respondeu a tempo.",
     "processClosed": "O mu parou. Envie a mensagem de novo para reiniciá-lo.",
     "modelFailed": "A solicitação ao modelo falhou.",
-    "turnRunning": "O mu ainda está trabalhando na mensagem anterior. Aguarde ou interrompa primeiro."
+    "turnRunning": "O mu ainda está trabalhando na mensagem anterior. Aguarde ou interrompa primeiro.",
+    "noModel": "O mu não tem nenhum modelo para responder."
+  },
+  "noModel": {
+    "title": "Nenhum modelo para responder",
+    "body": "O mu precisa de um modelo que possa usar. Entre ou adicione uma chave em {{place}} e envie sua mensagem de novo.",
+    "open": "Abrir {{page}}",
+    "chip": "Escolher um modelo"
   },
   "notices": {
+    "checkpointOff": "Os pontos de controle estão desativados nesta conversa.",
+    "checkpointOffWhy": {
+      "gitMissing": "Os pontos de controle estão desativados nesta conversa: o Git não foi encontrado neste computador. Instale o Git e comece uma nova conversa para tê-los.",
+      "xcodeLicense": "Os pontos de controle estão desativados nesta conversa: o Git não pode ser executado neste Mac até que a licença do Xcode seja aceita. Aceite-a com sudo xcodebuild -license no Terminal e comece uma nova conversa para tê-los.",
+      "developerToolsMissing": "Os pontos de controle estão desativados nesta conversa: este Mac não tem as ferramentas de desenvolvedor de linha de comando de que o Git precisa. Instale-as com xcode-select --install no Terminal e comece uma nova conversa para tê-los.",
+      "homeFolder": "Os pontos de controle estão desativados nesta conversa: a pasta dela é a sua pasta pessoal ou a contém. Comece uma conversa em uma pasta de projeto para tê-los.",
+      "muFolder": "Os pontos de controle estão desativados nesta conversa: a pasta dela fica dentro da pasta do próprio mu. Comece uma conversa em uma pasta de projeto para tê-los.",
+      "tooManyFiles": "Os pontos de controle estão desativados nesta conversa: a pasta dela tem mais de {{limit}} arquivos. Comece uma conversa em uma pasta de projeto para tê-los.",
+      "tooManyBytes": "Os pontos de controle estão desativados nesta conversa: a pasta dela tem mais de {{limitMb}} MB de arquivos. Comece uma conversa em uma pasta de projeto para tê-los.",
+      "tooSlow": "Os pontos de controle estão desativados nesta conversa: listar os arquivos da pasta dela levou mais de {{seconds}} segundos. Comece uma conversa em uma pasta de projeto para tê-los."
+    },
+    "stopped": "Você interrompeu esta resposta.",
     "answerLost": "O mu não recebeu sua resposta e continuou como se você tivesse recusado.",
     "bashMissing": "O mu precisa do Git for Windows para executar comandos. Depois de instalá-lo, envie sua mensagem de novo. Baixe aqui:"
   },
@@ -673,5 +725,34 @@
       "earlier_other": "{{count}} etapas anteriores não são mostradas.",
       "empty": "Não há nada para mostrar."
     }
+  },
+  "commands": {
+    "frame": "A definição da tarefa: objetivo, suas restrições rígidas e onde você as disse, subobjetivo, critérios de aceite",
+    "remember": "Guardar uma lição para as próximas conversas deste projeto: /remember <o que fazer>",
+    "lessons": "As lições deste projeto: /lessons lista id · tipo · recuperada/seguida · lição, /lessons all inclui as que valem em todo lugar e as aposentadas",
+    "forget": "Aposentar uma lição para que não seja mais recuperada: /forget <início do id> (os ids estão em /lessons)",
+    "capabilities": "Quais capacidades estão instaladas e quais estão ativas: /capabilities, /capabilities open <id>",
+    "permissions": "Quanto o mu pode fazer sem perguntar: /permissions full (Acesso total) | jev (O Jev aprova) | ask (Permissões mínimas), ou um seletor sem argumentos. /permissions reset esquece o que você permitiu nesta conversa",
+    "lsp": "Servidores de linguagem: quais estão instalados, quais estão rodando e o último erro",
+    "goal": "Modo objetivo: o agente continua trabalhando até uma condição ser atendida. /goal <condição>, /goal (mostrar ou pedir um), /goal clear",
+    "board": "O painel em linguagem simples: /board (mostrar), /board on, /board off (para este projeto), /board model (quem escreve)",
+    "checkpoints": "Os pontos de controle desta conversa: turno, hora, arquivos alterados desde então",
+    "rewind": "Voltar a um ponto de controle: /rewind [nº] [both|files|conversation], /rewind undo desfaz; both: arquivos e conversa, files: só arquivos, conversation: só a conversa",
+    "swarm": "Subagentes em ação: /swarm (o que cada um está fazendo), /swarm stop [nome] (relatar agora), /swarm kill [nome] (encerrar na hora)",
+    "agents": "Os papéis de subagente que a ferramenta delegate pode usar e onde adicionar os seus",
+    "hive": "Colocar vários investigadores numa mesma pergunta ao mesmo tempo: /hive <pergunta>. Sem pergunta, igual a /swarm",
+    "browse": "Fazer o navegador integrado abrir um endereço e fazer o que você disser: /browse <url> [objetivo]",
+    "inherit": "O que o mu herdou do Claude Code, do Cursor e do Codex, e de onde",
+    "mcp": "Servidores MCP: /mcp, /mcp open <id>, /mcp restart <id>",
+    "jobs": "Tarefas em segundo plano: /jobs, /jobs stop <id|all>",
+    "commit": "Dividir a alteração não commitada em commits: mostra o plano, só faz commit quando você concorda e nunca faz push",
+    "review": "Revisar a alteração não commitada, ou o que você indicar, com o subagente revisor; achados ordenados de P0 a P3",
+    "mu": "Status do mu. Também: /mu judge <camadas> | /mu route <ponto de decisão> <camadas|default> | /mu mode <ponto de decisão|default> <off|shadow|active>",
+    "status": "Modelo, juiz, modos dos pontos de decisão, contexto economizado e os últimos vereditos",
+    "help": "O que o mu sabe fazer e todos os comandos que vale conhecer",
+    "ledger": "Os últimos vereditos do juiz com o tempo de cada um: /ledger [n]",
+    "doctor": "Verificar se o juiz, o modelo, o navegador e os subagentes estão bem conectados",
+    "import-chat": "Trazer para o mu uma conversa do Claude Code ou do Codex deste projeto e continuá-la: /import-chat [arquivo]",
+    "llama": "Gerenciar os modelos do roteador llama.cpp"
   }
 }

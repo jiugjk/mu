@@ -36,7 +36,7 @@ import React, { useCallback, useContext, useEffect, useLayoutEffect, useMemo, us
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import useSWR from 'swr';
-import { useFirstRunWelcome } from '@/renderer/pages/welcome/useFirstRunWelcome';
+import { commandDescription } from '@/renderer/utils/chat/muCommands';
 import styles from './index.module.css';
 
 type GuidNavigationState = {
@@ -53,7 +53,6 @@ type GuidNavigationState = {
 const GuidPage: React.FC = () => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  useFirstRunWelcome();
   const location = useLocation();
   const guidContainerRef = useRef<HTMLDivElement>(null);
   // Arco's nested ConfigProvider does not inherit: whatever it leaves out falls back to Arco's defaults (zh-CN
@@ -238,13 +237,13 @@ const GuidPage: React.FC = () => {
       slashController.filteredCommands.map((command) => ({
         key: command.name,
         label: `/${command.name}`,
-        description: command.description,
+        description: commandDescription(command, t),
         badge: command.hint,
         highlightIndices: slashController.query
           ? getFuzzyMatchIndices(command.name, slashController.query)?.map((index) => index + 1)
           : undefined,
       })),
-    [slashController.filteredCommands, slashController.query]
+    [slashController.filteredCommands, slashController.query, t]
   );
 
   const send = useGuidSend({
@@ -661,6 +660,7 @@ const GuidPage: React.FC = () => {
     <ConfigProvider
       locale={arcoConfig.locale}
       rtl={arcoConfig.rtl}
+      componentConfig={arcoConfig.componentConfig}
       effectGlobalModal={false}
       effectGlobalNotice={false}
       getPopupContainer={() => guidContainerRef.current || document.body}

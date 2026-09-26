@@ -41,7 +41,7 @@
   "drawer.saveSuccess": "Saved successfully",
   "message.badge": "Zamanlanmış",
   "allScheduledTasks": "Tüm zamanlanmış görevler",
-  "noTasks": "Zamanlanmış görev yok",
+  "noTasks": "Henüz zamanlanmış görev yok.",
   "runNowSuccess": "Görev çalıştırma tetiklendi",
   "detail": {
     "backToAll": "Tüm zamanlanmış görevler",
@@ -171,7 +171,8 @@
     "createFailed": "Görev oluşturulamadı: {{error}}",
     "updateFailed": "Görev kaydedilemedi: {{error}}",
     "searchPlaceholder": "Görev ara...",
-    "noSearchResults": "Eşleşen zamanlanmış görev yok."
+    "noSearchResults": "Eşleşen zamanlanmış görev yok.",
+    "emptyHint": "Yukarıdaki “{{button}}” ile bir tane oluşturun."
   },
   "trigger": {
     "runScheduledTask": "Zamanlanmış görev çalıştır: {{name}}"

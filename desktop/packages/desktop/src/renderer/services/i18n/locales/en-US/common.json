@@ -68,6 +68,7 @@
   "tray.showWindow": "Show mu",
   "tray.newChat": "New Chat",
   "tray.closeToTray": "Hide to Tray",
+  "tray.hideToMenuBar": "Hide to Menu Bar",
   "tray.about": "About mu",
   "tray.restart": "Restart App",
   "tray.quit": "Quit",
@@ -175,6 +176,8 @@
       "open": "Open Hive",
       "inspect": "Inspect {{name}}",
       "summary": "{{active}} active · {{done}} done / {{total}}",
+      "summaryEnded": "{{done}} done / {{total}}",
+      "summaryUnfinished": "{{done}} done / {{total}} · {{unfinished}} not finished",
       "counts": "{{running}} running · {{done}} done · {{failed}} failed",
       "none": "No sub-agents in this conversation yet.",
       "details": "Flow and records",
@@ -890,7 +893,8 @@
       "log": {
         "thisTurn": "This turn",
         "earlier": "Show earlier lines",
-        "latest": "Jump to latest"
+        "latest": "Jump to latest",
+        "times": "×{{times}}"
       }
     },
     "empty": "No events recorded in this session yet.",
@@ -945,10 +949,14 @@
         "switched": "Board turned on or off"
       },
       "permissions": {
-        "mode": "Permission mode"
+        "mode": "Permission mode",
+        "request": "Permission asked",
+        "resolved": "Permission answered",
+        "approved": "Ran without asking"
       },
       "checkpoint": {
-        "taken": "Checkpoint saved"
+        "taken": "Checkpoint saved",
+        "off": "Checkpoints off"
       },
       "rewind": {
         "proposed": "Rewind proposed",
@@ -1070,6 +1078,7 @@
       "empty": "Give the agent a moment; this will say in plain words how it is going.",
       "checks": "{{done}} of {{total}} checks done",
       "ended": "Stopped",
+      "done": "Done",
       "brief": "Brief",
       "briefHelp": "The model did not write this one in time; it is a short fixed summary.",
       "needsYou": "Needs you",
@@ -1236,12 +1245,17 @@
     "compactionDropped_one": "{{count}} call removed",
     "compactionDropped_other": "{{count}} calls removed",
     "jevLine": {
-      "classifying": "Jev is classifying this message…",
-      "classified": "Classified by Jev: {{type}}",
+      "classifying": "{{judge}} is classifying this message…",
+      "classified": "Classified by {{judge}}: {{type}}",
       "byRule": "Classified by rule: {{type}}",
       "shadow": "{{line}} (watching only, not applied)",
       "late": "{{line}} (too late for this turn)",
-      "fallback": "No class from Jev this time; going on as usual"
+      "fallback": "No clear class from {{judge}} this time; going on as usual",
+      "unanswered": "{{judge}} did not answer this time; going on as usual",
+      "noJudge": "No judge is available yet, so messages are not classified.",
+      "setUp": "Set up a judge",
+      "skipped": "Classification skipped",
+      "off": "Classification is off"
     },
     "eventLine": {
       "detail": "Details: {{detail}}",
@@ -1338,7 +1352,19 @@
         }
       },
       "permissions": {
-        "mode": "Permission mode: {{mode}}"
+        "mode": "Permission mode: {{mode}}",
+        "request": "Waiting for your permission: {{summary}}",
+        "waiting": "Waiting for your permission",
+        "answers": {
+          "once": "You allowed it once",
+          "session": "Allowed for this conversation",
+          "deny": "You did not allow it"
+        },
+        "about": "{{answer}}: {{summary}}",
+        "approved": {
+          "judge": "The judge let it run without asking you: {{summary}}",
+          "grant": "Ran without asking, as allowed for this conversation: {{summary}}"
+        }
       },
       "board": {
         "on": "Board: on",
@@ -1355,11 +1381,15 @@
   },
   "menu": {
     "about": "About {{name}}",
+    "settings": "Settings…",
     "services": "Services",
     "hide": "Hide {{name}}",
     "hideOthers": "Hide others",
     "unhide": "Show all",
     "quit": "Quit {{name}}",
+    "file": "File",
+    "newChat": "New chat",
+    "closeWindow": "Close window",
     "edit": "Edit",
     "undo": "Undo",
     "redo": "Redo",
@@ -1377,8 +1407,13 @@
     "zoomIn": "Zoom in",
     "zoomOut": "Zoom out",
     "toggleFullScreen": "Toggle full screen",
+    "window": "Window",
+    "minimize": "Minimize",
+    "zoomWindow": "Zoom",
+    "bringAllToFront": "Bring all to front",
     "help": "Help",
-    "checkForUpdates": "Check for updates…"
+    "checkForUpdates": "Check for updates…",
+    "projectPage": "{{name}} on GitHub"
   },
   "trayMenu": {
     "runningTasks": "Running tasks: {{count}}"

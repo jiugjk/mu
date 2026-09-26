@@ -1,9 +1,11 @@
-import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { delimiter, join } from "node:path";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHarness, type Harness } from "../../coding-agent/test/suite/harness.ts";
+import { type GitProbe, UNUSABLE_TEXT } from "../src/checkpoint/git.ts";
 import { parseConfig } from "../src/config.ts";
 import { createKyrnJudgeExtension } from "../src/extension/kyrn-judge.ts";
 import {
@@ -15,7 +17,7 @@ import {
 	rulePlan,
 	validatePlan,
 } from "../src/packs/commit.ts";
-import { run } from "../src/packs/exec.ts";
+import { type Runner, run } from "../src/packs/exec.ts";
 import { gitOver, repoState } from "../src/packs/git.ts";
 import { filePatch } from "../src/packs/unified-diff.ts";
 import { MockJudgeProvider } from "../src/providers/mock.ts";
@@ -393,6 +395,34 @@ describe("/commit: a change split into commits", () => {
 			expect(log(repo)).toEqual(["init"]);
 		});
 
+		// Found with the QA fixes, 2026-09-25: the packs started git without the Mac check checkpoints have.
+		it.skipIf(process.platform === "win32")(
+			"says in the user's words that git cannot run on this Mac, and asks nothing",
+			async () => {
+				const ui = scriptedUi(true);
+				const { harness, repo } = await session(ui);
+				const bin = mkdtempSync(join(tmpdir(), "mu-commit-git-"));
+				temps.push(bin);
+				writeFileSync(
+					join(bin, "git"),
+					`#!/bin/sh\necho "You have not agreed to the Xcode license agreements. Please run 'sudo xcodebuild -license'." >&2\nexit 69\n`,
+					{ mode: 0o755 },
+				);
+				// Only while /commit runs: the repository is read with the real git.
+				vi.stubEnv("PATH", `${bin}${delimiter}${process.env.PATH}`);
+				try {
+					await harness.session.prompt("/commit");
+				} finally {
+					vi.unstubAllEnvs();
+				}
+				expect(ui.notes).toEqual([
+					"/commit cannot run: git cannot run on this Mac until the Xcode license is accepted. Accept it with sudo xcodebuild -license in Terminal, then try again.",
+				]);
+				expect(ui.asked).toEqual([]);
+				expect(log(repo)).toEqual(["init"]);
+			},
+		);
+
 		it("commits nothing when the user says no, or when there is nobody to ask", async () => {
 			const refusing = scriptedUi(false);
 			const first = await session(refusing);
@@ -408,5 +438,49 @@ describe("/commit: a change split into commits", () => {
 			expect(log(alone.repo)).toEqual(["init"]);
 			expect(sh(alone.repo, "status", "--porcelain")).toBe(" M a.txt\n M b.txt\n");
 		});
+	});
+});
+
+describe("the packs' git on a Mac where git cannot run", () => {
+	const mac = (developerTools: boolean): GitProbe => ({
+		platform: "darwin",
+		find: () => "/usr/bin/git",
+		hasDeveloperTools: vi.fn(async () => developerTools),
+	});
+	const answering =
+		(code: number, stderr: string, calls: string[][] = []): Runner =>
+		async (_command, args) => {
+			calls.push([...args]);
+			return { code, stdout: "", stderr, missing: false, stopped: false };
+		};
+
+	it("never starts the system's stub without the developer tools, and looks once", async () => {
+		const probe = mac(false);
+		const calls: string[][] = [];
+		const git = gitOver(answering(0, "", calls), "git", probe);
+		expect(await repoState(git, "/work")).toEqual({
+			ok: false,
+			reason: "unusable",
+			unusable: "developer_tools_missing",
+			message: UNUSABLE_TEXT.developer_tools_missing,
+		});
+		expect((await git(["status"], { cwd: "/work" })).unusable).toBe("developer_tools_missing");
+		expect(calls).toEqual([]);
+		expect(probe.hasDeveloperTools).toHaveBeenCalledTimes(1);
+	});
+
+	it("reads an exit 69 that names the Xcode license as git held back, not as a folder outside a repository", async () => {
+		const held = answering(
+			69,
+			"You have not agreed to the Xcode license agreements. Please run 'sudo xcodebuild -license'.",
+		);
+		expect(await repoState(gitOver(held, "git", mac(true)), "/work")).toEqual({
+			ok: false,
+			reason: "unusable",
+			unusable: "xcode_license",
+			message: UNUSABLE_TEXT.xcode_license,
+		});
+		const other = answering(69, "fatal: something else");
+		expect(await repoState(gitOver(other, "git", mac(true)), "/work")).toMatchObject({ reason: "not-a-repo" });
 	});
 });

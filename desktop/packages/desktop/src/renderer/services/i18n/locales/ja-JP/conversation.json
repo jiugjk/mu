@@ -91,7 +91,8 @@
     "batchArchiveSuccess_other": "{{count}} 件の会話をアーカイブしました",
     "archiveProjectConfirm_one": "プロジェクト「{{name}}」をアーカイブしますか？含まれる {{count}} 件の会話もアーカイブされます。設定の「アーカイブ済みの会話」から復元または削除できます。",
     "archiveProjectConfirm_other": "プロジェクト「{{name}}」をアーカイブしますか？含まれる {{count}} 件の会話もアーカイブされます。設定の「アーカイブ済みの会話」から復元または削除できます。",
-    "projectActions": "プロジェクトの操作"
+    "projectActions": "プロジェクトの操作",
+    "conversationActions": "会話の操作"
   },
   "historySearch": {
     "tooltip": "メッセージを検索",
@@ -457,7 +458,7 @@
   "chat": {
     "noModelSelected": "現在のセッションでモデルが選択されていないため、メッセージを送信できません",
     "sendMessageTo": "{{model}}にメッセージを送信",
-    "processing": "処理中……",
+    "processing": "処理中…",
     "quotaExceededTitle": "モデルの上限に達しました",
     "quotaExceededBody": "現在のモデルの上限に達しました。{{model}}に切り替えて続行しますか？",
     "quotaExceededNoFallback": "現在のモデルの上限に達しました。別の利用可能なモデルに切り替えてください。",
@@ -520,7 +521,6 @@
       "manual": "手動送信"
     },
     "addToQueue": "下書きボックスに追加",
-    "addToQueueShortcut": "⌘ + Enter / Ctrl + Enter",
     "midturnBlocked": "このエージェントが応答中は割り込みができません。「下書きボックスに追加」をご利用ください。",
     "enterShortcut": "Enter",
     "actionMode": "送信方法を選択",
@@ -591,7 +591,8 @@
   "sendbox": {
     "hint": "/ でコマンド、@ でファイルを参照、↑/↓ でメッセージ履歴",
     "mediaPathFallback": "このエージェントはこのファイル形式をネイティブに扱えないため、ファイルパスとして送信されます。",
-    "hintWithSessions": "/ でコマンド、@ でファイル、@@ で会話を参照、↑/↓ で履歴"
+    "hintWithSessions": "/ でコマンド、@ でファイル、@@ で会話を参照、↑/↓ で履歴",
+    "stop": "応答を停止"
   },
   "composer": {
     "goalLine": {

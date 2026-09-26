@@ -57,4 +57,76 @@ describe('normalizeToolCall', () => {
 
     expect(result?.output).toBe('[diff] /workspace/file.ts');
   });
+
+  it('names a call whose result came without a title, so its row can be drawn', () => {
+    // An ACP tool_call_update carries no title; when the call's first frame never reached the list, the row is built
+    // from the result alone. Its name was undefined, and the row's kind icon threw on it: the conversation page fell
+    // to the error screen.
+    const result = normalizeAcpToolCall({
+      id: 'message-3',
+      conversation_id: 'conversation-1',
+      type: 'acp_tool_call',
+      content: {
+        update: {
+          session_update: 'tool_call_update',
+          tool_call_id: 'call_e2e_4',
+          status: 'completed',
+          content: [{ type: 'content', content: { type: 'text', text: 'Successfully wrote to notes/hello.txt' } }],
+        },
+      },
+    } as unknown as IMessageAcpToolCall);
+
+    expect(result?.name).toBe('');
+    expect(result?.output).toBe('Successfully wrote to notes/hello.txt');
+  });
+
+  it('names such a call by its kind when the result says which', () => {
+    const result = normalizeAcpToolCall({
+      id: 'message-4',
+      conversation_id: 'conversation-1',
+      type: 'acp_tool_call',
+      content: {
+        update: { session_update: 'tool_call_update', tool_call_id: 'call-5', status: 'failed', kind: 'execute' },
+      },
+    } as unknown as IMessageAcpToolCall);
+
+    expect(result?.name).toBe('execute');
+  });
+
+  describe('a call the person did not allow', () => {
+    const REFUSAL =
+      'The user did not allow this (rm -rf build). Do not try another way around it: ask them, or carry on without it.';
+    const call = (status: string, text: string, rawOutput?: Record<string, unknown>) =>
+      normalizeAcpToolCall({
+        id: 'message-5',
+        conversation_id: 'conversation-1',
+        type: 'acp_tool_call',
+        content: {
+          update: {
+            session_update: 'tool_call_update',
+            tool_call_id: 'call-9',
+            status,
+            title: 'bash',
+            kind: 'execute',
+            raw_input: { command: 'rm -rf build' },
+            content: [{ type: 'content', content: { type: 'text', text } }],
+            ...(rawOutput ? { raw_output: rawOutput } : {}),
+          },
+        },
+      } as unknown as IMessageAcpToolCall);
+
+    it('is known by the bridge’s mark, as the relay passes it on', () => {
+      expect(call('failed', REFUSAL, { content: [], mu: { answer: 'deny' } })?.denied).toBe(true);
+    });
+
+    it('is known by mu’s refusal in a conversation from before the mark', () => {
+      expect(call('failed', REFUSAL)?.denied).toBe(true);
+    });
+
+    it('is not a call that failed by itself, or one that only quotes the words', () => {
+      expect(call('failed', 'rm: build: Permission denied')).not.toHaveProperty('denied');
+      expect(call('completed', REFUSAL)).not.toHaveProperty('denied');
+      expect(call('failed', `echo "${REFUSAL}"\nexit 1`)).not.toHaveProperty('denied');
+    });
+  });
 });

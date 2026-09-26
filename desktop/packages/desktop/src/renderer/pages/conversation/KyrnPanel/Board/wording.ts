@@ -7,6 +7,9 @@ import type { BoardUpdate } from './board';
  * facts: how far (`done`/`total`), what now (`phase` plus `focusText`, the task's own words) and `confirmCodes`. A part
  * with no wording in this language keeps the harness's sentence; a board the model wrote is its own words and stays.
  * The contract is the harness's kyrn/docs/features/presentation-codes.md (board.update).
+ *
+ * A fixed board's "now" names a stage as going on ("wrapping up", "changing the code"). Once the run has ended the
+ * board's state says how it ended, and a stage under it would misread it: a fixed board that ended has no "now".
  */
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
@@ -18,7 +21,8 @@ export type BoardWords = { now: string; progress: string; confirm: string[] };
 const KEY = 'common.kyrn.boardView.codes';
 
 export function boardWords(update: BoardUpdate, t: Translate, has: Has, number: (value: number) => string): BoardWords {
-  const said = { now: update.now, progress: update.progress, confirm: update.confirm };
+  const over = update.by === 'rules' && update.ended;
+  const said = { now: over ? '' : update.now, progress: update.progress, confirm: update.confirm };
   // An older harness sends no codes: its sentence may name the item being worked on, which the facts here lack.
   if (update.by !== 'rules' || !update.confirmCodes) return said;
 
@@ -31,14 +35,16 @@ export function boardWords(update: BoardUpdate, t: Translate, has: Has, number: 
 
   const nowKey = `${KEY}.now.${update.phase ?? 'unclear'}`;
   const base = has(nowKey) ? t(nowKey) : undefined;
-  const now = !base
-    ? said.now
-    : !update.focusText
-      ? base
-      : has(`${KEY}.now.focus`)
-        ? t(`${KEY}.now.focus`, { now: base, focus: update.focusText })
-        : // The harness's sentence names the item: without a way to say it here, keep that sentence.
-          said.now;
+  const now = over
+    ? ''
+    : !base
+      ? said.now
+      : !update.focusText
+        ? base
+        : has(`${KEY}.now.focus`)
+          ? t(`${KEY}.now.focus`, { now: base, focus: update.focusText })
+          : // The harness's sentence names the item: without a way to say it here, keep that sentence.
+            said.now;
 
   const confirm = update.confirm.map((line, index) => {
     const code = update.confirmCodes?.[index];

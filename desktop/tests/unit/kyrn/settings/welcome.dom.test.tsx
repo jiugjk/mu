@@ -20,6 +20,7 @@ const bridge = vi.hoisted(() => ({
   personality: vi.fn(),
   savePersonality: vi.fn(),
   availableModels: vi.fn(),
+  recheck: vi.fn(),
   testProvider: vi.fn(),
   loginStatus: vi.fn(),
   loginState: vi.fn(),
@@ -38,6 +39,7 @@ vi.mock('@/common/kyrn/bridge', () => ({
     personality: { invoke: bridge.personality },
     savePersonality: { invoke: bridge.savePersonality },
     availableModels: { invoke: bridge.availableModels },
+    recheck: { invoke: bridge.recheck },
     testProvider: { invoke: bridge.testProvider },
     loginStatus: { invoke: bridge.loginStatus },
     loginState: { invoke: bridge.loginState },
@@ -54,6 +56,9 @@ vi.mock('@/common/kyrn/bridge', () => ({
     return result.data;
   },
 }));
+// The guide's code, which the first-run check loads before it opens the guide.
+const guideCode = vi.hoisted(() => ({ preload: vi.fn() }));
+vi.mock('@/renderer/pages/welcome/page', () => ({ WelcomePage: { preload: guideCode.preload } }));
 // The real switcher changes the app's own i18next and writes the setting; here it only has to be there.
 vi.mock('@/renderer/components/settings/LanguageSwitcher', () => ({
   default: () => <div data-testid='language-switcher' />,
@@ -109,8 +114,10 @@ beforeAll(async () => {
 
 beforeEach(() => {
   localStorage.clear();
+  guideCode.preload.mockResolvedValue({ default: Welcome });
   bridge.settings.mockResolvedValue({ ok: true, data: newUser() });
   bridge.availableModels.mockResolvedValue({ ok: true, data: { providers: [], thinkingLevels: [] } });
+  bridge.recheck.mockResolvedValue({ ok: true, data: undefined });
   bridge.loginStatus.mockResolvedValue({ ok: true, data: { signedIn: [] } });
   bridge.loginState.mockResolvedValue({ ok: true, data: { id: 0, phase: 'idle' } });
   bridge.localJudgeState.mockResolvedValue({
@@ -239,7 +246,9 @@ describe('a settings section as its own page', () => {
     at('/settings/judges', <SettingsArea section='judges' />);
     const tiers = await screen.findByTestId('mu-judge-tiers');
     expect(screen.getByRole('heading', { name: 'Judge tiers' })).toBeInTheDocument();
-    expect(within(tiers).getByLabelText('Order')).toBeInTheDocument();
+    expect(within(tiers).getByRole('combobox', { name: 'Order' })).toBeInTheDocument();
+    // Its typing input, which takes the focus, says the same.
+    expect(within(tiers).getByRole('textbox', { name: 'Order' })).toBeInTheDocument();
     // Laya, the one judge here, needs nothing in the tiers: the choice above installs and starts it.
     const laya = within(tiers).getByTestId('mu-judge-tier-0');
     expect(laya).toHaveTextContent('Tier 1: Local Laya');
@@ -285,6 +294,8 @@ describe('the first-run guide', () => {
 
     expect(await screen.findByText('landing page')).toBeInTheDocument();
     expect(bridge.save).toHaveBeenCalledTimes(1);
+    // The home page it lands on offers the model just connected, not 默认模型 until the app starts again.
+    await waitFor(() => expect(bridge.recheck).toHaveBeenCalledTimes(1));
     const saved = bridge.save.mock.calls[0][0] as SaveSettings;
     expect(saved.models?.providers).toMatchObject([
       {
@@ -301,6 +312,39 @@ describe('the first-run guide', () => {
       'TYPESAFE_API_KEY',
     ]);
     expect(localStorage.getItem(ONBOARDING_KEY)).toBeTruthy();
+  });
+
+  it('fills in the one model a connection test found, and leaves a model typed first alone', async () => {
+    bridge.testProvider.mockResolvedValue({
+      ok: true,
+      data: { ok: true, code: 'ok-models', status: 200, latencyMs: 7, detail: '', models: ['relay-large'] },
+    });
+    at('/welcome', <Welcome />);
+    fireEvent.click(await screen.findByTestId('mu-welcome-begin'));
+    fireEvent.click(await screen.findByTestId('mu-welcome-way-openai'));
+    fireEvent.change(screen.getByLabelText('Base URL'), { target: { value: 'https://relay.example.com/v1' } });
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk-relay' } });
+    fireEvent.click(screen.getByText('Test connection'));
+    await waitFor(() => expect(screen.getByLabelText('Model name')).toHaveValue('relay-large'));
+
+    fireEvent.change(screen.getByLabelText('Model name'), { target: { value: 'my-model' } });
+    fireEvent.click(screen.getByText('Test connection'));
+    await waitFor(() => expect(bridge.testProvider).toHaveBeenCalledTimes(2));
+    await screen.findByTestId('mu-test-result');
+    expect(screen.getByLabelText('Model name')).toHaveValue('my-model');
+  });
+
+  it('sets Laya up without its address or a Stop: those are for the settings', async () => {
+    at('/welcome', <Welcome />);
+    fireEvent.click(await screen.findByTestId('mu-welcome-begin'));
+    fireEvent.click(await screen.findByTestId('mu-welcome-skip'));
+    await screen.findByTestId('mu-welcome-step-judge');
+    // A new user's order starts with Laya: its tile is the chosen one, open.
+    const tile = screen.getByTestId('mu-judge-choice-local');
+    const panel = await within(tile).findByTestId('mu-laya');
+    expect(await within(panel).findByTestId('mu-laya-status')).toHaveTextContent(enMu.judges.laya.running);
+    expect(within(panel).queryByTestId('mu-laya-stop')).not.toBeInTheDocument();
+    expect(tile).not.toHaveTextContent('127.0.0.1');
   });
 
   it('picks the service Jev is reached through, and keeps its key under that service’s own name', async () => {
@@ -412,6 +456,7 @@ describe('the first-run guide', () => {
     fireEvent.click(await screen.findByText('Skip setup'));
     expect(await screen.findByText('landing page')).toBeInTheDocument();
     expect(bridge.save).not.toHaveBeenCalled();
+    expect(bridge.recheck).not.toHaveBeenCalled();
     expect(localStorage.getItem(ONBOARDING_KEY)).toBeTruthy();
   });
 
@@ -420,9 +465,10 @@ describe('the first-run guide', () => {
       useFirstRunWelcome();
       return <div>landing</div>;
     }
-    at('/home', <Landing />);
+    at('/guid', <Landing />);
     expect(await screen.findByText('the guide')).toBeInTheDocument();
     cleanup();
+    guideCode.preload.mockClear();
 
     bridge.settings.mockResolvedValue({
       ok: true,
@@ -430,10 +476,45 @@ describe('the first-run guide', () => {
         models: { ...newUser().models, defaults: { provider: 'relay', model: 'relay-large', thinkingLevel: '' } },
       }),
     });
-    at('/home', <Landing />);
+    at('/guid', <Landing />);
     await waitFor(() => expect(localStorage.getItem(ONBOARDING_KEY)).toBeTruthy());
     expect(screen.getByText('landing')).toBeInTheDocument();
     expect(screen.queryByText('the guide')).not.toBeInTheDocument();
+    expect(guideCode.preload).not.toHaveBeenCalled();
+  });
+
+  it('opens the guide only once its code is in, so no route loader shows before it', async () => {
+    const code = Promise.withResolvers<{ default: typeof Welcome }>();
+    guideCode.preload.mockReturnValue(code.promise);
+    function Landing() {
+      useFirstRunWelcome();
+      return <div>landing</div>;
+    }
+    at('/guid', <Landing />);
+    await waitFor(() => expect(guideCode.preload).toHaveBeenCalled());
+    expect(screen.getByText('landing')).toBeInTheDocument();
+    code.resolve({ default: Welcome });
+    expect(await screen.findByText('the guide')).toBeInTheDocument();
+    cleanup();
+
+    // Code that did not load is no reason to skip the guide: its route loads it again.
+    guideCode.preload.mockRejectedValue(new TypeError('Failed to fetch dynamically imported module'));
+    at('/guid', <Landing />);
+    expect(await screen.findByText('the guide')).toBeInTheDocument();
+  });
+
+  it('leaves a page other than home alone: a reload or a link opened it', async () => {
+    function Elsewhere() {
+      useFirstRunWelcome();
+      return <div>scheduled tasks</div>;
+    }
+    at('/scheduled', <Elsewhere />);
+    await waitFor(() => expect(guideCode.preload).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.getByText('scheduled tasks')).toBeInTheDocument();
+    expect(screen.queryByText('the guide')).not.toBeInTheDocument();
+    // Not seen: the guide still opens from home.
+    expect(localStorage.getItem(ONBOARDING_KEY)).toBeNull();
   });
 
   it('stores image input and the thinking level with the model, then the QQ gateway and startup', async () => {

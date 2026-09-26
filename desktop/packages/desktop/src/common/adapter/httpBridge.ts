@@ -383,13 +383,16 @@ export function httpDelete<Data, Params = undefined>(
 
 /**
  * Stub provider for features not yet implemented in the backend.
- * Returns a sensible default value and logs a warning.
+ * Returns a sensible default value and logs a warning, once: a hook that checks again at every window focus
+ * (googleAuth.status) put the same line in the console dozens of times.
  */
 export function stubProvider<Data, Params = undefined>(name: string, defaultValue: Data): ProviderLike<Data, Params> {
+  let warned = false;
   return {
     provider: () => {},
     invoke: (async (_params?: Params) => {
-      console.warn(`[httpBridge] stub: ${name} not yet implemented in backend`);
+      if (!warned) console.warn(`[httpBridge] stub: ${name} not yet implemented in backend`);
+      warned = true;
       return defaultValue;
     }) as ProviderLike<Data, Params>['invoke'],
   };

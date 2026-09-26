@@ -67,6 +67,7 @@
   "noOptionsAvailable": "گزینه‌ای در دسترس نیست",
   "processing": "در حال پردازش...",
   "responseSentSuccessfully": "پاسخ با موفقیت ارسال شد",
+  "permissionAnswered": "پاسخ داده شد: {{option}}",
   "permissionResponseFailed": "ارسال پاسخ ممکن نشد. دوباره تلاش کنید.",
   "permissionNoLongerPending": "این درخواست دیگر منتظر پاسخ نیست.",
   "confirmation": {

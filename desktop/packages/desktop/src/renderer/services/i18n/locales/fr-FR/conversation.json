@@ -91,7 +91,8 @@
     "batchArchiveSuccess_other": "{{count}} sujets archivés",
     "archiveProjectConfirm_one": "Archiver le projet « {{name}} » ? {{count}} conversation de ce projet sera aussi archivée. Vous pourrez la restaurer ou la supprimer depuis « Archives » dans les paramètres.",
     "archiveProjectConfirm_other": "Archiver le projet « {{name}} » ? Ses {{count}} conversations seront aussi archivées. Vous pourrez les restaurer ou les supprimer depuis « Archives » dans les paramètres.",
-    "projectActions": "Actions du projet"
+    "projectActions": "Actions du projet",
+    "conversationActions": "Actions du chat"
   },
   "historySearch": {
     "tooltip": "Rechercher des messages",
@@ -457,7 +458,7 @@
   "chat": {
     "noModelSelected": "Aucun modèle sélectionné pour la session actuelle, impossible d'envoyer le message",
     "sendMessageTo": "Envoyer un message à {{model}}",
-    "processing": "Traitement...",
+    "processing": "Traitement…",
     "quotaExceededTitle": "Quota du modèle atteint",
     "quotaExceededBody": "Le quota du modèle actuel est épuisé. Passer à {{model}} pour continuer ?",
     "quotaExceededNoFallback": "Quota du modèle atteint. Veuillez passer à un autre modèle disponible.",
@@ -520,7 +521,6 @@
       "manual": "Envoi manuel"
     },
     "addToQueue": "Ajouter à la boîte de brouillons",
-    "addToQueueShortcut": "⌘ + Enter / Ctrl + Enter",
     "midturnBlocked": "L'interjection n'est pas prise en charge pendant que cet agent répond. Utilisez plutôt Ajouter à la boîte de brouillons.",
     "enterShortcut": "Enter",
     "actionMode": "Choisir l’action d’envoi",
@@ -591,7 +591,8 @@
   "sendbox": {
     "hint": "Tapez / pour les commandes, @ pour référencer des fichiers, ↑/↓ pour l'historique des messages",
     "mediaPathFallback": "Cet agent ne prend pas en charge nativement ce type de fichier ; il sera envoyé sous forme de chemin de fichier.",
-    "hintWithSessions": "/ pour les commandes, @ pour les fichiers, @@ pour les conversations, ↑/↓ pour l’historique"
+    "hintWithSessions": "/ pour les commandes, @ pour les fichiers, @@ pour les conversations, ↑/↓ pour l’historique",
+    "stop": "Arrêter la réponse"
   },
   "composer": {
     "goalLine": {

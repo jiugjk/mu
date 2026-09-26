@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { flatLesson, LESSON_CHARS, type StoredLesson } from '@/common/kyrn/lessons';
 import { formatDate, formatNumber } from '@/renderer/services/i18n/format';
 import { ErrorNotice } from '../text';
+import { codeSpans, repeatsLesson } from './model';
 import { messageOf, type LessonEdit } from './useLessons';
 import styles from './Lessons.module.css';
 
@@ -11,10 +12,27 @@ const KEY = 'common.kyrn.lessonsView';
 
 type Mode = 'view' | 'edit' | 'retire';
 
+/** Words of the lessons with their `code` spans shown as the chat shows inline code, never with the backticks. */
+export function LessonText({ text }: { text: string }) {
+  return (
+    <>
+      {codeSpans(text).map((part, index) =>
+        part.code ? (
+          <code key={index} className={styles.code}>
+            {part.text}
+          </code>
+        ) : (
+          <React.Fragment key={index}>{part.text}</React.Fragment>
+        )
+      )}
+    </>
+  );
+}
+
 /**
- * One lesson: its kind, what to do, how often it was brought into a turn and followed, and when it applies. It opens
- * to where it came from and, while it is in use, to rewording or retiring it: the new words or the retirement are one
- * more line in the file. Retiring asks once, in the row.
+ * One lesson: its kind, what to do, how often it was brought into a turn and followed, and when it applies, unless
+ * that only says the lesson again. It opens to where it came from and, while it is in use, to rewording or retiring
+ * it: the new words or the retirement are one more line in the file. Retiring asks once, in the row.
  */
 export default function LessonRow({
   lesson,
@@ -69,12 +87,16 @@ export default function LessonRow({
           <span className={styles.kind}>{t(`${KEY}.kinds.${lesson.kind}`)}</span>
           {lesson.scope.cwd === undefined ? <span className={styles.mark}>{t(`${KEY}.everywhere`)}</span> : null}
           {active ? null : <span className={styles.mark}>{t(`${KEY}.status.${lesson.status}`)}</span>}
-          <span dir='auto'>{lesson.lesson}</span>
+          <span dir='auto' data-testid='mu-lesson-text'>
+            <LessonText text={lesson.lesson} />
+          </span>
         </span>
         <span className={styles.rowMeta}>
-          <span className={styles.trigger} dir='auto'>
-            {lesson.trigger}
-          </span>
+          {repeatsLesson(lesson.trigger, lesson.lesson) ? null : (
+            <span className={styles.trigger} dir='auto' data-testid='mu-lesson-trigger'>
+              <LessonText text={lesson.trigger} />
+            </span>
+          )}
           <span className={styles.uses} data-testid='mu-lesson-uses'>
             {t(`${KEY}.uses`, {
               recalled: formatNumber(lesson.uses.recalled, language),

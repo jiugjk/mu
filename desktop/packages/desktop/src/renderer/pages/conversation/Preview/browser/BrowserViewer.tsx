@@ -98,12 +98,14 @@ const BrowserViewer: React.FC<BrowserViewerProps> = ({
     if (url === BROWSER_BLANK_URL) onTitleChange(tabId, browserTabLabelFromUrl(url));
   }, [url, tabId, onTitleChange]);
 
+  // The page's canvas is white, as in any browser: the webview is transparent where a page paints no background of its
+  // own, and on the app's dark background such a page's default black text could not be read.
   return (
     <WebviewHost
       url={url || BROWSER_BLANK_URL}
       partition={partition}
       showNavBar
-      className='bg-bg-1'
+      className='bg-white'
       resolveUrlInput={resolveAddressBarInput}
       onUrlChange={handleUrlChange}
       onTitleChange={handleTitleChange}

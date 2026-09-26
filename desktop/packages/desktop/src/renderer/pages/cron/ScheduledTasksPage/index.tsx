@@ -8,7 +8,7 @@ import classNames from 'classnames';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Empty, Message, Spin, Switch, Tooltip } from '@arco-design/web-react';
+import { Message, Spin, Switch, Tooltip } from '@arco-design/web-react';
 import { useLayoutContext } from '@renderer/hooks/context/LayoutContext';
 import { useAllCronJobs } from '@renderer/pages/cron/useCronJobs';
 import { formatSchedule, formatNextRun } from '@renderer/pages/cron/cronUtils';
@@ -185,24 +185,32 @@ const ScheduledTasksPage: React.FC = () => {
               <Tooltip content={t('cron.page.keepAwakeTooltip')}>
                 <div className='flex items-center gap-8px text-t-secondary text-12px leading-18px sm:text-13px'>
                   <span>{t('cron.page.keepAwake')}</span>
-                  <Switch size='small' checked={keepAwake} onChange={handleKeepAwakeChange} />
+                  <Switch
+                    size='small'
+                    aria-label={t('cron.page.keepAwake')}
+                    checked={keepAwake}
+                    onChange={handleKeepAwakeChange}
+                  />
                 </div>
               </Tooltip>
             </div>
           </div>
 
+          {/* No list yet, or none: quiet lines in the page's own text, no picture. */}
           {loading ? (
-            <div className='flex min-h-220px items-center justify-center rounded-8px border border-solid border-[var(--border-base)] bg-base'>
-              <Spin />
+            <div className='flex items-center gap-8px py-8px text-13px leading-20px text-t-secondary'>
+              <Spin size={16} />
+              {t('common.loading')}
             </div>
           ) : jobs.length === 0 ? (
-            <div className='flex min-h-220px items-center justify-center rounded-8px border border-solid border-[var(--border-base)] bg-base'>
-              <Empty description={t('cron.noTasks')} />
+            <div className='flex flex-col gap-2px py-8px' data-testid='scheduled-tasks-empty'>
+              <p className='m-0 text-14px leading-22px text-t-primary'>{t('cron.noTasks')}</p>
+              <p className='m-0 text-13px leading-20px text-t-secondary'>
+                {t('cron.page.emptyHint', { button: t('cron.page.newTask') })}
+              </p>
             </div>
           ) : filteredJobs.length === 0 ? (
-            <div className='flex min-h-220px items-center justify-center rounded-8px border border-solid border-[var(--border-base)] bg-base'>
-              <Empty description={t('cron.page.noSearchResults')} />
-            </div>
+            <p className='m-0 py-8px text-13px leading-20px text-t-secondary'>{t('cron.page.noSearchResults')}</p>
           ) : (
             <div className='w-full'>
               {filteredJobs.map((job, index) => {
@@ -282,7 +290,12 @@ const ScheduledTasksPage: React.FC = () => {
                         </Tooltip>
                       )}
                       {!isManualOnly && (
-                        <Switch size='small' checked={job.enabled} onChange={() => handleToggleEnabled(job)} />
+                        <Switch
+                          size='small'
+                          aria-label={job.name}
+                          checked={job.enabled}
+                          onChange={() => handleToggleEnabled(job)}
+                        />
                       )}
                     </div>
                   </div>

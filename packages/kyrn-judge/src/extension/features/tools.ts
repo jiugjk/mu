@@ -1,4 +1,11 @@
 import { Type } from "typebox";
+import {
+	type GitUnusable,
+	type GitUnusableReason,
+	heldByLicense,
+	stubProblem,
+	UNUSABLE_TEXT,
+} from "../../checkpoint/git.ts";
 import { fileLocate, type LocateOutcome } from "../../decisions/file-locate.ts";
 import type { KyrnRuntime } from "../runtime.ts";
 
@@ -27,6 +34,20 @@ export function registerTools(runtime: KyrnRuntime): void {
 	const options = runtime.options("locate", { enabled: true, candidates: 40, results: 12 });
 	if (!options.enabled) return;
 	const { pi } = runtime;
+	let stub: Promise<GitUnusable | undefined> | undefined;
+	/** git cannot run on this Mac: the model hears why, and nothing is ranked. */
+	const cannot = (reason: GitUnusableReason) => {
+		const none: LocateOutcome["ranked"] = [];
+		return {
+			content: [
+				{
+					type: "text" as const,
+					text: `${UNUSABLE_TEXT[reason]}. locate lists files with git; search another way.`,
+				},
+			],
+			details: { ranked: none, judged: false },
+		};
+	};
 
 	pi.registerTool({
 		name: "locate",
@@ -39,10 +60,15 @@ export function registerTools(runtime: KyrnRuntime): void {
 		}),
 		execute: async (_toolCallId, params, signal) => {
 			const cwd = runtime.ctx?.cwd ?? process.cwd();
+			// A Mac's git stub without the developer tools is never started: each start opens their install dialog.
+			stub ??= stubProblem("git", process.env.PATH);
+			const problem = await stub;
+			if (problem) return cannot(problem.reason);
 			const listing = await pi.exec("git", ["ls-files", ...(params.directory ? [params.directory] : [])], {
 				cwd,
 				signal,
 			});
+			if (heldByLicense(listing.code, () => `${listing.stderr}\n${listing.stdout}`)) return cannot("xcode_license");
 			const paths = listing.stdout.split("\n").filter(Boolean);
 			if (paths.length === 0) {
 				const none: LocateOutcome["ranked"] = [];

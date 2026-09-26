@@ -4,7 +4,12 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PiRpc, stoppedReport, type JsonRecord } from '../../../packages/desktop/src/process/agent/kyrn/piRpc.ts';
+import {
+  PiRpc,
+  stoppedReport,
+  type JsonRecord,
+  type RpcDeadlines,
+} from '../../../packages/desktop/src/process/agent/kyrn/piRpc.ts';
 
 const ROOT = join(__dirname, '../../..');
 const PI_RPC = join(ROOT, 'packages/desktop/src/process/agent/kyrn/piRpc.ts');
@@ -24,13 +29,13 @@ afterEach(() => {
 });
 
 /** Starts `script` as mu and collects what it sends. */
-function start(script: string) {
+function start(script: string, deadlines?: RpcDeadlines) {
   const dir = mkdtempSync(join(tmpdir(), 'kyrn-rpc-'));
   dirs.push(dir);
   const launcher = join(dir, 'mu.mjs');
   writeFileSync(launcher, script);
   const events: JsonRecord[] = [];
-  const port = new PiRpc(launcher, dir, undefined, (event) => events.push(event));
+  const port = new PiRpc(launcher, dir, undefined, (event) => events.push(event), undefined, deadlines);
   ports.push(port);
   return { port, events };
 }
@@ -206,6 +211,63 @@ new PiRpc(${JSON.stringify(join(dir, 'mu.mjs'))}, ${JSON.stringify(dir)}, undefi
     const code = await new Promise<number | null>((resolve) => adapter.on('exit', resolve));
     expect({ code, out: out.trim() }).toEqual({ code: 0, out: 'alive' });
   }, 20000);
+});
+
+describe('PiRpc deadlines', () => {
+  it('counts a control command’s deadline from the moment mu is up, not from the write', async () => {
+    // A slow first start: the command is written at once, mu reads it 1.5 s later. Counted from the write, the 0.5 s
+    // deadline would have failed it; the conversation's first message used to fail this way.
+    const { port } = start(
+      `
+import { createInterface } from 'node:readline';
+setTimeout(() => {
+  process.stdout.write(JSON.stringify({ type: 'extension_ui_request', method: 'setStatus' }) + '\\n');
+  createInterface({ input: process.stdin }).on('line', (line) => {
+    const command = JSON.parse(line);
+    process.stdout.write(JSON.stringify({ type: 'response', id: command.id, success: true, data: { up: true } }) + '\\n');
+  });
+}, 1500);
+`,
+      { command: 500, start: 20_000 }
+    );
+    await expect(port.send({ type: 'get_state' })).resolves.toEqual({ up: true });
+  });
+
+  it('fails a control command mu does not answer once it is up', async () => {
+    const { port } = start(
+      `
+process.stdout.write(JSON.stringify({ type: 'extension_ui_request', method: 'setStatus' }) + '\\n');
+setTimeout(() => {}, 20_000);
+`,
+      { command: 300, start: 20_000 }
+    );
+    await expect(port.send({ type: 'get_state' })).rejects.toThrow('mu control command timed out');
+  });
+
+  it('fails a control command when mu does not come up within the start deadline', async () => {
+    const { port } = start('setTimeout(() => {}, 20_000);\n', { command: 100, start: 800 });
+    const sent = Date.now();
+    await expect(port.send({ type: 'get_state' })).rejects.toThrow('mu control command timed out');
+    // The start deadline, not the command's: mu never said a word.
+    expect(Date.now() - sent).toBeGreaterThanOrEqual(750);
+  });
+
+  it('gives a prompt no deadline', async () => {
+    const { port } = start(
+      `
+import { createInterface } from 'node:readline';
+process.stdout.write(JSON.stringify({ type: 'extension_ui_request', method: 'setStatus' }) + '\\n');
+createInterface({ input: process.stdin }).on('line', (line) => {
+  const command = JSON.parse(line);
+  setTimeout(() => {
+    process.stdout.write(JSON.stringify({ type: 'response', id: command.id, success: true, data: {} }) + '\\n');
+  }, 600);
+});
+`,
+      { command: 100, start: 100 }
+    );
+    await expect(port.send({ type: 'prompt', message: 'hi' })).resolves.toEqual({});
+  });
 });
 
 describe('stoppedReport', () => {

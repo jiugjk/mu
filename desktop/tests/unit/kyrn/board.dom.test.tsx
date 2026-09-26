@@ -11,9 +11,12 @@ import Board from '@/renderer/pages/conversation/KyrnPanel/Board';
 import {
   ACCOUNT_LIMIT,
   boardAccount,
+  boardState,
+  boardStateKey,
   boardView,
   toBoardNote,
   toBoardUpdate,
+  type BoardUpdate,
 } from '@/renderer/pages/conversation/KyrnPanel/Board/board';
 import { emitter, type SendBoxCommandState } from '@/renderer/utils/emitter';
 
@@ -103,6 +106,43 @@ describe('reading the board from the session’s events', () => {
   });
 });
 
+describe('the one state the board’s header shows', () => {
+  const state = (payload: Record<string, unknown>) => boardState(toBoardUpdate(update(payload)) as BoardUpdate);
+
+  it('shows a working run’s stage, and nothing when it names none', () => {
+    expect(state({ phase: 'changing' })).toEqual({ ended: false, phase: 'changing' });
+    expect(state({ phase: 'wrapping_up', done: 3, total: 3 })).toEqual({ ended: false, phase: 'wrapping_up' });
+    expect(state({ phase: undefined })).toBeUndefined();
+  });
+
+  it('reads a run that stopped while wrapping up, or with every check done, as done', () => {
+    // The QA case: "wrapping up" and "stopped" side by side over a run whose three checks were all done.
+    expect(state({ ended: true, phase: 'wrapping_up', done: 3, total: 3 })).toEqual({ ended: true, outcome: 'done' });
+    expect(state({ ended: true, phase: 'wrapping_up', done: 0, total: 0 })).toEqual({ ended: true, outcome: 'done' });
+    expect(state({ ended: true, phase: 'checking', done: 5, total: 5 })).toEqual({ ended: true, outcome: 'done' });
+    // Done wins over a question asked at the end.
+    expect(state({ ended: true, phase: 'waiting', needsUser: true, done: 2, total: 2 })).toEqual({
+      ended: true,
+      outcome: 'done',
+    });
+  });
+
+  it('reads a run that stopped to ask the person as waiting, and any other as stopped', () => {
+    expect(state({ ended: true, phase: 'waiting', done: 1, total: 3 })).toEqual({ ended: true, outcome: 'waiting' });
+    expect(state({ ended: true, phase: 'fixing', needsUser: true })).toEqual({ ended: true, outcome: 'waiting' });
+    expect(state({ ended: true, phase: 'checking', done: 3, total: 5 })).toEqual({ ended: true, outcome: 'stopped' });
+    expect(state({ ended: true, phase: 'stuck', done: 0, total: 0 })).toEqual({ ended: true, outcome: 'stopped' });
+    expect(state({ ended: true, phase: undefined, done: 0, total: 0 })).toEqual({ ended: true, outcome: 'stopped' });
+  });
+
+  it('words each state with the board’s own texts', () => {
+    expect(boardStateKey({ ended: false, phase: 'stuck' })).toBe('phases.stuck');
+    expect(boardStateKey({ ended: true, outcome: 'done' })).toBe('done');
+    expect(boardStateKey({ ended: true, outcome: 'waiting' })).toBe('phases.waiting');
+    expect(boardStateKey({ ended: true, outcome: 'stopped' })).toBe('ended');
+  });
+});
+
 describe('the board panel', () => {
   it('when off, says what it does and what it costs, and turns on with the harness’s own command', () => {
     const sent = vi.fn();
@@ -157,7 +197,7 @@ describe('the board panel', () => {
       switched(true),
       update({ needsUser: true, confirm: ['Keep the old login URL working?', 'Drop Internet Explorer support?'] }),
     ]);
-    expect(screen.getByTestId('mu-board-phase')).toHaveTextContent('Checking the work');
+    expect(screen.getByTestId('mu-board-state')).toHaveTextContent('Checking the work');
     expect(screen.getByTestId('mu-board-now')).toHaveTextContent('Writing the tests for the login page');
     expect(screen.getByTestId('mu-board-progress')).toHaveTextContent('half written');
     expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '3');
@@ -186,13 +226,55 @@ describe('the board panel', () => {
     }
   });
 
-  it('marks a board written by rules, one written as the agent stopped, and a stuck agent', () => {
-    showBoard([switched(true), update({ by: 'rules', ended: true, phase: 'stuck', total: 0, done: 0 })]);
+  it('marks a board written by rules, and a stuck agent with a hollow dot', () => {
+    showBoard([switched(true), update({ by: 'rules', phase: 'stuck', total: 0, done: 0 })]);
     expect(screen.getByText('Brief')).toBeInTheDocument();
-    expect(screen.getByText('Stopped')).toBeInTheDocument();
-    expect(screen.getByTestId('mu-board-phase')).toHaveTextContent('Seems stuck');
+    const state = screen.getByTestId('mu-board-state');
+    expect(state).toHaveTextContent('Seems stuck');
+    expect(state).toHaveAttribute('data-state', 'working');
+    expect(state.querySelector('[data-mark]')).toHaveAttribute('data-mark', 'hollow');
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     expect(screen.queryByTestId('mu-board-ask')).not.toBeInTheDocument();
+  });
+
+  it('shows a finished run as done, with no stage and no second state beside it', () => {
+    showBoard([
+      switched(true),
+      update({ ended: true, phase: 'wrapping_up', done: 3, total: 3, now: 'The task is over; the summary is out.' }),
+    ]);
+    const state = screen.getByTestId('mu-board-state');
+    expect(state).toHaveTextContent(/^Done$/);
+    expect(state).toHaveAttribute('data-state', 'done');
+    expect(state.querySelector('[data-mark]')).toHaveAttribute('data-mark', 'tick');
+    expect(screen.queryByText('Wrapping up')).not.toBeInTheDocument();
+    expect(screen.queryByText('Stopped')).not.toBeInTheDocument();
+    expect(screen.getAllByTestId('mu-board-state')).toHaveLength(1);
+  });
+
+  it('shows a run that stopped to ask as waiting, and one that stopped part way as stopped', () => {
+    const { unmount } = showBoard([switched(true), update({ ended: true, phase: 'checking', needsUser: true })]);
+    expect(screen.getByTestId('mu-board-state')).toHaveTextContent(/^Waiting for you$/);
+    expect(screen.queryByText('Checking the work')).not.toBeInTheDocument();
+    unmount();
+
+    showBoard([switched(true), update({ ended: true, phase: 'stuck', done: 2, total: 5 })]);
+    const state = screen.getByTestId('mu-board-state');
+    expect(state).toHaveTextContent(/^Stopped$/);
+    expect(state.querySelector('[data-mark]')).toHaveAttribute('data-mark', 'dash');
+    expect(screen.queryByText('Seems stuck')).not.toBeInTheDocument();
+  });
+
+  it('reads out a run that finished as done, not as its last stage', () => {
+    const events = [switched(true)];
+    const { rerender } = showBoard(events);
+    rerender(
+      <Board
+        events={[...events, update({ ended: true, phase: 'wrapping_up', done: 5, total: 5, progress: 'All done.' })]}
+        conversationId='conv'
+      />
+    );
+    const parts = [...screen.getByTestId('mu-board-announce').querySelectorAll('p')].map((part) => part.textContent);
+    expect(parts).toEqual(['Done', 'Writing the tests for the login page', 'All done.']);
   });
 
   it('reads out and fades in a board that comes while it is open, through a live region that stays in place', () => {

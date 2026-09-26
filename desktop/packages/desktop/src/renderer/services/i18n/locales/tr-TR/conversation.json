@@ -91,7 +91,8 @@
     "batchArchiveSuccess_other": "{{count}} konuşma arşivlendi",
     "archiveProjectConfirm_one": "“{{name}}” projesi arşivlensin mi? İçindeki {{count}} konuşma da arşivlenecek. Ayarlar'daki Arşiv bölümünden geri yükleyebilir veya silebilirsiniz.",
     "archiveProjectConfirm_other": "“{{name}}” projesi arşivlensin mi? İçindeki {{count}} konuşma da arşivlenecek. Ayarlar'daki Arşiv bölümünden geri yükleyebilir veya silebilirsiniz.",
-    "projectActions": "Proje işlemleri"
+    "projectActions": "Proje işlemleri",
+    "conversationActions": "Konuşma işlemleri"
   },
   "historySearch": {
     "tooltip": "Mesajları ara",
@@ -441,7 +442,7 @@
   "chat": {
     "noModelSelected": "Mevcut oturum için model seçilmedi, mesaj gönderilemiyor",
     "sendMessageTo": "{{model}} modeline mesaj gönder",
-    "processing": "İşleniyor...",
+    "processing": "İşleniyor…",
     "quotaExceededTitle": "Model kotasına ulaşıldı",
     "quotaExceededBody": "Mevcut model kotası tükendi. Devam etmek için {{model}} modeline geçilsin mi?",
     "quotaExceededNoFallback": "Model kotasına ulaşıldı. Lütfen başka bir uygun modele geçin.",
@@ -504,7 +505,6 @@
       "manual": "Elle gönder"
     },
     "addToQueue": "Taslak kutusuna ekle",
-    "addToQueueShortcut": "⌘ + Enter / Ctrl + Enter",
     "midturnBlocked": "Bu aracı yanıt verirken araya girmek desteklenmiyor. Bunun yerine Taslak kutusuna ekle'yi kullanın.",
     "enterShortcut": "Enter",
     "actionMode": "Gönderim işlemini seçin",
@@ -593,7 +593,8 @@
   "sendbox": {
     "hint": "Komutlar için /, dosya için @ yazın, ↑/↓ ile mesaj geçmişi",
     "mediaPathFallback": "Bu ajan bu dosya türünü yerel olarak desteklemiyor; dosya yolu olarak gönderilecek.",
-    "hintWithSessions": "Komutlar için /, dosyalar için @, sohbetler için @@, geçmiş için ↑/↓"
+    "hintWithSessions": "Komutlar için /, dosyalar için @, sohbetler için @@, geçmiş için ↑/↓",
+    "stop": "Yanıtı durdur"
   },
   "composer": {
     "goalLine": {

@@ -5,7 +5,7 @@ import type { AuthInteraction, ModelsStore, Provider } from "@earendil-works/pi-
 import * as pi from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it } from "vitest";
 import { AUTH_COMMANDS as LAUNCHER_COMMANDS } from "../../../kyrn/bin/mu.mjs";
-import { exitWhenUnlocked } from "../src/auth/exit.ts";
+import { exitWhenUnlocked, holdLocksUntilExit } from "../src/auth/exit.ts";
 import {
 	AUTH_COMMANDS,
 	type AuthIo,
@@ -390,5 +390,55 @@ describe("how mu auth ends", () => {
 		expect(exits).toEqual([0, 2]);
 		expect(existsSync(join(dir, "auth.json.lock"))).toBe(false);
 		expect(existsSync(join(dir, "missing"))).toBe(false);
+	});
+});
+
+describe("how a session of mu ends", () => {
+	const dirs: string[] = [];
+	const releases: (() => void)[] = [];
+	afterEach(() => {
+		while (releases.length > 0) releases.pop()?.();
+		while (dirs.length > 0) rmSync(dirs.pop() as string, { recursive: true, force: true });
+	});
+	const stores = () => {
+		const dir = mkdtempSync(join(tmpdir(), "mu-quit-"));
+		dirs.push(dir);
+		return { dir, files: [join(dir, "auth.json"), join(dir, "models-store.json")] };
+	};
+
+	it("takes pi's lock folders once none is held, and keeps them until the process exits", async () => {
+		const { dir, files } = stores();
+		// This process's own catalogue refresh is inside the model store, and leaves it 50 ms later.
+		const busy = join(dir, "models-store.json.lock");
+		mkdirSync(busy);
+		setTimeout(() => rmdirSync(busy), 50);
+		const release = await holdLocksUntilExit(files, { pollMs: 5 });
+		expect(release).toBeTypeOf("function");
+		if (release) releases.push(release);
+		// Held now: whatever of this process wants a lock waits, and cannot be cut off by the exit halfway.
+		expect(existsSync(join(dir, "auth.json.lock"))).toBe(true);
+		expect(existsSync(busy)).toBe(true);
+		release?.();
+		expect(existsSync(join(dir, "auth.json.lock"))).toBe(false);
+		expect(existsSync(busy)).toBe(false);
+	});
+
+	it("takes nothing when another process keeps a lock past the limit, and leaves that lock alone", async () => {
+		const { dir, files } = stores();
+		const held = join(dir, "auth.json.lock");
+		mkdirSync(held);
+		expect(await holdLocksUntilExit(files, { limitMs: 60, pollMs: 5 })).toBeUndefined();
+		expect(existsSync(held)).toBe(true);
+		expect(existsSync(join(dir, "models-store.json.lock"))).toBe(false);
+	});
+
+	it("gives the folders back when the process lives on after its session ended", async () => {
+		const { dir, files } = stores();
+		const release = await holdLocksUntilExit(files, { holdMs: 30 });
+		if (release) releases.push(release);
+		expect(existsSync(join(dir, "auth.json.lock"))).toBe(true);
+		await new Promise((resolve) => setTimeout(resolve, 80));
+		expect(existsSync(join(dir, "auth.json.lock"))).toBe(false);
+		expect(existsSync(join(dir, "models-store.json.lock"))).toBe(false);
 	});
 });

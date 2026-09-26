@@ -1,5 +1,5 @@
 import { spawn as nodeSpawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import type { Readable } from 'node:stream';
@@ -33,6 +33,10 @@ export type LocalJudgeDeps = {
    * npm replaces on every update (the script decides the same way).
    */
   stateDir?: string;
+  /** A file's text, or undefined when it cannot be read. */
+  readFile: (path: string) => string | undefined;
+  /** Whether a process with this id runs and may be signalled, as the script's `kill -0` asks. */
+  alive: (pid: number) => boolean;
 };
 
 const ACTIONS: ReadonlySet<string> = new Set<LocalJudgeAction>(['setup', 'start', 'stop']);
@@ -61,6 +65,21 @@ const defaults = (): LocalJudgeDeps => ({
   arch: process.arch,
   env: process.env,
   home: homedir(),
+  readFile: (path) => {
+    try {
+      return readFileSync(path, 'utf8');
+    } catch {
+      return undefined;
+    }
+  },
+  alive: (pid) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  },
 });
 
 /**
@@ -112,6 +131,18 @@ export class LocalJudge {
     return exists(join(home, '.venv', 'bin', 'python')) && exists(join(models, 'coreml_config.json'));
   }
 
+  /**
+   * Whether the judge was started by mu: the script keeps its pid in mu's home (`~/.mu/local-judge`, or `~/.kyrn` on
+   * a machine whose home has not been moved), and only a live process named there can be stopped from here.
+   */
+  private started(): boolean {
+    const { env, home, exists, readFile, alive } = this.deps;
+    const muDir = exists(join(home, '.mu')) || !exists(join(home, '.kyrn')) ? join(home, '.mu') : join(home, '.kyrn');
+    const runDir = env.MU_LOCAL_JUDGE_RUN_DIR || env.KYRN_LOCAL_JUDGE_RUN_DIR || join(muDir, 'local-judge');
+    const pid = Number.parseInt(readFile(join(runDir, 'judge.pid'))?.trim() ?? '', 10);
+    return pid > 0 && alive(pid);
+  }
+
   async state(): Promise<LocalJudgeState> {
     const support = this.support();
     const installed = this.installed();
@@ -136,6 +167,12 @@ export class LocalJudge {
     if (action === 'setup') {
       if (!consent) throw new KyrnError('invalid', 'Installing the local judge downloads files: it needs consent');
       if (this.support() !== 'ok') throw new KyrnError('invalid', 'This machine cannot install the local judge');
+    }
+    // A judge that answers but was not started by mu (another home, another user's session) cannot be stopped from
+    // here: the script would say it is not running, and the panel would still show it running.
+    if (action === 'stop' && !this.started() && (await this.deps.health(this.url))) {
+      this.task = { id: ++this.next, action, phase: 'failed', output: [], problem: 'foreign' };
+      return this.state();
     }
     const task: LocalJudgeTask = { id: ++this.next, action, phase: 'running', output: [] };
     this.task = task;

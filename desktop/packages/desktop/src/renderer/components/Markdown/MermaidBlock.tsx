@@ -425,7 +425,8 @@ function MermaidBlock({ code, style, showOpenInPanelButton = true, enablePanZoom
         ) : (
           <SyntaxHighlighter
             children={code}
-            language='mermaid'
+            // highlight.js has no Mermaid grammar, and for a name it does not know it would try every grammar it has.
+            language='text'
             style={codeTheme}
             PreTag='div'
             customStyle={{

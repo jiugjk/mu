@@ -228,6 +228,30 @@ export function boardAccount(events: readonly Activity[]): BoardNote[] {
   return [...notes.values()].toSorted((a, b) => a.at - b.at || a.sequence - b.sequence).slice(-ACCOUNT_LIMIT);
 }
 
+/**
+ * The one state the board's header shows. While the agent works, its stage. Once it has stopped (`ended`), how the run
+ * ended: done when it was wrapping up or every acceptance item is done, waiting when it waits for the person, and
+ * stopped otherwise. A stage is never shown for a run that has stopped: "wrapping up" over a finished run misreads it.
+ */
+export type BoardState = { ended: false; phase: BoardPhase } | { ended: true; outcome: 'done' | 'waiting' | 'stopped' };
+// Read a state's kind with `state.ended === false`: the project type-checks without strictNullChecks, where
+// `!state.ended` does not narrow a state to the working one.
+
+export function boardState(update: BoardUpdate): BoardState | undefined {
+  if (!update.ended) return update.phase ? { ended: false, phase: update.phase } : undefined;
+  if (update.phase === 'wrapping_up' || (update.total > 0 && update.done === update.total)) {
+    return { ended: true, outcome: 'done' };
+  }
+  if (update.phase === 'waiting' || update.needsUser) return { ended: true, outcome: 'waiting' };
+  return { ended: true, outcome: 'stopped' };
+}
+
+/** The words of a state, as a key under `common.kyrn.boardView`: a run waiting for the person reads as that stage. */
+export function boardStateKey(state: BoardState): string {
+  if (state.ended === false) return `phases.${state.phase}`;
+  return state.outcome === 'done' ? 'done' : state.outcome === 'waiting' ? 'phases.waiting' : 'ended';
+}
+
 /** The part of the work done, from 0 to 1, when the task has acceptance items to count. */
 export const share = (update: BoardUpdate) => (update.total > 0 ? update.done / update.total : undefined);
 

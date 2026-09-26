@@ -14,8 +14,11 @@ import type { NormalizedToolCall, NormalizedToolStatus } from '@/common/chat/nor
  * its own line under the fold, so a failure is read without a click.
  */
 
-/** A tool call in the box: the verb it ran as (`read`, `bash`) and what it ran on (`src/a.ts`, `npm test`). */
-export type ToolLabel = { verb: string; target?: string };
+/**
+ * A tool call in the box: the verb it ran as (`read`, `bash`) and what it ran on (`src/a.ts`, `npm test`). `path`: the
+ * target names a file or folder, which a narrow row cuts in its middle, so the name itself stays in sight.
+ */
+export type ToolLabel = { verb: string; target?: string; path?: boolean };
 
 export type ToolActivityStatus = 'running' | 'error' | 'done';
 
@@ -33,31 +36,38 @@ export type ToolActivityError = { key: string; label: ToolLabel; line: string };
 /** A call still on its way: `pending` is a call the agent announced but has not started. */
 const isLive = (status: NormalizedToolStatus): boolean => status === 'running' || status === 'pending';
 
+/** The arguments that name a file or folder. */
+const PATH_KEYS: ReadonlySet<string> = new Set(['file_path', 'path']);
+
 /**
- * The one string worth showing next to a tool's name. A JSON input is mined for the argument that names the work
- * (a command, a path, a query); anything else falls back to its first line, then to the call's own description.
+ * The one string worth showing next to a tool's name, and whether it is a path. A JSON input is mined for the argument
+ * that names the work (a command, a path, a query); anything else falls back to its first line.
  */
-export const inputPreview = (input?: string): string | undefined => {
+const inputTarget = (input?: string): { text: string; path: boolean } | undefined => {
   if (!input) return undefined;
   try {
     const value: unknown = JSON.parse(input);
     if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
       const record = value as Record<string, unknown>;
       for (const key of ['command', 'file_path', 'path', 'query', 'pattern', 'url', 'prompt']) {
-        if (typeof record[key] === 'string' && record[key]) return record[key];
+        const text = record[key];
+        if (typeof text === 'string' && text) return { text, path: PATH_KEYS.has(key) };
       }
       return undefined;
     }
   } catch {
-    return input.split('\n', 1)[0] || undefined;
+    const text = input.split('\n', 1)[0];
+    return text ? { text, path: false } : undefined;
   }
   return undefined;
 };
 
-export const toolLabel = (item: NormalizedToolCall): ToolLabel => ({
-  verb: item.name,
-  target: inputPreview(item.input) || item.description || undefined,
-});
+/** What a call line shows: its verb and its target, else the call's own description. */
+export const toolLabel = (item: NormalizedToolCall): ToolLabel => {
+  const named = inputTarget(item.input);
+  if (!named) return { verb: item.name, target: item.description || undefined };
+  return named.path ? { verb: item.name, target: named.text, path: true } : { verb: item.name, target: named.text };
+};
 
 /** An error said in one line: the first line of the output that carries words, cut to something a row can hold. */
 const ERROR_LINE_MAX = 160;
@@ -72,10 +82,13 @@ export const toolErrorLine = (item: NormalizedToolCall): string | undefined => {
   return line.length > ERROR_LINE_MAX ? `${line.slice(0, ERROR_LINE_MAX - 1)}…` : line;
 };
 
+/** A call that failed. One the person said no to never ran, which is no failure. */
+const isFailure = (item: NormalizedToolCall): boolean => item.status === 'error' && !item.denied;
+
 /** What the folded line says: the count, whether anything is still running, and how many calls failed. */
 export function summarizeToolActivity(tools: NormalizedToolCall[]): ToolActivitySummary {
   const running = tools.find((item) => isLive(item.status));
-  const failed = tools.filter((item) => item.status === 'error').length;
+  const failed = tools.filter(isFailure).length;
   return {
     steps: tools.length,
     status: running ? 'running' : failed > 0 ? 'error' : 'done',
@@ -87,11 +100,15 @@ export function summarizeToolActivity(tools: NormalizedToolCall[]): ToolActivity
 /** The failures of a stretch, one line each. These stay visible while the group is closed. */
 export function toolActivityErrors(tools: NormalizedToolCall[]): ToolActivityError[] {
   return tools.flatMap((item) => {
-    if (item.status !== 'error') return [];
+    if (!isFailure(item)) return [];
     const line = toolErrorLine(item);
     return line ? [{ key: item.key, label: toolLabel(item), line }] : [];
   });
 }
+
+/** The calls of a stretch the person said no to. They stay visible while the group is closed, as quiet lines. */
+export const toolActivityDenied = (tools: NormalizedToolCall[]): { key: string; label: ToolLabel }[] =>
+  tools.filter((item) => item.denied).map((item) => ({ key: item.key, label: toolLabel(item) }));
 
 /**
  * Below this a stretch is just its line. A header over a single call is a box more than it is a summary (user,

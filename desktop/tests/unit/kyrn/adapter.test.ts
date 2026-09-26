@@ -12,7 +12,9 @@ import {
   MU_NOTICES,
   MU_TURN_ERRORS,
   harnessEnv,
+  isNoModel,
   readAppLanguage,
+  readDefaultModel,
 } from '../../../packages/desktop/src/process/agent/kyrn/KyrnAgent.ts';
 import type { JsonRecord } from '../../../packages/desktop/src/process/agent/kyrn/piRpc.ts';
 import { activityPage, modelLevels } from '../../../packages/desktop/src/process/agent/kyrn/telemetry';
@@ -53,6 +55,10 @@ type FixtureOptions = {
   commands?: JsonRecord[];
   /** What pi's `get_available_models` answers; unset: a fixture model and the judge's gateway model. */
   models?: JsonRecord[];
+  /** The model mu runs on until `set_model`; unset: the fixture model. pi says `unknown/unknown` while it has none. */
+  model?: JsonRecord;
+  /** pi refuses the next messages with these errors, one each, before it takes one. */
+  promptErrors?: string[];
 };
 
 /** Error text of a fixture mu that has stopped, as PiRpc's. */
@@ -81,6 +87,8 @@ function fixture(options: FixtureOptions = {}) {
   const served: (string | undefined)[] = [];
   let answer = options.permission;
   let mode = options.mode;
+  let model = options.model ?? { provider: 'fixture', id: 'model' };
+  const promptErrors = [...(options.promptErrors ?? [])];
   /** The mode each mu process was handed (MU_PERMISSIONS). */
   const launched: (string | undefined)[] = [];
   let announced = false;
@@ -126,7 +134,7 @@ function fixture(options: FixtureOptions = {}) {
               }
               return {
                 sessionFile: '/fixture/session.jsonl',
-                model: { provider: 'fixture', id: 'model' },
+                model,
                 thinkingLevel: thinking,
                 contextUsage: { tokens, contextWindow: 128000 },
                 compactionSettings: { enabled: true, maxContextTokens: 64000, reserveTokens: 16000 },
@@ -144,6 +152,9 @@ function fixture(options: FixtureOptions = {}) {
               return { levels: ['off', 'medium', 'high'] };
             case 'set_thinking_level':
               thinking = String(command.level);
+              return {};
+            case 'set_model':
+              model = { provider: String(command.provider), id: String(command.modelId) };
               return {};
             case 'get_commands':
               return { commands: options.commands ?? [] };
@@ -166,6 +177,7 @@ function fixture(options: FixtureOptions = {}) {
                 });
                 return {};
               }
+              if (promptErrors.length) throw new Error(promptErrors.shift());
               emit({ type: 'agent_start' });
               finish = () => emit({ type: 'agent_settled' });
               return {};
@@ -723,10 +735,24 @@ describe('KYRN ACP bridge', () => {
       await expect(f.agent.prompt(params)).rejects.toThrow('already running');
       await f.agent.cancel({ sessionId });
       expect(await running).toEqual({ stopReason: 'cancelled' });
-      expect(f.updates.at(-1)?.update).toMatchObject({
+      expect(f.updates.at(-2)?.update).toMatchObject({
         sessionUpdate: 'agent_message_chunk',
         content: { text: 'Live' },
       });
+      // A stopped reply would read as a finished one: the line after it says it was stopped.
+      expect(f.updates.at(-1)?.update).toMatchObject({
+        sessionUpdate: 'tool_call',
+        toolCallId: expect.stringMatching(/^mu:notice:/),
+        title: MU_NOTICES.stopped,
+        status: 'completed',
+        rawInput: { notice: 'stopped' },
+      });
+      // A reply that ends by itself says nothing of the kind.
+      const next = f.agent.prompt(params);
+      await tick();
+      f.finish();
+      expect(await next).toEqual({ stopReason: 'end_turn' });
+      expect(f.updates.filter((each) => JSON.stringify(each.update).includes('"stopped"'))).toHaveLength(1);
     } finally {
       f.cleanup();
     }
@@ -852,6 +878,47 @@ describe('KYRN ACP bridge', () => {
       await expect(next).resolves.toEqual({ stopReason: 'end_turn' });
       expect(f.files).toEqual([undefined, '/fixture/session.jsonl']);
       expect(f.launched).toEqual([undefined, 'ask']);
+    } finally {
+      f.cleanup();
+    }
+  });
+
+  it('ends a call mu started and never ended as failed when mu stops mid-call, so no row stays running', async () => {
+    const f = fixture();
+    try {
+      const { sessionId } = await f.agent.newSession({ cwd: tmpdir(), mcpServers: [] });
+      const running = f.agent.prompt({ sessionId, prompt: [{ type: 'text', text: 'Look into it' }] });
+      await vi.waitFor(() => expect(f.commands.filter((command) => command.type === 'prompt')).toHaveLength(1));
+      f.emit({ type: 'tool_execution_start', toolCallId: 'read-1', toolName: 'read', args: { path: 'a.ts' } });
+      f.emit({ type: 'tool_execution_end', toolCallId: 'read-1', result: { content: [] }, isError: false });
+      // A hive at work when mu's process closes: its call never ends.
+      f.emit({ type: 'tool_execution_start', toolCallId: 'hive-1', toolName: 'hive', args: { question: 'Why?' } });
+      f.stop();
+      await expect(running).rejects.toThrow(MU_TURN_ERRORS.processExited);
+      const ends = f.updates.map((each) => each.update).filter((update) => update.sessionUpdate === 'tool_call_update');
+      expect(ends).toEqual([
+        expect.objectContaining({ toolCallId: 'read-1', status: 'completed' }),
+        { sessionUpdate: 'tool_call_update', toolCallId: 'hive-1', status: 'failed' },
+      ]);
+    } finally {
+      f.cleanup();
+    }
+  });
+
+  it('adds nothing to a turn whose calls all ended', async () => {
+    const f = fixture();
+    try {
+      const { sessionId } = await f.agent.newSession({ cwd: tmpdir(), mcpServers: [] });
+      const running = f.agent.prompt({ sessionId, prompt: [{ type: 'text', text: 'Read it' }] });
+      await vi.waitFor(() => expect(f.commands.filter((command) => command.type === 'prompt')).toHaveLength(1));
+      f.emit({ type: 'tool_execution_start', toolCallId: 'read-1', toolName: 'read', args: { path: 'a.ts' } });
+      f.emit({ type: 'tool_execution_end', toolCallId: 'read-1', result: { content: [] }, isError: true });
+      f.finish();
+      await expect(running).resolves.toEqual({ stopReason: 'end_turn' });
+      const ends = f.updates.map((each) => each.update).filter((update) => update.sessionUpdate === 'tool_call_update');
+      expect(ends).toEqual([
+        expect.objectContaining({ toolCallId: 'read-1', status: 'failed', rawOutput: { content: [] } }),
+      ]);
     } finally {
       f.cleanup();
     }
@@ -989,6 +1056,344 @@ describe('KYRN ACP bridge', () => {
       });
       f.finish();
       await expect(running).rejects.toThrow(`${MU_TURN_ERRORS.modelFailed}: 429 rate limited`);
+    } finally {
+      f.cleanup();
+    }
+  });
+});
+
+/** pi's words when a prompt has no model with a key, help for a terminal user included. */
+const NO_KEY =
+  'No API key found for anthropic.\n\nUse /login to log into a provider via OAuth or API key. See:\n  /opt/mu/docs/providers.md';
+
+describe('a conversation without a model', () => {
+  it('reads pi’s placeholder, a missing model and a named one', () => {
+    expect(isNoModel({ provider: 'unknown', id: 'unknown' })).toBe(true);
+    expect(isNoModel(undefined)).toBe(true);
+    expect(isNoModel({ provider: 'anthropic' })).toBe(true);
+    expect(isNoModel({ provider: 'fixture', id: 'model' })).toBe(false);
+  });
+
+  it('reads the model new sessions start on from the agent folder’s settings, and nothing from a missing file', () => {
+    vi.stubEnv('MU_AGENT_DIR', '');
+    vi.stubEnv('KYRN_AGENT_DIR', '');
+    const home = mkdtempSync(join(tmpdir(), 'kyrn-home-'));
+    try {
+      expect(readDefaultModel(home)).toBeUndefined();
+      mkdirSync(join(home, '.mu', 'agent'), { recursive: true });
+      writeFileSync(join(home, '.mu', 'agent', 'settings.json'), JSON.stringify({ defaultProvider: 'fixture' }));
+      expect(readDefaultModel(home)).toBeUndefined();
+      writeFileSync(
+        join(home, '.mu', 'agent', 'settings.json'),
+        JSON.stringify({ defaultProvider: 'fixture', defaultModel: 'second' })
+      );
+      expect(readDefaultModel(home)).toEqual({ provider: 'fixture', id: 'second' });
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('takes the model new sessions start on once pi lists it, and the send box hears of it', async () => {
+    // Started while another mu held the model store, pi found no model and runs on its placeholder.
+    vi.stubEnv('MU_AGENT_DIR', '');
+    vi.stubEnv('KYRN_AGENT_DIR', '');
+    const home = mkdtempSync(join(tmpdir(), 'kyrn-home-'));
+    mkdirSync(join(home, '.mu', 'agent'), { recursive: true });
+    writeFileSync(
+      join(home, '.mu', 'agent', 'settings.json'),
+      JSON.stringify({ defaultProvider: 'fixture', defaultModel: 'second' })
+    );
+    const f = fixture({
+      home,
+      model: { provider: 'unknown', id: 'unknown' },
+      models: [
+        { provider: 'fixture', id: 'model', name: 'Fixture Model' },
+        { provider: 'fixture', id: 'second', name: 'Second Model' },
+      ],
+    });
+    try {
+      const { sessionId, configOptions } = await f.agent.newSession({ cwd: tmpdir(), mcpServers: [] });
+      // The placeholder is no model the send box could name.
+      expect(configOptions?.find((option) => option.id === 'model')).toMatchObject({ currentValue: '' });
+      await vi.waitFor(() =>
+        expect(f.commands).toContainEqual({ type: 'set_model', provider: 'fixture', modelId: 'second' })
+      );
+      await vi.waitFor(() =>
+        expect(
+          f.updates.findLast((each) => each.update.sessionUpdate === 'config_option_update')?.update
+        ).toMatchObject({
+          configOptions: expect.arrayContaining([
+            expect.objectContaining({ id: 'model', currentValue: 'fixture/second' }),
+          ]),
+        })
+      );
+      // A message goes to mu at once now, and looks for no model.
+      const looks = f.commands.filter((command) => command.type === 'get_available_models').length;
+      const running = f.agent.prompt({ sessionId, prompt: [{ type: 'text', text: 'Test' }] });
+      await tick();
+      f.finish();
+      await expect(running).resolves.toEqual({ stopReason: 'end_turn' });
+      expect(f.commands.filter((command) => command.type === 'get_available_models')).toHaveLength(looks);
+    } finally {
+      f.cleanup();
+      rmSync(home, { recursive: true, force: true });
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('fails a message sent with no model at all under its own headline, without pi’s /login help', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const f = fixture({ model: { provider: 'unknown', id: 'unknown' }, models: [], promptErrors: [NO_KEY] });
+    try {
+      const { sessionId } = await f.agent.newSession({ cwd: tmpdir(), mcpServers: [] });
+      const running = f.agent.prompt({ sessionId, prompt: [{ type: 'text', text: 'Test' }] });
+      const failed = expect(running).rejects.toThrow(
+        new Error(`${MU_TURN_ERRORS.noModel}: No API key found for anthropic.`)
+      );
+      // The conversation looked for a model for a while before the message went.
+      await vi.advanceTimersByTimeAsync(10_000);
+      await failed;
+      expect(f.commands.filter((command) => command.type === 'prompt')).toHaveLength(1);
+      expect(f.commands.filter((command) => command.type === 'get_available_models').length).toBeGreaterThan(1);
+      expect(f.commands.some((command) => command.type === 'set_model')).toBe(false);
+    } finally {
+      vi.useRealTimers();
+      f.cleanup();
+    }
+  });
+
+  it('fails a reply whose model had no key the same way, not as a failed request', async () => {
+    const f = fixture();
+    try {
+      const { sessionId } = await f.agent.newSession({ cwd: tmpdir(), mcpServers: [] });
+      const running = f.agent.prompt({ sessionId, prompt: [{ type: 'text', text: 'Test' }] });
+      f.emit({
+        type: 'message_end',
+        message: { role: 'assistant', content: [], stopReason: 'error', errorMessage: NO_KEY },
+      });
+      f.finish();
+      await expect(running).rejects.toThrow(new Error(`${MU_TURN_ERRORS.noModel}: No API key found for anthropic.`));
+    } finally {
+      f.cleanup();
+    }
+  });
+
+  it('sends a message again when another mu held the model store, and fails it when that goes on', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const locked = 'Lock file is already being held';
+    const f = fixture({ promptErrors: [locked, locked, locked, locked] });
+    try {
+      const { sessionId } = await f.agent.newSession({ cwd: tmpdir(), mcpServers: [] });
+      const prompts = () => f.commands.filter((command) => command.type === 'prompt');
+      const once = f.agent.prompt({ sessionId, prompt: [{ type: 'text', text: 'Test' }] });
+      const failed = expect(once).rejects.toThrow(locked);
+      await vi.advanceTimersByTimeAsync(5_000);
+      await failed;
+      // The first try and two more.
+      expect(prompts()).toHaveLength(3);
+      const again = f.agent.prompt({ sessionId, prompt: [{ type: 'text', text: 'Again' }] });
+      await vi.advanceTimersByTimeAsync(1_500);
+      expect(prompts()).toHaveLength(5);
+      f.finish();
+      await expect(again).resolves.toEqual({ stopReason: 'end_turn' });
+    } finally {
+      vi.useRealTimers();
+      f.cleanup();
+    }
+  });
+});
+
+/** The notices the bridge added to the conversation, in their order. */
+const noticesOf = (updates: SessionNotification[]) =>
+  updates
+    .map((each) => each.update)
+    .filter((update) => update.sessionUpdate === 'tool_call' && update.toolCallId.startsWith('mu:notice:'));
+/** mu notifies something, as its RPC event does. */
+const notify = (f: ReturnType<typeof fixture>, message: string, notifyType: string) =>
+  f.emit({ type: 'extension_ui_request', id: `notify-${message}`, method: 'notify', message, notifyType });
+
+describe('what mu notifies', () => {
+  it('is a line of its own, never reply text: an answer each time, a warning or an error once', async () => {
+    const f = fixture();
+    try {
+      const { sessionId } = await f.agent.newSession({ cwd: tmpdir(), mcpServers: [] });
+      const running = f.agent.prompt({ sessionId, prompt: [{ type: 'text', text: 'Test' }] });
+      notify(f, 'Permissions: full access', 'info');
+      notify(f, 'Permissions: full access', 'info');
+      notify(f, 'mu could not save a checkpoint.', 'warning');
+      f.emit({ type: 'message_update', assistantMessageEvent: { type: 'text_delta', delta: 'Answer' } });
+      notify(f, 'mu could not save a checkpoint.', 'warning');
+      notify(f, 'The judge is not reachable.', 'error');
+      f.finish();
+      await running;
+      const seen = f.updates.map((each) => each.update);
+      expect(noticesOf(f.updates).map((update) => [update.title, update.rawInput])).toEqual([
+        ['Permissions: full access', { level: 'info' }],
+        ['Permissions: full access', { level: 'info' }],
+        ['mu could not save a checkpoint.', { level: 'warning' }],
+        ['The judge is not reachable.', { level: 'error' }],
+      ]);
+      // The reply is only the model's own text, after the warning that came before it.
+      const chunks = seen.filter((update) => update.sessionUpdate === 'agent_message_chunk');
+      expect(chunks.map((update) => ('content' in update ? update.content : null))).toEqual([
+        { type: 'text', text: 'Answer' },
+      ]);
+      expect(seen.indexOf(noticesOf(f.updates)[2])).toBeLessThan(seen.indexOf(chunks[0]));
+    } finally {
+      f.cleanup();
+    }
+  });
+
+  it('says once that checkpoints are off, by mu’s code and the numbers it names, and not again in mu’s words', async () => {
+    const f = fixture();
+    try {
+      await f.agent.newSession({ cwd: tmpdir(), mcpServers: [] });
+      const words = 'mu: checkpoints are off, because this folder has more than 5000 files to snapshot.';
+      // mu's plain warning comes first, and its coded event right after says the same.
+      notify(f, words, 'warning');
+      f.emit(
+        shown('checkpoint.off', { code: 'too_many_files', params: { limit: 5000, folder: '/Users/x' }, message: words })
+      );
+      // A second report, in either order, says nothing new.
+      f.emit(shown('checkpoint.off', { code: 'too_many_files', params: { limit: 5000 }, message: words }));
+      notify(f, words, 'warning');
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(noticesOf(f.updates)).toEqual([
+        expect.objectContaining({
+          title: words,
+          status: 'completed',
+          rawInput: { notice: 'checkpoint_off', code: 'too_many_files', params: { limit: 5000 } },
+        }),
+      ]);
+    } finally {
+      f.cleanup();
+    }
+  });
+
+  it('says the reasons without numbers with empty params, and a warning with other words as it is', async () => {
+    const f = fixture();
+    try {
+      await f.agent.newSession({ cwd: tmpdir(), mcpServers: [] });
+      const words = 'mu: checkpoints are off, because git cannot run on this Mac until the Xcode license is accepted.';
+      f.emit(shown('checkpoint.off', { code: 'xcode_license', params: {}, message: words }));
+      notify(f, 'mu could not reach the judge.', 'warning');
+      await vi.waitFor(() => expect(noticesOf(f.updates)).toHaveLength(2));
+      expect(noticesOf(f.updates).map((update) => update.rawInput)).toEqual([
+        { notice: 'checkpoint_off', code: 'xcode_license', params: {} },
+        { level: 'warning' },
+      ]);
+    } finally {
+      f.cleanup();
+    }
+  });
+});
+
+const asRecordOf = (value: unknown): Record<string, unknown> =>
+  value !== null && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+
+/** mu asks about a call, as it does before its picker opens. */
+const ask = (f: ReturnType<typeof fixture>, toolCallId: string, reason: string) => {
+  const answers = ['Allow once', 'Don’t allow'];
+  f.emit(
+    shown('permissions.request', {
+      id: `permission-${toolCallId}`,
+      toolCallId,
+      mode: 'jev',
+      tool: 'bash',
+      kind: 'shell',
+      summary: 'rm -rf build',
+      reason,
+      answers,
+      answerIds: ['once', 'deny'],
+    })
+  );
+  f.emit({
+    type: 'extension_ui_request',
+    id: `ui-${toolCallId}`,
+    method: 'select',
+    title: 'mu wants to run a command\nrm -rf build',
+    options: answers,
+  });
+};
+/** mu runs a call that fails with these words. */
+const run = (f: ReturnType<typeof fixture>, toolCallId: string, text: string) => {
+  f.emit({ type: 'tool_execution_start', toolCallId, toolName: 'bash', args: { command: 'rm -rf build' } });
+  f.emit({
+    type: 'tool_execution_end',
+    toolCallId,
+    toolName: 'bash',
+    isError: true,
+    result: { content: [{ type: 'text', text }] },
+  });
+};
+/** How the row of a call ended. */
+const ended = (f: ReturnType<typeof fixture>, toolCallId: string) =>
+  f.updates
+    .map((each) => each.update)
+    .find((update) => update.sessionUpdate === 'tool_call_update' && update.toolCallId === toolCallId);
+
+describe('answers to mu’s permission questions', () => {
+  it('gives the card the call it asks about, and a reason the judge left open', async () => {
+    const f = fixture({ mode: 'jev' });
+    try {
+      await f.agent.newSession({ cwd: tmpdir(), mcpServers: [] });
+      ask(f, 'call-1', 'nojudge');
+      await tick();
+      ask(f, 'call-2', 'judgedown');
+      await tick();
+      expect(f.permissions.map((request) => request.toolCall.rawInput)).toEqual([
+        expect.objectContaining({ mu: { kind: 'shell', reason: 'nojudge', toolCallId: 'call-1' } }),
+        expect.objectContaining({ mu: { kind: 'shell', reason: 'judgedown', toolCallId: 'call-2' } }),
+      ]);
+    } finally {
+      f.cleanup();
+    }
+  });
+
+  it('marks the row of a call the person did not allow, and only that one', async () => {
+    const f = fixture({ mode: 'jev' });
+    try {
+      const { sessionId } = await f.agent.newSession({ cwd: tmpdir(), mcpServers: [] });
+      const running = f.agent.prompt({ sessionId, prompt: [{ type: 'text', text: 'Test' }] });
+      ask(f, 'call-1', 'flagged');
+      await tick();
+      f.emit(shown('permissions.resolved', { id: 'permission-call-1', toolCallId: 'call-1', answer: 'deny' }));
+      run(f, 'call-1', 'The user did not allow this (rm -rf build).');
+      // A call allowed once that then failed by itself, and one that failed with no question at all.
+      ask(f, 'call-2', 'flagged');
+      await tick();
+      f.emit(shown('permissions.resolved', { id: 'permission-call-2', toolCallId: 'call-2', answer: 'once' }));
+      run(f, 'call-2', 'rm: build: Permission denied');
+      run(f, 'call-3', 'Command exited with code 1');
+      f.finish();
+      await running;
+      expect(ended(f, 'call-1')).toMatchObject({ status: 'failed', rawOutput: { mu: { answer: 'deny' } } });
+      expect(asRecordOf(ended(f, 'call-2')).rawOutput).not.toHaveProperty('mu');
+      expect(asRecordOf(ended(f, 'call-3')).rawOutput).not.toHaveProperty('mu');
+    } finally {
+      f.cleanup();
+    }
+  });
+});
+
+describe('the judge’s line', () => {
+  it('names the judge that was asked on a classification that ended without its answer', async () => {
+    const f = fixture();
+    try {
+      const { sessionId } = await f.agent.newSession({ cwd: tmpdir(), mcpServers: [] });
+      const running = f.agent.prompt({ sessionId, prompt: [{ type: 'text', text: 'Test' }] });
+      f.emit(shown('preflight.pending', { judge: 'laya>jev-latest', mode: 'active' }));
+      f.emit(shown('preflight.wait_end', { reason: 'timeout' }));
+      f.finish();
+      await running;
+      const rows = f.updates
+        .map((each) => each.update)
+        .filter((update) => 'toolCallId' in update && update.toolCallId === 'jev:r:0');
+      expect(rows.map((update) => ('rawOutput' in update ? update.rawOutput : undefined))).toEqual([
+        { preflight: 'pending', judge: 'laya>jev-latest' },
+        { preflight: 'fallback', judge: 'laya>jev-latest' },
+      ]);
     } finally {
       f.cleanup();
     }

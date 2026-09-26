@@ -91,7 +91,8 @@
     "batchArchiveSuccess_other": "{{count}} Themen archiviert",
     "archiveProjectConfirm_one": "Projekt „{{name}}“ archivieren? Die {{count}} Unterhaltung darin wird ebenfalls archiviert. Du kannst sie in den Einstellungen unter „Archiviert“ wiederherstellen oder löschen.",
     "archiveProjectConfirm_other": "Projekt „{{name}}“ archivieren? Die {{count}} Unterhaltungen darin werden ebenfalls archiviert. Du kannst sie in den Einstellungen unter „Archiviert“ wiederherstellen oder löschen.",
-    "projectActions": "Projektaktionen"
+    "projectActions": "Projektaktionen",
+    "conversationActions": "Chat-Aktionen"
   },
   "historySearch": {
     "tooltip": "Nachrichten durchsuchen",
@@ -457,7 +458,7 @@
   "chat": {
     "noModelSelected": "Kein Modell für die aktuelle Sitzung ausgewählt, Nachricht kann nicht gesendet werden",
     "sendMessageTo": "Nachricht an {{model}} senden",
-    "processing": "Wird verarbeitet...",
+    "processing": "Wird verarbeitet…",
     "quotaExceededTitle": "Modellkontingent erreicht",
     "quotaExceededBody": "Das aktuelle Modellkontingent ist erschöpft. Zu {{model}} wechseln, um fortzufahren?",
     "quotaExceededNoFallback": "Modellkontingent erreicht. Bitte zu einem anderen verfügbaren Modell wechseln.",
@@ -521,7 +522,6 @@
       "manual": "Manuell senden"
     },
     "addToQueue": "Zum Entwurfsfach hinzufügen",
-    "addToQueueShortcut": "⌘ + Enter / Ctrl + Enter",
     "midturnBlocked": "Ein Einwurf wird nicht unterstützt, während dieser Agent antwortet. Verwende stattdessen „Zum Entwurfsfach hinzufügen“.",
     "enterShortcut": "Enter",
     "actionMode": "Sendeaktion wählen",
@@ -592,7 +592,8 @@
   "sendbox": {
     "hint": "Tippe / für Befehle, @ um Dateien zu referenzieren, ↑/↓ für den Nachrichtenverlauf",
     "mediaPathFallback": "Dieser Agent unterstützt diesen Dateityp nicht nativ; die Datei wird als Dateipfad gesendet.",
-    "hintWithSessions": "/ für Befehle, @ für Dateien, @@ für Unterhaltungen, ↑/↓ für Verlauf"
+    "hintWithSessions": "/ für Befehle, @ für Dateien, @@ für Unterhaltungen, ↑/↓ für Verlauf",
+    "stop": "Antwort stoppen"
   },
   "composer": {
     "goalLine": {

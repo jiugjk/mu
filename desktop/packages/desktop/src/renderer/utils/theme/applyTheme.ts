@@ -7,6 +7,7 @@
 import type { Theme } from '@/common/theme/types';
 import { configService } from '@/common/config/configService';
 import { ipcBridge } from '@/common';
+import { followsSystemTheme, SYSTEM_THEME_ID } from '@/common/theme/constants';
 import { resolveActiveTheme } from '@/common/theme/resolveTheme';
 import { BUILTIN_THEMES } from '@renderer/theme/builtinThemes';
 import { processCustomCss } from './customCssProcessor';
@@ -32,9 +33,14 @@ function isElectronRenderer(): boolean {
   return typeof window !== 'undefined' && Boolean((window as Window & { electronAPI?: unknown }).electronAPI);
 }
 
-async function publishThemeToElectron(theme: Theme): Promise<void> {
+/**
+ * Publish the theme in effect: the other windows and surfaces take it from the main process's relay, and the window's
+ * own background follows it (now, and at the next start, which also needs to know whether it follows the system).
+ */
+async function publishThemeToElectron(theme: Theme, followsSystem: boolean): Promise<void> {
   if (!isElectronRenderer()) return;
   await ipcBridge.theme.setActive.invoke(theme);
+  await ipcBridge.theme.windowAppearance.invoke({ appearance: theme.appearance, followsSystem });
 }
 
 /**
@@ -71,17 +77,32 @@ export function applyTheme(theme: Theme, root: Document = document): void {
   upsertStyle(DECORATION_STYLE_ID, theme.css ? processCustomCss(theme.css) : null, root);
 }
 
+function resolveWithUserThemes(activeId: string): Theme {
+  const userThemes = (configService.get('theme.userThemes') as Theme[] | undefined) ?? [];
+  return resolveActiveTheme(activeId, [...BUILTIN_THEMES, ...userThemes], getSystemPrefersDark());
+}
+
 /** Resolve `activeId` locally, apply, persist, and publish to Electron for cross-window broadcast. */
 export async function setActiveTheme(activeId: string): Promise<Theme> {
-  const userThemes = (configService.get('theme.userThemes') as Theme[] | undefined) ?? [];
-  const resolved = resolveActiveTheme(activeId, [...BUILTIN_THEMES, ...userThemes], getSystemPrefersDark());
+  const resolved = resolveWithUserThemes(activeId);
   applyTheme(resolved);
   await configService.set('theme.activeId', activeId);
-  await publishThemeToElectron(resolved);
+  await publishThemeToElectron(resolved, followsSystemTheme(activeId));
+  return resolved;
+}
+
+/**
+ * Apply the theme the system's appearance picks now, for a theme that follows it, without saving a choice: a person
+ * who never chose one keeps following the system.
+ */
+export async function applySystemTheme(): Promise<Theme> {
+  const resolved = resolveWithUserThemes(SYSTEM_THEME_ID);
+  applyTheme(resolved);
+  await publishThemeToElectron(resolved, true);
   return resolved;
 }
 
 /** Seed Electron's cross-window theme relay. WebUI has no Electron surfaces to notify. */
-export async function seedElectronTheme(theme: Theme): Promise<void> {
-  await publishThemeToElectron(theme);
+export async function seedElectronTheme(theme: Theme, followsSystem: boolean): Promise<void> {
+  await publishThemeToElectron(theme, followsSystem);
 }

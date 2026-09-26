@@ -1,11 +1,14 @@
-import React, { Suspense } from 'react';
+import React, { Suspense, useEffect } from 'react';
 import { HashRouter, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { Button, Result, Space } from '@arco-design/web-react';
 import { useTranslation } from 'react-i18next';
 import AppLoader from '@renderer/components/layout/AppLoader';
 import DocumentTitle from '@renderer/components/layout/DocumentTitle';
+import { preloadablePage, preloadWhenIdle, type PreloadablePage } from '@renderer/components/layout/preloadablePage';
 import { useCrossSessionRateLimitNotice } from '@/renderer/hooks/system/useCrossSessionRateLimitNotice';
 import StartupGate from '@/renderer/pages/settings/KyrnSettings/StartupGate';
+import { WelcomePage } from '@/renderer/pages/welcome/page';
+import { useFirstRunWelcome } from '@/renderer/pages/welcome/useFirstRunWelcome';
 import { MuSettingsProvider } from '@/renderer/pages/settings/KyrnSettings/useMuSettings';
 import {
   FEATURE_LIST_PAGES,
@@ -17,28 +20,52 @@ import {
   retiredSettingsTarget,
   type SettingsPageId,
 } from '@/renderer/pages/settings/settingsNav';
-const Conversation = React.lazy(() => import('@renderer/pages/conversation'));
-const Guid = React.lazy(() => import('@renderer/pages/guid'));
-const Welcome = React.lazy(() => import('@renderer/pages/welcome'));
-const MuSettings = React.lazy(() => import('@renderer/pages/settings/KyrnSettings'));
-const MovedFeatureOptions = React.lazy(() =>
+const Conversation = preloadablePage(() => import('@renderer/pages/conversation'));
+const Guid = preloadablePage(() => import('@renderer/pages/guid'));
+const MuSettings = preloadablePage(() => import('@renderer/pages/settings/KyrnSettings'));
+const MovedFeatureOptions = preloadablePage(() =>
   import('@renderer/pages/settings/KyrnSettings').then((module) => ({ default: module.MovedFeatureOptions }))
 );
-const SkillsSettings = React.lazy(() => import('@renderer/pages/settings/SkillsSettings/SkillsHubSettings'));
-const SkillDetailPage = React.lazy(() => import('@renderer/pages/settings/SkillsSettings/SkillDetailPage'));
-const ToolsSettings = React.lazy(() => import('@renderer/pages/settings/ToolsSettings'));
-const AssistantSettings = React.lazy(() => import('@renderer/pages/settings/AssistantSettings'));
-const AppearanceSettings = React.lazy(() => import('@renderer/pages/settings/AppearanceSettings'));
-const SystemSettings = React.lazy(() => import('@renderer/pages/settings/SystemSettings'));
-const ConversationSettings = React.lazy(() => import('@renderer/pages/settings/SystemSettings/ConversationSettings'));
-const BrowserSettings = React.lazy(() => import('@renderer/pages/settings/SystemSettings/BrowserSettings'));
-const AboutSettings = React.lazy(() => import('@renderer/pages/settings/SystemSettings/AboutSettings'));
-const PersonalitySettings = React.lazy(() => import('@renderer/pages/settings/PersonalitySettings'));
-const ArchivedSettings = React.lazy(() => import('@renderer/pages/settings/ArchivedSettings'));
-const ExtensionSettingsPage = React.lazy(() => import('@renderer/pages/settings/ExtensionSettingsPage'));
-const ComponentsShowcase = React.lazy(() => import('@renderer/pages/TestShowcase'));
-const ScheduledTasksPage = React.lazy(() => import('@renderer/pages/cron/ScheduledTasksPage'));
-const TaskDetailPage = React.lazy(() => import('@renderer/pages/cron/ScheduledTasksPage/TaskDetailPage'));
+const SkillsSettings = preloadablePage(() => import('@renderer/pages/settings/SkillsSettings/SkillsHubSettings'));
+const SkillDetailPage = preloadablePage(() => import('@renderer/pages/settings/SkillsSettings/SkillDetailPage'));
+const ToolsSettings = preloadablePage(() => import('@renderer/pages/settings/ToolsSettings'));
+const AssistantSettings = preloadablePage(() => import('@renderer/pages/settings/AssistantSettings'));
+const AppearanceSettings = preloadablePage(() => import('@renderer/pages/settings/AppearanceSettings'));
+const SystemSettings = preloadablePage(() => import('@renderer/pages/settings/SystemSettings'));
+const ConversationSettings = preloadablePage(
+  () => import('@renderer/pages/settings/SystemSettings/ConversationSettings')
+);
+const BrowserSettings = preloadablePage(() => import('@renderer/pages/settings/SystemSettings/BrowserSettings'));
+const AboutSettings = preloadablePage(() => import('@renderer/pages/settings/SystemSettings/AboutSettings'));
+const PersonalitySettings = preloadablePage(() => import('@renderer/pages/settings/PersonalitySettings'));
+const ArchivedSettings = preloadablePage(() => import('@renderer/pages/settings/ArchivedSettings'));
+const ExtensionSettingsPage = preloadablePage(() => import('@renderer/pages/settings/ExtensionSettingsPage'));
+const ComponentsShowcase = preloadablePage(() => import('@renderer/pages/TestShowcase'));
+const ScheduledTasksPage = preloadablePage(() => import('@renderer/pages/cron/ScheduledTasksPage'));
+const TaskDetailPage = preloadablePage(() => import('@renderer/pages/cron/ScheduledTasksPage/TaskDetailPage'));
+
+/**
+ * The pages loaded ahead while the window is idle after its first page, the likeliest next ones first: a conversation,
+ * a new one, the settings pages and the scheduled tasks. The guide, the component showcase and the pages reached from
+ * inside a settings page load on their visit.
+ */
+const PRELOADED: readonly PreloadablePage[] = [
+  Conversation,
+  Guid,
+  MuSettings,
+  ScheduledTasksPage,
+  AppearanceSettings,
+  SystemSettings,
+  ConversationSettings,
+  AssistantSettings,
+  ToolsSettings,
+  SkillsSettings,
+  PersonalitySettings,
+  BrowserSettings,
+  AboutSettings,
+  ArchivedSettings,
+  TaskDetailPage,
+];
 
 const RouteFailure = () => {
   const { t } = useTranslation();
@@ -87,14 +114,14 @@ export const RouteContent: React.FC<{ children: React.ReactNode }> = ({ children
   );
 };
 
-const withRouteFallback = (Component: React.LazyExoticComponent<React.ComponentType>) => (
+const withRouteFallback = (Component: React.ComponentType) => (
   <RouteContent>
     <Component />
   </RouteContent>
 );
 
 /** The page each entry of the settings rail opens: mu's own sections are one area, routed by the path. */
-const SETTINGS_PAGE_ELEMENTS: Record<SettingsPageId, React.LazyExoticComponent<React.ComponentType>> = {
+const SETTINGS_PAGE_ELEMENTS: Record<SettingsPageId, PreloadablePage> = {
   appearance: AppearanceSettings,
   system: SystemSettings,
   conversations: ConversationSettings,
@@ -160,16 +187,18 @@ const AppLayout: React.FC<{ layout: React.ReactElement }> = ({ layout }) => {
   // is a broadcast rather than an in-conversation banner. The hook asks the
   // backend who this client is on its own.
   useCrossSessionRateLimitNotice();
+  // Here, not on the home page: the check runs while the start screen is up, and a first start opens on the guide.
+  useFirstRunWelcome();
 
-  // Do not obstruct an existing task while the main process is being upgraded.
-  return location.pathname.startsWith('/conversation/') ? (
-    React.cloneElement(layout)
-  ) : (
-    <StartupGate>{React.cloneElement(layout)}</StartupGate>
-  );
+  // Do not obstruct an existing task while the main process is being upgraded: a conversation passes the gate. The
+  // gate stays in the tree on every page, open on a conversation. Leaving it out there would give the layout another
+  // parent, and React would mount the whole layout afresh on every step between a conversation and any other page:
+  // the sidebar forgot the conversation "back to chat" returns to, and the work panel reloaded its pages.
+  return <StartupGate open={location.pathname.startsWith('/conversation/')}>{React.cloneElement(layout)}</StartupGate>;
 };
 
 const PanelRoute: React.FC<{ layout: React.ReactElement }> = ({ layout }) => {
+  useEffect(() => preloadWhenIdle(PRELOADED), []);
   return (
     <HashRouter>
       <DocumentTitle />
@@ -177,7 +206,7 @@ const PanelRoute: React.FC<{ layout: React.ReactElement }> = ({ layout }) => {
         <Route element={<AppLayout layout={layout} />}>
           <Route index element={<Navigate to='/guid' replace />} />
           <Route path='/guid' element={withRouteFallback(Guid)} />
-          <Route path='/welcome' element={withRouteFallback(Welcome)} />
+          <Route path='/welcome' element={withRouteFallback(WelcomePage)} />
           <Route path='/conversation/:id' element={withRouteFallback(Conversation)} />
           <Route path='/team/:id' element={<Navigate to='/guid' replace />} />
           {/* The settings rail: one route per entry, all under one draft of mu's settings. */}
